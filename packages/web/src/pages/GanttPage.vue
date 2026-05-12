@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
 import { useAssigneesStore } from '@/stores/assignees';
@@ -49,6 +49,65 @@ function toggleCascade(): void {
   cascadeEnabled.value = !cascadeEnabled.value;
   window.localStorage.setItem(STORAGE_KEY_CASCADE, cascadeEnabled.value ? '1' : '0');
 }
+
+// --- Vertical scroll sync between the left task table and the right gantt ---
+const splitRef = ref<HTMLElement | null>(null);
+const leftPaneRef = ref<HTMLElement | null>(null);
+const rightPaneRef = ref<HTMLElement | null>(null);
+let scrollSyncing = false;
+let scrollSyncDetach: (() => void) | null = null;
+
+function collectScrollables(): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  if (leftPaneRef.value) out.push(leftPaneRef.value);
+  if (rightPaneRef.value) {
+    out.push(rightPaneRef.value);
+    // Frappe Gantt creates an inner .gantt-container element that has its
+    // own overflow:auto. Include every nested .gantt-container so vertical
+    // scroll stays in lockstep across all of them.
+    rightPaneRef.value
+      .querySelectorAll<HTMLElement>('.gantt-container, .gantt-wrapper')
+      .forEach((el) => out.push(el));
+  }
+  return out;
+}
+
+function setupScrollSync(): void {
+  if (scrollSyncDetach) scrollSyncDetach();
+  const split = splitRef.value;
+  if (!split) return;
+  const handler = (e: Event): void => {
+    if (scrollSyncing) return;
+    const target = e.target as HTMLElement | null;
+    if (!target || typeof target.scrollTop !== 'number') return;
+    if (!split.contains(target)) return;
+    scrollSyncing = true;
+    const newTop = target.scrollTop;
+    for (const el of collectScrollables()) {
+      if (el !== target && Math.abs(el.scrollTop - newTop) > 0.5) {
+        el.scrollTop = newTop;
+      }
+    }
+    requestAnimationFrame(() => {
+      scrollSyncing = false;
+    });
+  };
+  split.addEventListener('scroll', handler, { capture: true, passive: true });
+  scrollSyncDetach = () => split.removeEventListener('scroll', handler, true as unknown as EventListenerOptions);
+}
+
+onMounted(() => {
+  nextTick(setupScrollSync);
+});
+onBeforeUnmount(() => {
+  if (scrollSyncDetach) scrollSyncDetach();
+});
+
+// Re-bind after the split mounts/un-mounts (e.g. when project has tasks/no tasks).
+watch(
+  () => tasks.items.length > 0,
+  () => nextTick(setupScrollSync),
+);
 
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
@@ -422,10 +481,11 @@ function back(): void {
     </p>
     <div
       v-else
+      ref="splitRef"
       class="split"
       :style="{ gridTemplateColumns: `${leftWidth}px 6px minmax(280px, 1fr)` }"
     >
-      <div class="pane left" aria-label="task list">
+      <div class="pane left" ref="leftPaneRef" aria-label="task list">
         <TaskTable
           :tasks="visibleTasks"
           :assignees="assignees.items"
@@ -447,7 +507,7 @@ function back(): void {
         title="ドラッグして左右の幅を変更"
         @mousedown="onSplitterMouseDown"
       ></div>
-      <div class="pane right" aria-label="gantt chart">
+      <div class="pane right" ref="rightPaneRef" aria-label="gantt chart">
         <GanttChart
           :tasks="visibleTasks"
           @date-change="onChartDateChange"
