@@ -1,25 +1,69 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { computeStatus, STATUS_BUCKETS, todayUtc } from '@/utils/status';
-import { useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
-import { useAssigneesStore } from '@/stores/assignees';
+import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
 import { useHolidaysStore } from '@/stores/holidays';
+import { useProjectMembersStore } from '@/stores/projectMembers';
 import TaskTable from '@/components/TaskTable.vue';
 import GanttChart from '@/components/GanttChart.vue';
-import type { WbsTask } from '@/types';
+import ProjectMembersDialog from '@/components/ProjectMembersDialog.vue';
+import type { Employee, WbsTask } from '@/types';
 
 const props = defineProps<{ projectId: number }>();
 
 const tasks = useTasksStore();
-const assignees = useAssigneesStore();
+const assignees = useEmployeesStore();
 const projects = useProjectsStore();
 const holidays = useHolidaysStore();
+const projectMembersStore = useProjectMembersStore();
 const router = useRouter();
+const route = useRoute();
 
-const newAssigneeName = ref('');
 const collapsedIds = ref<Set<number>>(new Set());
+const membersDialogOpen = ref(false);
+
+// Members live in projectMembersStore keyed by projectId; resolved per render.
+const projectMembers = computed<Employee[]>(() =>
+  projectMembersStore.membersOf(props.projectId),
+);
+const projectMemberIds = computed<Set<number>>(
+  () => new Set(projectMembers.value.map((m) => m.id)),
+);
+
+// Every employee referenced by at least one task in this project. Used by the
+// members dialog to warn when an assigned employee is being deselected.
+const assignedEmployeeIds = computed<number[]>(() => {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const t of tasks.items) {
+    if (t.assigneeId !== null && t.assigneeId !== undefined && !seen.has(t.assigneeId)) {
+      seen.add(t.assigneeId);
+      out.push(t.assigneeId);
+    }
+  }
+  return out;
+});
+
+// Subset that are NOT currently members — these get the "（メンバー外）" tag in
+// the chip row and dropdown.
+const assignedNonMemberIds = computed<number[]>(() =>
+  assignedEmployeeIds.value.filter((id) => !projectMemberIds.value.has(id)),
+);
+
+// Combined list passed to TaskTable: members first, then orphaned assignees.
+const projectAssignees = computed<Employee[]>(() => {
+  const empById = new Map(assignees.items.map((e) => [e.id, e]));
+  const result: Employee[] = [];
+  for (const m of projectMembers.value) result.push(m);
+  for (const id of assignedNonMemberIds.value) {
+    const e = empById.get(id);
+    if (e) result.push(e);
+  }
+  return result;
+});
 
 // --- Column filters (Excel-style) ---
 type FilterValue = string | number | null;
@@ -71,7 +115,7 @@ const filterOptions = computed(() => ({
   ],
   assigneeIds: [
     { value: null as FilterValue, label: '未割当' },
-    ...assignees.items.map((a) => ({ value: a.id as FilterValue, label: a.name })),
+    ...projectAssignees.value.map((a) => ({ value: a.id as FilterValue, label: a.name })),
   ],
   // Fixed set of computed status buckets, not free-text values.
   statuses: STATUS_BUCKETS.map((b) => ({ value: b.bucket as FilterValue, label: b.label })),
@@ -360,13 +404,52 @@ onMounted(async () => {
     assignees.fetchAll(),
     projects.fetchAll(),
     holidays.fetchAll(),
+    projectMembersStore.fetchMembers(props.projectId),
   ]);
+  applyFocusFromQuery();
 });
+
+// When the user lands on this page from the cross-project assignments view
+// (URL `?focus=<taskId>`), expand the task's ancestors so it's visible,
+// scroll to it, and briefly highlight the row.
+function applyFocusFromQuery(): void {
+  const raw = route.query.focus;
+  const focusId = typeof raw === 'string' ? Number(raw) : null;
+  if (!focusId || Number.isNaN(focusId)) return;
+  const task = tasks.items.find((t) => t.id === focusId);
+  if (!task) return;
+  // Walk up the ancestor chain and remove them from the collapsed set.
+  const byId = new Map(tasks.items.map((t) => [t.id, t]));
+  const next = new Set(collapsedIds.value);
+  let cursor: WbsTask | undefined = task;
+  while (cursor && cursor.parentId !== null && cursor.parentId !== undefined) {
+    next.delete(cursor.parentId);
+    cursor = byId.get(cursor.parentId);
+  }
+  collapsedIds.value = next;
+  nextTick(() => {
+    const input = document.querySelector<HTMLElement>(`input[data-task-name="${focusId}"]`);
+    if (input) {
+      input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const target = input.closest<HTMLElement>('.row.body') ?? input;
+      target.classList.add('focus-highlight');
+      setTimeout(() => target.classList.remove('focus-highlight'), 2500);
+    }
+  });
+}
 
 watch(
   () => props.projectId,
-  (id) => tasks.fetchByProject(id),
+  (id) => {
+    tasks.fetchByProject(id);
+    projectMembersStore.fetchMembers(id);
+  },
 );
+
+async function onSaveMembers(employeeIds: number[]): Promise<void> {
+  await projectMembersStore.setMembers(props.projectId, employeeIds);
+  membersDialogOpen.value = false;
+}
 
 function toggleCollapse(id: number): void {
   const next = new Set(collapsedIds.value);
@@ -390,30 +473,27 @@ function collapseAll(): void {
 }
 
 async function addTopLevel(): Promise<void> {
-  const name = window.prompt('大項目名を入力してください');
-  if (!name) return;
-  await tasks.create({ level: 1, name: name.trim() });
+  const created = await tasks.create({ level: 1, name: '' });
+  focusNameAfterCreate(created?.id);
 }
 
 async function onAddChild(parent: WbsTask | null, level: 1 | 2 | 3): Promise<void> {
   if (!parent) return;
-  const label = level === 2 ? '中項目' : '項目';
-  const name = window.prompt(`${label}名を入力してください`);
-  if (!name) return;
+  let created;
   if (level === 3) {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
-    await tasks.create({
+    created = await tasks.create({
       level: 3,
       parentId: parent.id,
-      name: name.trim(),
+      name: '',
       startDate: `${yyyy}-${mm}-${dd}`,
       duration: 1,
     });
   } else {
-    await tasks.create({ level: 2, parentId: parent.id, name: name.trim() });
+    created = await tasks.create({ level: 2, parentId: parent.id, name: '' });
   }
   // Auto-expand parent when adding a child to it.
   if (collapsedIds.value.has(parent.id)) {
@@ -421,6 +501,23 @@ async function onAddChild(parent: WbsTask | null, level: 1 | 2 | 3): Promise<voi
     next.delete(parent.id);
     collapsedIds.value = next;
   }
+  focusNameAfterCreate(created?.id);
+}
+
+// Move keyboard focus to the freshly-created row's name field so the user
+// can start typing immediately — supports the "add many rows quickly" flow.
+function focusNameAfterCreate(taskId: number | undefined): void {
+  if (!taskId) return;
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>(
+      `input[data-task-name="${taskId}"]`,
+    );
+    if (el) {
+      el.focus();
+      el.select();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 }
 
 async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {
@@ -487,13 +584,6 @@ async function onReorder(visibleNext: WbsTask[]): Promise<void> {
   await tasks.reorder(items);
 }
 
-async function onAddAssignee(): Promise<void> {
-  const name = newAssigneeName.value.trim();
-  if (!name) return;
-  await assignees.create(name);
-  newAssigneeName.value = '';
-}
-
 async function onChartDateChange(taskId: number, start: string, end: string): Promise<void> {
   const task = tasks.items.find((t) => t.id === taskId);
   if (!task || task.level !== 3) return;
@@ -542,7 +632,10 @@ function back(): void {
     <header class="page-header">
       <button class="btn" type="button" @click="back">← プロジェクト一覧</button>
       <h2 class="title">
-        <span v-if="project">{{ project.name }}</span>
+        <template v-if="project">
+          <span v-if="project.customerName" class="customer-tag">{{ project.customerName }}</span>
+          <span>{{ project.name }}</span>
+        </template>
         <span v-else class="muted">プロジェクト #{{ projectId }}</span>
       </h2>
       <div class="actions">
@@ -593,15 +686,25 @@ function back(): void {
     </header>
 
     <section class="assignee-row">
-      <strong>担当者：</strong>
-      <span v-for="a in assignees.items" :key="a.id" class="chip">{{ a.name }}</span>
-      <input
-        v-model="newAssigneeName"
-        type="text"
-        placeholder="新規担当者"
-        @keydown.enter.prevent="onAddAssignee"
-      />
-      <button class="btn" type="button" @click="onAddAssignee">追加</button>
+      <strong>メンバー：</strong>
+      <span v-if="assignees.activeItems.length === 0" class="muted">
+        社員が未登録です。
+        <RouterLink to="/employees" class="link">社員マスタ</RouterLink>
+        から登録してください。
+      </span>
+      <template v-else>
+        <span v-if="projectMembers.length === 0" class="muted">
+          このプロジェクトのメンバーは未設定です。「メンバー管理」から選択してください。
+        </span>
+        <span v-for="a in projectMembers" :key="a.id" class="chip">{{ a.name }}</span>
+        <span
+          v-for="id in assignedNonMemberIds"
+          :key="`orphan-${id}`"
+          class="chip orphan"
+          title="メンバー外（既存タスクに割当中）"
+        >{{ (assignees.items.find((e) => e.id === id) || { name: '?' }).name }}（メンバー外）</span>
+        <button class="btn small" type="button" @click="membersDialogOpen = true">メンバー管理</button>
+      </template>
     </section>
 
     <p v-if="tasks.loading" class="muted">読込中…</p>
@@ -617,7 +720,8 @@ function back(): void {
         <div class="pane left" ref="leftPaneRef" aria-label="task list">
           <TaskTable
             :tasks="visibleTasks"
-            :assignees="assignees.items"
+            :assignees="projectAssignees"
+            :non-member-ids="new Set(assignedNonMemberIds)"
             :collapsed-ids="collapsedIds"
             :child-count-by-parent="childCountByParent"
             :visibility="visibility"
@@ -653,6 +757,16 @@ function back(): void {
         </div>
       </div>
     </div>
+
+    <ProjectMembersDialog
+      :open="membersDialogOpen"
+      :project-name="(projects.items.find((p) => p.id === projectId) || { name: '' }).name"
+      :all-employees="assignees.items"
+      :current-member-ids="projectMembers.map((m) => m.id)"
+      :assigned-employee-ids="assignedEmployeeIds"
+      @close="membersDialogOpen = false"
+      @save="onSaveMembers"
+    />
   </div>
 </template>
 
@@ -670,6 +784,18 @@ function back(): void {
   margin: 0;
   flex: 1;
   font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.customer-tag {
+  display: inline-block;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 .actions {
   display: flex;

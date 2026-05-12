@@ -27,12 +27,26 @@ interface FilterOptions {
 const props = defineProps<{
   tasks: WbsTask[];
   assignees: Assignee[];
+  // Employees assigned to tasks but no longer in the project's members list.
+  // Their id remains valid (soft removal), but the dropdown labels them
+  // "(メンバー外)" and shows them at the bottom.
+  nonMemberIds?: Set<number>;
   collapsedIds: Set<number>;
   childCountByParent: Map<number, number>;
   visibility: ColumnVisibility;
   filters: ColumnFilters;
   filterOptions: FilterOptions;
 }>();
+
+const assigneeOptions = computed(() => {
+  const nonMembers = props.nonMemberIds ?? new Set<number>();
+  const members = props.assignees.filter((a) => !nonMembers.has(a.id));
+  const orphans = props.assignees.filter((a) => nonMembers.has(a.id));
+  return [
+    ...members.map((a) => ({ a, suffix: '' })),
+    ...orphans.map((a) => ({ a, suffix: '（メンバー外）' })),
+  ];
+});
 
 const emit = defineEmits<{
   (e: 'reorder', payload: WbsTask[]): void;
@@ -347,6 +361,8 @@ function onStatusChange(task: WbsTask, e: Event): void {
             <input
               type="text"
               :value="element.name"
+              :data-task-name="element.id"
+              placeholder="（名称未入力）"
               @change="(e) => onNameInput(element, e)"
             />
           </div>
@@ -434,7 +450,9 @@ function onStatusChange(task: WbsTask, e: Event): void {
               @change="(e) => onAssigneeChange(element, e)"
             >
               <option value="">未割当</option>
-              <option v-for="a in assignees" :key="a.id" :value="a.id">{{ a.name }}</option>
+              <option v-for="opt in assigneeOptions" :key="opt.a.id" :value="opt.a.id">
+                {{ opt.a.name }}{{ opt.suffix }}
+              </option>
             </select>
           </div>
           <div v-if="visibility.status" class="col-status">
@@ -674,5 +692,13 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .drag-ghost {
   opacity: 0.4;
   background: #dbeafe;
+}
+/* Applied transiently when navigated from the cross-project assignments view */
+.row.body.focus-highlight {
+  animation: focus-pulse 2.5s ease-out;
+}
+@keyframes focus-pulse {
+  0%, 50% { background: #fef3c7; box-shadow: inset 4px 0 0 #f59e0b; }
+  100% { background: transparent; box-shadow: none; }
 }
 </style>

@@ -3,11 +3,19 @@ import { HealthController } from './health.controller';
 import { DbModule } from './db/db.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
-import { AssigneesModule } from './assignees/assignees.module';
+import { EmployeesModule } from './employees/employees.module';
 import { HolidaysModule } from './holidays/holidays.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
-  imports: [DbModule, HolidaysModule, ProjectsModule, TasksModule, AssigneesModule],
+  imports: [
+    DbModule,
+    HolidaysModule,
+    ProjectsModule,
+    TasksModule,
+    EmployeesModule,
+    CustomersModule,
+  ],
   controllers: [HealthController],
   providers: [],
 })

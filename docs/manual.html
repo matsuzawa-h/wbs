@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>WBS Web 操作マニュアル</title>
+<style>
+  :root {
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --warn: #92400e;
+    --warn-bg: #fef3c7;
+    --tip-bg: #ecfdf5;
+    --tip-border: #34d399;
+    --code-bg: #f1f5f9;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  header.title {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  header.title h1 {
+    font-size: 1.8rem;
+    margin: 0 0 0.2rem;
+  }
+  header.title .lead {
+    color: var(--muted);
+    margin: 0;
+  }
+  nav.toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.4rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--muted);
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 1.3rem;
+  }
+  nav.toc ol ol {
+    margin: 0.1rem 0 0.4rem;
+  }
+  nav.toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  nav.toc a:hover {
+    text-decoration: underline;
+  }
+  h2.chapter {
+    font-size: 1.35rem;
+    margin: 2.5rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3.section {
+    font-size: 1.1rem;
+    margin: 1.8rem 0 0.6rem;
+    color: var(--fg);
+  }
+  h3.section .num {
+    display: inline-block;
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 0.4rem;
+  }
+  figure {
+    margin: 1rem 0;
+    text-align: center;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  }
+  figure figcaption {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 0.3rem;
+  }
+  ol.steps, ul.bullets {
+    padding-left: 1.3rem;
+  }
+  ol.steps > li, ul.bullets > li {
+    margin-bottom: 0.4rem;
+  }
+  .tip, .warn, .note {
+    border-left: 4px solid;
+    padding: 0.7rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+  }
+  .tip {
+    background: var(--tip-bg);
+    border-color: var(--tip-border);
+  }
+  .warn {
+    background: var(--warn-bg);
+    border-color: #f59e0b;
+    color: var(--warn);
+  }
+  .note {
+    background: #eff6ff;
+    border-color: var(--accent);
+  }
+  .tip strong, .warn strong, .note strong {
+    display: inline-block;
+    margin-right: 0.4rem;
+  }
+  table.cmd {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.6rem 0 1rem;
+    font-size: 0.92rem;
+  }
+  table.cmd th, table.cmd td {
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.cmd th {
+    background: var(--code-bg);
+    font-weight: 600;
+  }
+  code, .key {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05rem 0.35rem;
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 0.85em;
+  }
+  .key {
+    background: #fff;
+  }
+  .pill {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.05rem 0.55rem;
+    background: #fff;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-right: 0.2rem;
+  }
+  .status-pill {
+    display: inline-block;
+    padding: 0.05rem 0.55rem;
+    border-radius: 3px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-right: 0.3rem;
+  }
+  .st-done { background:#ecfdf5; color:#047857; }
+  .st-running { background:#dbeafe; color:#1e40af; }
+  .st-late { background:#fef3c7; color:#92400e; }
+  .st-overdue { background:#fee2e2; color:#b91c1c; }
+  .st-todo { background:#f3f4f6; color:#4b5563; }
+  footer.foot {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .wrap { max-width: 100%; padding: 0; }
+    figure img { box-shadow: none; }
+    nav.toc { page-break-after: always; }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="title">
+  <h1>WBS Web 操作マニュアル</h1>
+  <p class="lead">プロジェクト工程表（ガントチャート）の作成・更新手順</p>
+</header>
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#ch1">はじめに</a></li>
+    <li><a href="#ch2">画面の基本構成</a></li>
+    <li>
+      <a href="#ch3">操作手順</a>
+      <ol>
+        <li><a href="#s3-1">社員マスタを登録する</a></li>
+        <li><a href="#s3-2">休日を登録する</a></li>
+        <li><a href="#s3-3">プロジェクトを作成する</a></li>
+        <li><a href="#s3-4">プロジェクトに表示するメンバーを選ぶ</a></li>
+        <li><a href="#s3-5">タスクを登録する（3 階層）</a></li>
+        <li><a href="#s3-6">日付・期間を変更する</a></li>
+        <li><a href="#s3-7">行を並び替える</a></li>
+        <li><a href="#s3-8">後続タスクの自動シフト（連動）</a></li>
+        <li><a href="#s3-9">進捗と実績を入力する</a></li>
+        <li><a href="#s3-10">状態（自動算出）の見方</a></li>
+        <li><a href="#s3-11">表示する列を切り替える</a></li>
+        <li><a href="#s3-12">フィルタで絞り込む</a></li>
+        <li><a href="#s3-13">折りたたみ・展開と「今日」表示</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch4">よくある質問</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch1">1. はじめに</h2>
+<p>
+本ツールは、エクセル版「工程マイルストーン」の置き換えを目的とした Web 工程表です。<br>
+ブラウザから社内サーバへアクセスして使用します。
+</p>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>URL</td><td>サーバ管理者から配布された URL（例: <code>http://&lt;サーバ名&gt;:5000/</code>）</td></tr>
+    <tr><td>推奨ブラウザ</td><td>Chrome / Edge の最新版</td></tr>
+    <tr><td>同時編集</td><td>本バージョンでは想定していません。複数人で同時に同じプロジェクトを更新しないでください。</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <strong>💡 はじめての方は</strong>
+  下記の順に登録すると、すぐに工程表を作成できます。<br>
+  ① 社員マスタ → ② プロジェクト作成 → ③ メンバー設定 → ④ タスク登録
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch2">2. 画面の基本構成</h2>
+<p>
+画面上部に共通ナビゲーションがあります。
+</p>
+<table class="cmd">
+  <thead><tr><th>メニュー</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill">プロジェクト</span></td><td>プロジェクトの一覧・作成・各プロジェクトのガントへの入口。</td></tr>
+    <tr><td><span class="pill">社員マスタ</span></td><td>担当者として登録できる社員の一覧・追加・編集。</td></tr>
+    <tr><td><span class="pill">休日設定</span></td><td>土日以外の休日（祝日・特別休暇など）の登録。</td></tr>
+  </tbody>
+</table>
+<figure>
+  <img src="screenshots/01_project_list.png" alt="プロジェクト一覧画面">
+  <figcaption>図 2-1: プロジェクト一覧（起動直後）</figcaption>
+</figure>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch3">3. 操作手順</h2>
+
+<!-- ===== 3.1 ===== -->
+<h3 class="section" id="s3-1"><span class="num">3.1</span>社員マスタを登録する</h3>
+<p>
+タスクの担当者として割り当てる社員を、まず社員マスタに登録します。
+</p>
+<ol class="steps">
+  <li>上部ナビの「<strong>社員マスタ</strong>」をクリック。</li>
+  <li>右上の「<strong>+ 新規追加</strong>」ボタンを押すと、登録ダイアログが開きます。</li>
+  <li>必要項目を入力して「<strong>保存</strong>」を押す。</li>
+</ol>
+<figure>
+  <img src="screenshots/03_employees_empty.png" alt="社員マスタ（未登録）">
+  <figcaption>図 3-1-a: 社員マスタ（未登録状態）</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/04_employee_dialog.png" alt="社員追加ダイアログ">
+  <figcaption>図 3-1-b: 社員追加ダイアログ</figcaption>
+</figure>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>説明</th><th>必須</th></tr></thead>
+  <tbody>
+    <tr><td>社員コード</td><td>未入力で <code>E001</code> から自動採番されます。既存の番号体系がある場合は任意のコードを入れられます。</td><td>—</td></tr>
+    <tr><td>氏名</td><td>表示用の氏名。</td><td>○</td></tr>
+    <tr><td>フリガナ</td><td>検索のヒット率が上がります。</td><td>—</td></tr>
+    <tr><td>所属 / 役職</td><td>表示・検索用。</td><td>—</td></tr>
+    <tr><td>メール</td><td>将来の通知連携用（現状は表示のみ）。</td><td>—</td></tr>
+    <tr><td>在籍開始 / 在籍終了</td><td>退職した方は「在籍終了」を入力するか、有効チェックを外すと、新規割当の候補から外れます（既に割当中のタスクには引き続き名前が残ります）。</td><td>—</td></tr>
+    <tr><td>休日出勤</td><td>休日も作業対象に含めて稼働するメンバーにチェック（将来の計算で参照）。</td><td>—</td></tr>
+    <tr><td>有効</td><td>外すと「無効社員」として一覧表示時はグレー表示、新規割当候補から除外されます。</td><td>—</td></tr>
+  </tbody>
+</table>
+<figure>
+  <img src="screenshots/05_employees_list.png" alt="登録済みの社員一覧">
+  <figcaption>図 3-1-c: 数名登録した状態の一覧</figcaption>
+</figure>
+<div class="tip">
+  <strong>💡 ヒント</strong>
+  検索ボックスはコード・氏名・フリガナ・所属を横断的に部分一致します。<br>
+  「有効のみ」のチェックを外すと退職者も含めた全社員を表示できます。
+</div>
+
+<!-- ===== 3.2 ===== -->
+<h3 class="section" id="s3-2"><span class="num">3.2</span>休日を登録する</h3>
+<p>
+土日に加えて休業日として扱いたい日付（祝日・年末年始など）を登録すると、
+ガント上の表示と、後述の日数計算（平日カウント）に反映されます。
+</p>
+<ol class="steps">
+  <li>上部ナビの「<strong>休日設定</strong>」をクリック。</li>
+  <li>用途に合わせて 4 つの入力欄を使い分け：
+    <ul class="bullets">
+      <li><strong>日付指定</strong>: 1 件ずつ登録（例: 設立記念日）。</li>
+      <li><strong>期間一括</strong>: 開始 〜 終了日の連続日を一気に登録（例: 夏季休業 8/13 〜 8/16）。</li>
+      <li><strong>祝日プリセット</strong>: 指定した年の日本の祝日 16 件を一括投入。</li>
+      <li><strong>CSV 取込</strong>: <code>YYYY-MM-DD,名称</code> 形式の複数行を一気に登録。</li>
+    </ul>
+  </li>
+</ol>
+<figure>
+  <img src="screenshots/15_holidays.png" alt="休日設定画面">
+  <figcaption>図 3-2: 休日設定画面（年単位でグループ表示）</figcaption>
+</figure>
+<div class="note">
+  <strong>📌 ポイント</strong>
+  休日に登録した日は、ガントチャート上で<strong>日曜日と同じ赤い背景</strong>になり、
+  項目（level=3）の期間日数の計算でもスキップされます。
+</div>
+
+<!-- ===== 3.3 ===== -->
+<h3 class="section" id="s3-3"><span class="num">3.3</span>プロジェクトを作成する</h3>
+<ol class="steps">
+  <li>「プロジェクト」ページの上部「<strong>新規プロジェクト</strong>」セクションで、プロジェクト名を入力。</li>
+  <li>「<strong>作成して開く</strong>」を押すと、そのプロジェクトのガント画面に遷移します。</li>
+</ol>
+<figure>
+  <img src="screenshots/02_project_create.png" alt="プロジェクト名を入力">
+  <figcaption>図 3-3-a: プロジェクト名を入力</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/19_project_list_after.png" alt="作成後のプロジェクト一覧">
+  <figcaption>図 3-3-b: 作成後、一覧の末尾に追加される</figcaption>
+</figure>
+<div class="tip">
+  <strong>💡 ヒント</strong>
+  プロジェクト名は後からも「名前変更」ボタンで変更できます。<br>
+  「削除」を押すと、配下のタスクと、プロジェクトメンバー設定も一緒に削除されます。
+</div>
+
+<!-- ===== 3.4 ===== -->
+<h3 class="section" id="s3-4"><span class="num">3.4</span>プロジェクトに表示するメンバーを選ぶ</h3>
+<p>
+社員マスタには全社員が登録されますが、各プロジェクトで <strong>担当ドロップダウンに出す社員はプロジェクトごとに選択</strong>します。
+</p>
+<ol class="steps">
+  <li>ガント画面の上部「メンバー」行で「<strong>メンバー管理</strong>」ボタンをクリック。</li>
+  <li>ダイアログで、参加させたい社員にチェックを入れる。<br>
+    検索ボックスで社員を絞り込み、「<strong>表示中を全選択</strong>」で一括チェックも可能。
+  </li>
+  <li>「<strong>保存</strong>」を押す。</li>
+</ol>
+<figure>
+  <img src="screenshots/06_gantt_empty.png" alt="メンバー未設定のガント画面">
+  <figcaption>図 3-4-a: メンバー未設定の状態（ボタンから設定開始）</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/07_members_dialog.png" alt="メンバー管理ダイアログ">
+  <figcaption>図 3-4-b: メンバー管理ダイアログ</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/09_gantt_with_members.png" alt="メンバー設定後">
+  <figcaption>図 3-4-c: メンバーを設定後（上部に名前が並ぶ）</figcaption>
+</figure>
+<div class="warn">
+  <strong>⚠ メンバーを外したとき</strong>
+  既にタスクに割り当てている社員のチェックを外しても、<strong>そのタスクの担当はそのまま残ります</strong>（履歴を壊しません）。<br>
+  ダイアログの該当行に「<strong>⚠ 割当中</strong>」と表示され、担当者バーやドロップダウンでは「<strong>（メンバー外）</strong>」とラベル付けされます。
+</div>
+
+<!-- ===== 3.5 ===== -->
+<h3 class="section" id="s3-5"><span class="num">3.5</span>タスクを登録する（3 階層）</h3>
+<p>
+タスクは <strong>大項目 → 中項目 → 項目</strong> の 3 階層で登録します。<br>
+日付・日数・担当を入力できるのは一番下の「<strong>項目</strong>」だけで、大項目・中項目は配下の集計（開始＝最小、終了＝最大、工数＝合計など）が自動で表示されます。
+</p>
+<ol class="steps">
+  <li>画面右上の「<strong>+ 大項目</strong>」を押すと、新規行が直接追加され、<strong>名前欄に自動でフォーカス</strong>されます。そのまま名称を打ち込んでください（Tab か別セルクリックで確定）。</li>
+  <li>大項目の行頭の小さな「<strong>＋中</strong>」ボタンで「中項目」を追加。</li>
+  <li>中項目の行頭の「<strong>＋項</strong>」ボタンで「項目」を追加。</li>
+  <li>項目では <strong>開始日 / 日数</strong> を入力します（終了日は土日・休日をスキップして自動算出されます）。
+    必要に応じて担当者・進捗・工数を入力します。
+  </li>
+</ol>
+<div class="tip">
+  <strong>💡 連続して追加できます</strong>
+  名称未入力でもレコードは作成されます。複数人で会議をしながら「とりあえず行だけ足しておく」運用にも対応しています。
+  名称欄には <code>（名称未入力）</code> とプレースホルダ表示され、後からまとめて記入できます。
+</div>
+<figure>
+  <img src="screenshots/10_gantt_populated.png" alt="3階層タスクを登録した状態">
+  <figcaption>図 3-5: 3 階層タスクを登録した状態（左に一覧、右にガントバー）</figcaption>
+</figure>
+<div class="tip">
+  <strong>💡 入力のコツ</strong>
+  <ul class="bullets">
+    <li>「<strong>日数</strong>」は土日と休日を除いた営業日換算です（5 営業日なら 1 週間ぶん）。</li>
+    <li>大項目・中項目の日付は <strong>編集不可</strong>（配下から自動集計）。</li>
+    <li>行末の <span class="key">🗑</span> ボタンで削除。配下も一緒に消えるので注意。</li>
+  </ul>
+</div>
+
+<!-- ===== 3.6 ===== -->
+<h3 class="section" id="s3-6"><span class="num">3.6</span>日付・期間を変更する</h3>
+<p>変更方法は 2 通りあります。</p>
+<table class="cmd">
+  <thead><tr><th>方法</th><th>操作</th></tr></thead>
+  <tbody>
+    <tr><td>① 直接入力</td><td>一覧の「開始日」「日数」セルに数値を直接入力する。</td></tr>
+    <tr><td>② バーをドラッグ</td><td>ガント右側のバーを、左右にドラッグして開始日や期間を変更する。バーの右端をつかむと長さだけ変更できる。</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <strong>📌 終了日は自動</strong>
+  終了日は「開始日 + 日数」を土日・休日スキップで計算した結果が表示されます。直接編集はできません。
+</div>
+
+<!-- ===== 3.7 ===== -->
+<h3 class="section" id="s3-7"><span class="num">3.7</span>行を並び替える</h3>
+<p>
+一覧側の行先頭のグリップ（<span class="key">⋮⋮</span> アイコン）を掴んで、ドラッグ＆ドロップで順番を入れ替えられます。<br>
+同じ親（大項目→中項目、または中項目→項目）の中での並べ替えが基本です。
+</p>
+
+<!-- ===== 3.8 ===== -->
+<h3 class="section" id="s3-8"><span class="num">3.8</span>後続タスクの自動シフト（連動）</h3>
+<p>
+あるタスクの開始・期間を後ろにずらすと、<strong>同じ中項目内で、すぐ後ろにくっついている後続タスク</strong>が自動で同じ日数だけ後ろにずれます（カスケード）。
+</p>
+<table class="cmd">
+  <thead><tr><th>動く条件</th><th>動かない条件</th></tr></thead>
+  <tbody>
+    <tr><td>同じ中項目で、変更前のタスクと <strong>重なる</strong> もしくは <strong>連日</strong>（土日休日を挟む隣接含む）の後続タスク</td><td>すでに間が空いている後続タスク、別の中項目のタスク</td></tr>
+  </tbody>
+</table>
+<div class="tip">
+  <strong>💡 連動を止めたいとき</strong>
+  ガント画面右上の「<strong>連動</strong>」トグルを OFF にすると、その操作だけは連動なしで動かせます。
+</div>
+
+<!-- ===== 3.9 ===== -->
+<h3 class="section" id="s3-9"><span class="num">3.9</span>進捗と実績を入力する</h3>
+<p>
+「<strong>実績</strong>」列を表示にすると、項目に実績開始日・実績終了日を入力できます。
+進捗 % は一覧上の進捗セルにも、ガントバーをドラッグでも変更できます。
+</p>
+<figure>
+  <img src="screenshots/14_actual_visible.png" alt="実績列を表示した状態">
+  <figcaption>図 3-9: 「実績」表示ボタンを押すと、実績開始・実績終了の列が現れる</figcaption>
+</figure>
+<div class="note">
+  <strong>📌 入力ガイドライン</strong>
+  作業開始時に <strong>実績開始日</strong>、完了時に <strong>実績終了日</strong> を入力すれば、次の「状態」欄に自動で反映されます。
+</div>
+
+<!-- ===== 3.10 ===== -->
+<h3 class="section" id="s3-10"><span class="num">3.10</span>状態（自動算出）の見方</h3>
+<p>
+「<strong>状態</strong>」列は実績日と予定日から自動で 5 段階のいずれかに分類されます。
+</p>
+<table class="cmd">
+  <thead><tr><th>状態</th><th>条件</th><th>補足表示</th></tr></thead>
+  <tbody>
+    <tr><td><span class="status-pill st-done">完了</span></td><td>実績終了日が入力済み</td><td>予定終了との差（◯日前倒し / ◯日遅れ）</td></tr>
+    <tr><td><span class="status-pill st-running">実行中</span></td><td>実績開始日のみ入力、予定終了日が今日以降</td><td>あと◯日 / 本日終了予定</td></tr>
+    <tr><td><span class="status-pill st-late">遅延中</span></td><td>実績開始日のみ入力、予定終了日を過ぎている</td><td>◯日経過</td></tr>
+    <tr><td><span class="status-pill st-overdue">着手遅れ</span></td><td>実績開始日が未入力で、予定開始日が今日以前</td><td>◯日経過</td></tr>
+    <tr><td><span class="status-pill st-todo">未着手</span></td><td>実績開始日が未入力で、予定開始日が未来</td><td>あと◯日で開始</td></tr>
+  </tbody>
+</table>
+<figure>
+  <img src="screenshots/16_gantt_status.png" alt="状態列を表示した状態">
+  <figcaption>図 3-10: 状態バッジが自動付与される</figcaption>
+</figure>
+
+<!-- ===== 3.11 ===== -->
+<h3 class="section" id="s3-11"><span class="num">3.11</span>表示する列を切り替える</h3>
+<p>
+画面右上のピル型ボタンで列の表示・非表示を切り替えできます。チームの好みや画面サイズに合わせて使い分けてください。
+</p>
+<table class="cmd">
+  <thead><tr><th>ボタン</th><th>表示される列</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill">工数</span></td><td>予定工数・実績工数</td></tr>
+    <tr><td><span class="pill">実績</span></td><td>実績開始日・実績終了日</td></tr>
+    <tr><td><span class="pill">状態</span></td><td>状態バッジ列</td></tr>
+  </tbody>
+</table>
+<figure>
+  <img src="screenshots/13_hours_visible.png" alt="工数列を表示した状態">
+  <figcaption>図 3-11: 工数列を表示した例</figcaption>
+</figure>
+
+<!-- ===== 3.12 ===== -->
+<h3 class="section" id="s3-12"><span class="num">3.12</span>フィルタで絞り込む</h3>
+<p>
+列ヘッダの <span class="key">▾</span> ボタンを押すと、Excel のオートフィルタのようなポップオーバーが開きます。
+</p>
+<ul class="bullets">
+  <li><strong>階層</strong>: 大項目 / 中項目 / 項目のいずれかに絞り込み</li>
+  <li><strong>項目名</strong>: テキスト部分一致</li>
+  <li><strong>担当</strong>: メンバーで絞り込み（未割当 / メンバー外も選択可）</li>
+  <li><strong>状態</strong>: 5 つの状態バケットで絞り込み</li>
+</ul>
+<figure>
+  <img src="screenshots/17_filter_popover.png" alt="担当フィルタのポップオーバー">
+  <figcaption>図 3-12: 担当フィルタのポップオーバー（チェックで選択 / 解除）</figcaption>
+</figure>
+<div class="tip">
+  <strong>💡 ヒント</strong>
+  フィルタをかけても、その項目の親（中項目・大項目）はツリーの形を保つために残ります。<br>
+  ヘッダ右上に表示される「<strong>フィルタ解除</strong>」ボタンで一括解除できます。
+</div>
+
+<!-- ===== 3.13 ===== -->
+<h3 class="section" id="s3-13"><span class="num">3.13</span>折りたたみ・展開と「今日」表示</h3>
+<table class="cmd">
+  <thead><tr><th>操作</th><th>結果</th></tr></thead>
+  <tbody>
+    <tr><td>大項目・中項目の行頭 <span class="key">▾</span> をクリック</td><td>その配下を折りたたみ / 展開</td></tr>
+    <tr><td>ヘッダ右上の「<strong>展開</strong>」 / 「<strong>折畳</strong>」</td><td>全項目を一括展開 / 折りたたみ</td></tr>
+    <tr><td>ページを開いた直後</td><td>ガントは <strong>今日の日付が中央</strong>に来るよう自動スクロール。今日の列には縦の琥珀色マーカーと「今日」バッジが表示されます。</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch4">4. よくある質問</h2>
+
+<h3 class="section">Q1: タスクを間違えて削除しました。元に戻せますか？</h3>
+<p>
+本ツールにはアンドゥ機能はありません。誤って削除した場合は再入力をお願いします。<br>
+重要なプロジェクトは、サーバ管理者がバックアップを取っているか確認しておくと安心です。
+</p>
+
+<h3 class="section">Q2: 同じ社員が複数プロジェクトを掛け持ちできますか？</h3>
+<p>
+できます。プロジェクトごとにメンバー設定で参加させてください。社員マスタには 1 件登録するだけで OK です。
+</p>
+
+<h3 class="section">Q3: 退職した社員のデータは消すべきですか？</h3>
+<p>
+履歴のため <strong>削除はせず</strong>、社員マスタ編集で「有効」のチェックを外す（または在籍終了日を入力する）方法を推奨します。<br>
+過去のタスクには引き続き名前が残り、新規割当の候補からは除外されます。
+</p>
+
+<h3 class="section">Q4: 終了日を直接編集したいです。</h3>
+<p>
+終了日は仕様上、開始日と日数から自動計算しています。<br>
+特定の日付で終わらせたい場合は、開始日と日数（営業日数）を調整して合わせてください。
+</p>
+
+<h3 class="section">Q5: ガントバーをドラッグしたら、後ろのタスクも一緒に動きました。</h3>
+<p>
+これは「<strong>連動</strong>」機能による意図的な動作です。動かしたくない場合は、ヘッダ右上の「連動」トグルを OFF にしてからドラッグしてください（その操作だけ連動しません）。
+</p>
+
+<h3 class="section">Q6: 一覧の右半分にあるガントが、左の一覧と高さがずれます。</h3>
+<p>
+一覧とガントは <strong>同じスクロールバー</strong>で同期しています。ずれがある場合は、ブラウザの拡大率（Ctrl + 0 でリセット）か、ウィンドウ幅を変えてみてください。
+</p>
+
+<footer class="foot">
+  WBS Web 操作マニュアル ／ 2026 年 5 月版
+</footer>
+</div>
+</body>
+</html>

@@ -1,5 +1,13 @@
 import type { WbsTask } from '@/types';
 
+// Structural subset of fields that computeStatus actually reads. Lets callers
+// pass either a full WbsTask or the AssignmentRow returned by the
+// cross-project assignments endpoint.
+export type StatusTask = Pick<
+  WbsTask,
+  'startDate' | 'endDate' | 'actualStartDate' | 'actualEndDate'
+>;
+
 export type StatusBucket =
   | 'completed'
   | 'in-progress'
@@ -52,7 +60,7 @@ function businessDaysBetween(a: Date, b: Date): number {
  * already rolls up actualStart / actualEnd correctly, so this just reads
  * those rolled-up values.
  */
-export function computeStatus(task: WbsTask, today: Date = todayUtc()): ComputedStatus {
+export function computeStatus(task: StatusTask, today: Date = todayUtc()): ComputedStatus {
   // 1) Completed — actual end is set.
   if (task.actualEndDate) {
     const ae = parseDate(task.actualEndDate);
