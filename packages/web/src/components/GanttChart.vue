@@ -117,10 +117,14 @@ function businessDaysBetween(a: Date, b: Date): number {
 }
 
 /**
- * For each rendered task whose actualEndDate overshoots its plannedEndDate,
- * draws a red rectangle to the right of the planned bar (same Y and height)
- * representing only the overrun portion. Early start or matching end produce
- * no overlay — they're communicated by the hover tooltip instead.
+ * Draws red rectangles to the right of the planned bar for tasks that are
+ * delayed. Covers two cases:
+ *   (1) Finished late — actualEndDate > plannedEndDate.
+ *       Solid red from (plannedEnd + 1) to actualEnd.
+ *   (2) Currently overdue — task is still in progress past plannedEnd.
+ *       Conditions: actualEndDate is null AND today > plannedEndDate AND
+ *       (actualStartDate set OR plannedStartDate <= today).
+ *       Semi-transparent red from (plannedEnd + 1) to today.
  */
 function drawOverrunBars(): void {
   const svg = containerRef.value?.querySelector('svg');
@@ -129,8 +133,8 @@ function drawOverrunBars(): void {
   if (!ganttStart) return;
   const cw = getColumnWidth();
   const ONE_DAY = 86_400_000;
+  const today = todayUtc();
 
-  // Dedicated overlay group so the red rects survive future re-renders cleanly.
   let group = svg.querySelector<SVGGElement>('.overrun-bars-group');
   if (!group) {
     group = document.createElementNS(SVG_NS, 'g') as SVGGElement;
@@ -143,40 +147,112 @@ function drawOverrunBars(): void {
   const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
   wrappers.forEach((wrapper, idx) => {
     const task = renderedTasks[idx];
-    if (!task) return;
-    if (!task.actualEndDate || !task.endDate) return;
+    if (!task || !task.endDate) return;
 
     const plannedEnd = parseDate(task.endDate);
-    const actualEnd = parseDate(task.actualEndDate);
-    if (actualEnd.getTime() <= plannedEnd.getTime()) return;
-
     const bar = wrapper.querySelector<SVGRectElement>('.bar');
     if (!bar) return;
     const barY = Number(bar.getAttribute('y') ?? '0');
     const barH = Number(bar.getAttribute('height') ?? '0');
 
-    const plannedEndOffset = Math.round((plannedEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
-    const actualEndOffset = Math.round((actualEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
-    const startX = (plannedEndOffset + 1) * cw;
-    const width = (actualEndOffset - plannedEndOffset) * cw;
-    if (width <= 0) return;
+    // Case 1: finished late
+    if (task.actualEndDate) {
+      const actualEnd = parseDate(task.actualEndDate);
+      if (actualEnd.getTime() <= plannedEnd.getTime()) return;
 
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('class', 'overrun-bar');
-    rect.setAttribute('x', String(startX));
-    rect.setAttribute('y', String(barY));
-    rect.setAttribute('width', String(width));
-    rect.setAttribute('height', String(barH));
-    rect.setAttribute('fill', '#dc2626');
-    rect.setAttribute('rx', '3');
-    rect.setAttribute('opacity', '0.92');
-    // Native SVG tooltip for the overrun chunk specifically.
-    const title = document.createElementNS(SVG_NS, 'title');
-    const delayBd = Math.max(0, businessDaysBetween(plannedEnd, actualEnd) - 1);
-    title.textContent = `${task.name}\n遅延: ${delayBd} 営業日\n予定終了: ${task.endDate}\n実績終了: ${task.actualEndDate}`;
-    rect.appendChild(title);
-    group!.appendChild(rect);
+      appendOverrunRect(group!, {
+        ganttStart,
+        cw,
+        ONE_DAY,
+        plannedEnd,
+        endDate: actualEnd,
+        barY,
+        barH,
+        fill: '#dc2626',
+        opacity: '0.92',
+        title:
+          `${task.name}\n遅延: ${Math.max(0, businessDaysBetween(plannedEnd, actualEnd) - 1)} 営業日\n` +
+          `予定終了: ${task.endDate}\n実績終了: ${task.actualEndDate}`,
+      });
+      return;
+    }
+
+    // Case 2: currently overdue (in progress past planned end)
+    const isOverdue = today.getTime() > plannedEnd.getTime();
+    if (!isOverdue) return;
+    // Require either explicit actualStart or that planned start has arrived
+    const plannedStart = task.startDate ? parseDate(task.startDate) : null;
+    const started =
+      Boolean(task.actualStartDate) ||
+      (plannedStart !== null && plannedStart.getTime() <= today.getTime());
+    if (!started) return;
+
+    appendOverrunRect(group!, {
+      ganttStart,
+      cw,
+      ONE_DAY,
+      plannedEnd,
+      endDate: today,
+      barY,
+      barH,
+      fill: '#ef4444',
+      opacity: '0.55',
+      title:
+        `${task.name}\n進行中（遅延中）\n予定終了: ${task.endDate}（本日: ${formatDateUtc(today)}）\n` +
+        `遅延: ${Math.max(0, businessDaysBetween(plannedEnd, today) - 1)} 営業日`,
+    });
   });
+}
+
+function todayUtc(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function formatDateUtc(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+interface OverrunRectArgs {
+  ganttStart: Date;
+  cw: number;
+  ONE_DAY: number;
+  plannedEnd: Date;
+  endDate: Date;
+  barY: number;
+  barH: number;
+  fill: string;
+  opacity: string;
+  title: string;
+}
+
+function appendOverrunRect(group: SVGGElement, args: OverrunRectArgs): void {
+  const plannedEndOffset = Math.round(
+    (args.plannedEnd.getTime() - args.ganttStart.getTime()) / args.ONE_DAY,
+  );
+  const endOffset = Math.round(
+    (args.endDate.getTime() - args.ganttStart.getTime()) / args.ONE_DAY,
+  );
+  const startX = (plannedEndOffset + 1) * args.cw;
+  const width = (endOffset - plannedEndOffset) * args.cw;
+  if (width <= 0) return;
+
+  const rect = document.createElementNS(SVG_NS, 'rect');
+  rect.setAttribute('class', 'overrun-bar');
+  rect.setAttribute('x', String(startX));
+  rect.setAttribute('y', String(args.barY));
+  rect.setAttribute('width', String(width));
+  rect.setAttribute('height', String(args.barH));
+  rect.setAttribute('fill', args.fill);
+  rect.setAttribute('opacity', args.opacity);
+  rect.setAttribute('rx', '3');
+  const title = document.createElementNS(SVG_NS, 'title');
+  title.textContent = args.title;
+  rect.appendChild(title);
+  group.appendChild(rect);
 }
 
 /**
@@ -216,6 +292,17 @@ function buildBarTooltip(task: WbsTask): string {
       } else if (actualEnd.getTime() < plannedEnd.getTime()) {
         const early = Math.max(0, businessDaysBetween(actualEnd, plannedEnd) - 1);
         if (early > 0) lines.push(`前倒し: ${early} 営業日`);
+      }
+    }
+  } else if (task.actualStartDate) {
+    // Started but not finished
+    lines.push(`実績: ${task.actualStartDate} 〜 (進行中)`);
+    if (task.endDate) {
+      const plannedEnd = parseDate(task.endDate);
+      const today = todayUtc();
+      if (today.getTime() > plannedEnd.getTime()) {
+        const delay = Math.max(0, businessDaysBetween(plannedEnd, today) - 1);
+        lines.push(`遅延中: ${delay} 営業日`);
       }
     }
   }
