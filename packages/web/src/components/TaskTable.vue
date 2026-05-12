@@ -3,11 +3,18 @@ import { computed } from 'vue';
 import draggable from 'vuedraggable';
 import type { WbsTask, Assignee } from '@/types';
 
+interface ColumnVisibility {
+  hours: boolean;
+  actual: boolean;
+  status: boolean;
+}
+
 const props = defineProps<{
   tasks: WbsTask[];
   assignees: Assignee[];
   collapsedIds: Set<number>;
   childCountByParent: Map<number, number>;
+  visibility: ColumnVisibility;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +28,37 @@ const emit = defineEmits<{
 const draggableModel = computed({
   get: () => props.tasks,
   set: (next: WbsTask[]) => emit('reorder', next),
+});
+
+const gridTemplate = computed<string>(() => {
+  const parts: string[] = ['20px', '22px', '30px', 'minmax(150px, 1.4fr)'];
+  // Planned columns (always: start / dur / end)
+  parts.push('92px', '42px', '92px');
+  if (props.visibility.hours) parts.push('56px'); // planned hours
+  if (props.visibility.actual) {
+    parts.push('92px', '92px'); // actual start / end
+    if (props.visibility.hours) parts.push('56px'); // actual hours
+  }
+  parts.push('50px', '84px'); // progress / assignee
+  if (props.visibility.status) parts.push('84px');
+  parts.push('122px'); // actions
+  return parts.join(' ');
+});
+
+const spans = computed(() => {
+  let plannedSpan = 3; // p start / dur / end
+  if (props.visibility.hours) plannedSpan += 1;
+
+  let actualSpan = 0;
+  if (props.visibility.actual) {
+    actualSpan = 2; // a start / end
+    if (props.visibility.hours) actualSpan += 1; // a hours
+  }
+
+  let otherSpan = 2; // progress / assignee
+  if (props.visibility.status) otherSpan += 1;
+
+  return { plannedSpan, actualSpan, otherSpan };
 });
 
 function hasChildren(taskId: number): boolean {
@@ -135,14 +173,18 @@ function onStatusChange(task: WbsTask, e: Event): void {
 </script>
 
 <template>
-  <div class="task-table">
-    <!-- Group header (spans across the same 15-column grid) -->
+  <div class="task-table" :style="{ '--grid-cols': gridTemplate }">
+    <!-- Group header: visibility-aware column spans -->
     <header class="row group-head">
-      <div class="grp grp-meta"></div>
-      <div class="grp grp-planned">予定</div>
-      <div class="grp grp-actual">実績</div>
-      <div class="grp grp-other"></div>
-      <div class="grp grp-actions"></div>
+      <div class="grp grp-meta" :style="{ gridColumn: 'span 4' }"></div>
+      <div class="grp grp-planned" :style="{ gridColumn: `span ${spans.plannedSpan}` }">予定</div>
+      <div
+        v-if="visibility.actual"
+        class="grp grp-actual"
+        :style="{ gridColumn: `span ${spans.actualSpan}` }"
+      >実績</div>
+      <div class="grp grp-other" :style="{ gridColumn: `span ${spans.otherSpan}` }"></div>
+      <div class="grp grp-actions" :style="{ gridColumn: 'span 1' }"></div>
     </header>
     <!-- Column header -->
     <header class="row head">
@@ -153,13 +195,15 @@ function onStatusChange(task: WbsTask, e: Event): void {
       <div class="col-date planned grp-start">開始</div>
       <div class="col-num planned">日数</div>
       <div class="col-date planned">終了</div>
-      <div class="col-hours planned">工数</div>
-      <div class="col-date actual grp-start">開始</div>
-      <div class="col-date actual">終了</div>
-      <div class="col-hours actual">工数</div>
+      <div v-if="visibility.hours" class="col-hours planned">工数</div>
+      <template v-if="visibility.actual">
+        <div class="col-date actual grp-start">開始</div>
+        <div class="col-date actual">終了</div>
+        <div v-if="visibility.hours" class="col-hours actual">工数</div>
+      </template>
       <div class="col-num grp-start">進捗</div>
       <div class="col-assignee">担当</div>
-      <div class="col-status">状態</div>
+      <div v-if="visibility.status" class="col-status">状態</div>
       <div class="col-actions grp-start"></div>
     </header>
 
@@ -218,7 +262,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
           <div class="col-date planned">
             <span class="readonly">{{ fmtDateOrDash(element.endDate) }}</span>
           </div>
-          <div class="col-hours planned">
+          <div v-if="visibility.hours" class="col-hours planned">
             <input
               v-if="element.level === 3"
               type="number"
@@ -231,35 +275,37 @@ function onStatusChange(task: WbsTask, e: Event): void {
           </div>
 
           <!-- 実績 -->
-          <div class="col-date actual grp-start">
-            <input
-              v-if="element.level === 3"
-              type="date"
-              :value="element.actualStartDate ?? ''"
-              @change="(e) => onActualStartChange(element, e)"
-            />
-            <span v-else class="readonly">{{ fmtDateOrDash(element.actualStartDate) }}</span>
-          </div>
-          <div class="col-date actual">
-            <input
-              v-if="element.level === 3"
-              type="date"
-              :value="element.actualEndDate ?? ''"
-              @change="(e) => onActualEndChange(element, e)"
-            />
-            <span v-else class="readonly">{{ fmtDateOrDash(element.actualEndDate) }}</span>
-          </div>
-          <div class="col-hours actual">
-            <input
-              v-if="element.level === 3"
-              type="number"
-              min="0"
-              step="0.5"
-              :value="element.actualHours ?? ''"
-              @change="(e) => onActualHoursChange(element, e)"
-            />
-            <span v-else class="readonly">{{ fmtHours(element.actualHours) }}</span>
-          </div>
+          <template v-if="visibility.actual">
+            <div class="col-date actual grp-start">
+              <input
+                v-if="element.level === 3"
+                type="date"
+                :value="element.actualStartDate ?? ''"
+                @change="(e) => onActualStartChange(element, e)"
+              />
+              <span v-else class="readonly">{{ fmtDateOrDash(element.actualStartDate) }}</span>
+            </div>
+            <div class="col-date actual">
+              <input
+                v-if="element.level === 3"
+                type="date"
+                :value="element.actualEndDate ?? ''"
+                @change="(e) => onActualEndChange(element, e)"
+              />
+              <span v-else class="readonly">{{ fmtDateOrDash(element.actualEndDate) }}</span>
+            </div>
+            <div v-if="visibility.hours" class="col-hours actual">
+              <input
+                v-if="element.level === 3"
+                type="number"
+                min="0"
+                step="0.5"
+                :value="element.actualHours ?? ''"
+                @change="(e) => onActualHoursChange(element, e)"
+              />
+              <span v-else class="readonly">{{ fmtHours(element.actualHours) }}</span>
+            </div>
+          </template>
 
           <div class="col-num grp-start">
             <input
@@ -279,7 +325,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
               <option v-for="a in assignees" :key="a.id" :value="a.id">{{ a.name }}</option>
             </select>
           </div>
-          <div class="col-status">
+          <div v-if="visibility.status" class="col-status">
             <input
               type="text"
               :value="element.status"
@@ -321,17 +367,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
 }
 .row {
   display: grid;
-  grid-template-columns:
-    /* meta */
-    20px 22px 30px minmax(150px, 1.4fr)
-    /* planned: start dur end hours */
-    92px 42px 92px 56px
-    /* actual: start end hours */
-    92px 92px 56px
-    /* other */
-    50px 84px 84px
-    /* actions */
-    122px;
+  grid-template-columns: var(--grid-cols);
   align-items: center;
   gap: 0.2rem;
   padding: 0.3rem 0.4rem;
@@ -355,26 +391,17 @@ function onStatusChange(task: WbsTask, e: Event): void {
   align-items: center;
   justify-content: center;
 }
-.grp-meta {
-  grid-column: 1 / 5;
-}
+/* Group label backgrounds. Column spans are set inline via :style based on
+   visibility (see template). */
 .grp-planned {
-  grid-column: 5 / 9;
   background: #dbeafe;
   border-radius: 4px;
   color: #1e3a8a;
 }
 .grp-actual {
-  grid-column: 9 / 12;
   background: #dcfce7;
   border-radius: 4px;
   color: #14532d;
-}
-.grp-other {
-  grid-column: 12 / 15;
-}
-.grp-actions {
-  grid-column: 15;
 }
 .row.head {
   background: #f9fafb;

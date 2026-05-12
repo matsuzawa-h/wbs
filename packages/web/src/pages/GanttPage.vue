@@ -21,9 +21,34 @@ const collapsedIds = ref<Set<number>>(new Set());
 const STORAGE_KEY_WIDTH = 'wbs.gantt.leftWidth';
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
-  return Number.isFinite(stored) && stored >= 400 ? stored : 980;
+  return Number.isFinite(stored) && stored >= 400 ? stored : 700;
 })();
 const leftWidth = ref<number>(initialWidth);
+
+const STORAGE_KEY_VIS = 'wbs.gantt.visibility';
+type ColumnVisibility = { hours: boolean; actual: boolean; status: boolean };
+const initialVisibility = (() => {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_VIS);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<ColumnVisibility>;
+      return {
+        hours: Boolean(parsed.hours),
+        actual: Boolean(parsed.actual),
+        status: Boolean(parsed.status),
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return { hours: false, actual: false, status: false };
+})();
+const visibility = ref<ColumnVisibility>(initialVisibility);
+
+function toggleVisibility(key: keyof ColumnVisibility): void {
+  visibility.value = { ...visibility.value, [key]: !visibility.value[key] };
+  window.localStorage.setItem(STORAGE_KEY_VIS, JSON.stringify(visibility.value));
+}
 
 function onSplitterMouseDown(event: MouseEvent): void {
   event.preventDefault();
@@ -287,6 +312,29 @@ function back(): void {
         <span v-else class="muted">プロジェクト #{{ projectId }}</span>
       </h2>
       <div class="actions">
+        <span class="action-sep">列:</span>
+        <button
+          class="btn pill"
+          :class="{ active: visibility.hours }"
+          type="button"
+          :title="visibility.hours ? '工数列を隠す' : '工数列を表示'"
+          @click="toggleVisibility('hours')"
+        >工数</button>
+        <button
+          class="btn pill"
+          :class="{ active: visibility.actual }"
+          type="button"
+          :title="visibility.actual ? '実績日付列を隠す' : '実績日付列を表示'"
+          @click="toggleVisibility('actual')"
+        >実績</button>
+        <button
+          class="btn pill"
+          :class="{ active: visibility.status }"
+          type="button"
+          :title="visibility.status ? '状態列を隠す' : '状態列を表示'"
+          @click="toggleVisibility('status')"
+        >状態</button>
+        <span class="action-sep" aria-hidden="true">│</span>
         <button class="btn" type="button" @click="expandAll" title="すべて展開">展開</button>
         <button class="btn" type="button" @click="collapseAll" title="すべて折りたたみ">折畳</button>
         <button class="btn primary" type="button" @click="addTopLevel">+ 大項目</button>
@@ -321,6 +369,7 @@ function back(): void {
           :assignees="assignees.items"
           :collapsed-ids="collapsedIds"
           :child-count-by-parent="childCountByParent"
+          :visibility="visibility"
           @reorder="onReorder"
           @update="onUpdate"
           @add-child="onAddChild"
@@ -364,7 +413,24 @@ function back(): void {
 }
 .actions {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.action-sep {
+  color: #9ca3af;
+  font-size: 0.78rem;
+  padding: 0 0.1rem;
+}
+.btn.pill {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 999px;
+}
+.btn.pill.active {
+  background: #1e3a8a;
+  color: #fff;
+  border-color: #1e3a8a;
 }
 .assignee-row {
   display: flex;

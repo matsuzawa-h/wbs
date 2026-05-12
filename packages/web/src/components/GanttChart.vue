@@ -93,104 +93,9 @@ function render(): void {
     drawMonthBands();
     highlightWeekends();
     drawMonthBoundaries();
-    renderPlannedAndActualBars();
+    drawOverrunBars();
+    attachBarTooltips();
     applyJapaneseLabels();
-  });
-}
-
-const PLAN_BAR_HEIGHT = 14;
-const ACT_BAR_HEIGHT = 14;
-const BAR_GAP = 2;
-
-/**
- * Repositions Frappe-rendered "planned" bars into the upper half of each row
- * and draws a custom "actual" bar in the lower half whenever the task has
- * actualStartDate + actualEndDate. The actual bar splits into a green (on-time)
- * and red (overrun) segment when the actual end overshoots the planned end.
- */
-function renderPlannedAndActualBars(): void {
-  const svg = containerRef.value?.querySelector('svg');
-  if (!svg || !chart) return;
-  const ganttStart = getGanttStart();
-  if (!ganttStart) return;
-  const cw = getColumnWidth();
-  const ONE_DAY = 86_400_000;
-
-  // The list of tasks rendered by Frappe Gantt, in display order.
-  const renderedTasks = props.tasks.filter((t) => t.startDate && t.endDate);
-
-  // Custom overlay group sits above bars in z-order.
-  let actualGroup = svg.querySelector<SVGGElement>('.actual-bars-group');
-  if (!actualGroup) {
-    actualGroup = document.createElementNS(SVG_NS, 'g') as SVGGElement;
-    actualGroup.setAttribute('class', 'actual-bars-group');
-    actualGroup.setAttribute('pointer-events', 'none');
-    svg.appendChild(actualGroup);
-  }
-  while (actualGroup.firstChild) actualGroup.removeChild(actualGroup.firstChild);
-
-  const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
-  wrappers.forEach((wrapper, idx) => {
-    const task = renderedTasks[idx];
-    if (!task) return;
-
-    const bar = wrapper.querySelector<SVGRectElement>('.bar');
-    if (!bar) return;
-    const progress = wrapper.querySelector<SVGRectElement>('.bar-progress');
-    const handleLeft = wrapper.querySelector<SVGRectElement>('.handle.left');
-    const handleRight = wrapper.querySelector<SVGRectElement>('.handle.right');
-    const handleProgress = wrapper.querySelector<SVGRectElement>('.handle.progress');
-    const label = wrapper.querySelector<SVGTextElement>('.bar-label');
-
-    // Find the row's top edge from the bar's original Y.
-    // Frappe places each bar at (header_height + padding) + i*(bar_height + padding),
-    // and our padding equals the half-gap above and below the bar. So bar_top = row_top + padding/2.
-    const origY = Number(bar.getAttribute('y') ?? '0');
-    const origHeight = Number(bar.getAttribute('height') ?? '0');
-    const padOption =
-      (chart as unknown as { options: { padding: number } }).options.padding ?? 16;
-    const rowTop = origY - padOption / 2;
-
-    // Place planned bar in the upper half of the row.
-    const plannedY = rowTop + (40 - PLAN_BAR_HEIGHT - ACT_BAR_HEIGHT - BAR_GAP) / 2;
-    bar.setAttribute('y', String(plannedY));
-    bar.setAttribute('height', String(PLAN_BAR_HEIGHT));
-    progress?.setAttribute('y', String(plannedY));
-    progress?.setAttribute('height', String(PLAN_BAR_HEIGHT));
-    handleLeft?.setAttribute('y', String(plannedY));
-    handleLeft?.setAttribute('height', String(PLAN_BAR_HEIGHT));
-    handleRight?.setAttribute('y', String(plannedY));
-    handleRight?.setAttribute('height', String(PLAN_BAR_HEIGHT));
-    handleProgress?.setAttribute('y', String(plannedY));
-    handleProgress?.setAttribute('height', String(PLAN_BAR_HEIGHT));
-    if (label) {
-      label.setAttribute('y', String(plannedY + PLAN_BAR_HEIGHT / 2 + 3));
-    }
-
-    // Draw the actual bar (lower half) if actuals are set.
-    if (!task.actualStartDate || !task.actualEndDate) return;
-    const actStart = parseDate(task.actualStartDate);
-    const actEnd = parseDate(task.actualEndDate);
-    if (actEnd.getTime() < actStart.getTime()) return;
-
-    const startOffset = Math.round((actStart.getTime() - ganttStart.getTime()) / ONE_DAY);
-    const endOffset = Math.round((actEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
-    const actX = startOffset * cw;
-    const actWidth = (endOffset - startOffset + 1) * cw;
-    const actY = plannedY + PLAN_BAR_HEIGHT + BAR_GAP;
-
-    // Split into on-time + overrun portions if the actual end overshoots the planned end.
-    const plannedEnd = task.endDate ? parseDate(task.endDate) : null;
-    if (plannedEnd && actEnd.getTime() > plannedEnd.getTime()) {
-      const plannedEndOffset = Math.round((plannedEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
-      const splitX = (plannedEndOffset + 1) * cw;
-      const onTimeWidth = Math.max(0, splitX - actX);
-      const overrunWidth = actX + actWidth - splitX;
-      if (onTimeWidth > 0) appendActualRect(actualGroup, actX, actY, onTimeWidth, '#059669');
-      if (overrunWidth > 0) appendActualRect(actualGroup, splitX, actY, overrunWidth, '#dc2626');
-    } else {
-      appendActualRect(actualGroup, actX, actY, actWidth, '#059669');
-    }
   });
 }
 
@@ -199,23 +104,128 @@ function parseDate(value: string): Date {
   return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
 }
 
-function appendActualRect(
-  group: SVGGElement,
-  x: number,
-  y: number,
-  width: number,
-  fill: string,
-): void {
-  const rect = document.createElementNS(SVG_NS, 'rect');
-  rect.setAttribute('class', 'actual-bar');
-  rect.setAttribute('x', String(x));
-  rect.setAttribute('y', String(y));
-  rect.setAttribute('width', String(width));
-  rect.setAttribute('height', String(ACT_BAR_HEIGHT));
-  rect.setAttribute('fill', fill);
-  rect.setAttribute('rx', '2');
-  rect.setAttribute('opacity', '0.95');
-  group.appendChild(rect);
+function businessDaysBetween(a: Date, b: Date): number {
+  if (a.getTime() > b.getTime()) return 0;
+  let count = 0;
+  const cursor = new Date(a.getTime());
+  while (cursor.getTime() <= b.getTime()) {
+    const dow = cursor.getUTCDay();
+    if (dow !== 0 && dow !== 6) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
+/**
+ * For each rendered task whose actualEndDate overshoots its plannedEndDate,
+ * draws a red rectangle to the right of the planned bar (same Y and height)
+ * representing only the overrun portion. Early start or matching end produce
+ * no overlay — they're communicated by the hover tooltip instead.
+ */
+function drawOverrunBars(): void {
+  const svg = containerRef.value?.querySelector('svg');
+  if (!svg || !chart) return;
+  const ganttStart = getGanttStart();
+  if (!ganttStart) return;
+  const cw = getColumnWidth();
+  const ONE_DAY = 86_400_000;
+
+  // Dedicated overlay group so the red rects survive future re-renders cleanly.
+  let group = svg.querySelector<SVGGElement>('.overrun-bars-group');
+  if (!group) {
+    group = document.createElementNS(SVG_NS, 'g') as SVGGElement;
+    group.setAttribute('class', 'overrun-bars-group');
+    svg.appendChild(group);
+  }
+  while (group.firstChild) group.removeChild(group.firstChild);
+
+  const renderedTasks = props.tasks.filter((t) => t.startDate && t.endDate);
+  const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
+  wrappers.forEach((wrapper, idx) => {
+    const task = renderedTasks[idx];
+    if (!task) return;
+    if (!task.actualEndDate || !task.endDate) return;
+
+    const plannedEnd = parseDate(task.endDate);
+    const actualEnd = parseDate(task.actualEndDate);
+    if (actualEnd.getTime() <= plannedEnd.getTime()) return;
+
+    const bar = wrapper.querySelector<SVGRectElement>('.bar');
+    if (!bar) return;
+    const barY = Number(bar.getAttribute('y') ?? '0');
+    const barH = Number(bar.getAttribute('height') ?? '0');
+
+    const plannedEndOffset = Math.round((plannedEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
+    const actualEndOffset = Math.round((actualEnd.getTime() - ganttStart.getTime()) / ONE_DAY);
+    const startX = (plannedEndOffset + 1) * cw;
+    const width = (actualEndOffset - plannedEndOffset) * cw;
+    if (width <= 0) return;
+
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('class', 'overrun-bar');
+    rect.setAttribute('x', String(startX));
+    rect.setAttribute('y', String(barY));
+    rect.setAttribute('width', String(width));
+    rect.setAttribute('height', String(barH));
+    rect.setAttribute('fill', '#dc2626');
+    rect.setAttribute('rx', '3');
+    rect.setAttribute('opacity', '0.92');
+    // Native SVG tooltip for the overrun chunk specifically.
+    const title = document.createElementNS(SVG_NS, 'title');
+    const delayBd = Math.max(0, businessDaysBetween(plannedEnd, actualEnd) - 1);
+    title.textContent = `${task.name}\n遅延: ${delayBd} 営業日\n予定終了: ${task.endDate}\n実績終了: ${task.actualEndDate}`;
+    rect.appendChild(title);
+    group!.appendChild(rect);
+  });
+}
+
+/**
+ * Adds an SVG <title> child to each bar-wrapper so the browser shows a native
+ * tooltip on hover summarising planned vs actual dates, hours, progress, etc.
+ */
+function attachBarTooltips(): void {
+  const svg = containerRef.value?.querySelector('svg');
+  if (!svg) return;
+  const renderedTasks = props.tasks.filter((t) => t.startDate && t.endDate);
+  const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
+  wrappers.forEach((wrapper, idx) => {
+    const task = renderedTasks[idx];
+    if (!task) return;
+    wrapper.querySelectorAll(':scope > title').forEach((t) => t.remove());
+    const title = document.createElementNS(SVG_NS, 'title');
+    title.textContent = buildBarTooltip(task);
+    wrapper.appendChild(title);
+  });
+}
+
+function buildBarTooltip(task: WbsTask): string {
+  const lines: string[] = [task.name];
+  if (task.startDate && task.endDate) {
+    const dur = task.duration ?? businessDaysBetween(parseDate(task.startDate), parseDate(task.endDate));
+    lines.push(`予定: ${task.startDate} 〜 ${task.endDate} (${dur} 営業日)`);
+  }
+  if (task.actualStartDate && task.actualEndDate) {
+    const actDur = businessDaysBetween(parseDate(task.actualStartDate), parseDate(task.actualEndDate));
+    lines.push(`実績: ${task.actualStartDate} 〜 ${task.actualEndDate} (${actDur} 営業日)`);
+    if (task.endDate) {
+      const plannedEnd = parseDate(task.endDate);
+      const actualEnd = parseDate(task.actualEndDate);
+      if (actualEnd.getTime() > plannedEnd.getTime()) {
+        const delay = Math.max(0, businessDaysBetween(plannedEnd, actualEnd) - 1);
+        lines.push(`遅延: ${delay} 営業日`);
+      } else if (actualEnd.getTime() < plannedEnd.getTime()) {
+        const early = Math.max(0, businessDaysBetween(actualEnd, plannedEnd) - 1);
+        if (early > 0) lines.push(`前倒し: ${early} 営業日`);
+      }
+    }
+  }
+  if (task.plannedHours !== null || task.actualHours !== null) {
+    const ph = task.plannedHours ?? '—';
+    const ah = task.actualHours ?? '—';
+    lines.push(`工数 予/実: ${ph} / ${ah} h`);
+  }
+  lines.push(`進捗: ${task.progress}%`);
+  return lines.join('\n');
 }
 
 function drawMonthBands(): void {
