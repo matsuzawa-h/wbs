@@ -9,10 +9,12 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { ListAssignmentsDto } from './dto/list-assignments.dto';
 
 @Controller('employees')
 export class EmployeesController {
@@ -42,5 +44,13 @@ export class EmployeesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseIntPipe) id: number): void {
     this.employees.remove(id);
+  }
+
+  @Get(':id/tasks')
+  listAssignments(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: ListAssignmentsDto,
+  ) {
+    return this.employees.listAssignments(id, query.from, query.to);
   }
 }

@@ -1,9 +1,30 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
-import { AppDb, assignees, Employee } from '../db';
+import { and, asc, eq, gte, isNotNull, lte, SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
+import { AppDb, assignees, Employee, projects, wbsTasks } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+
+export interface AssignmentRow {
+  id: number;
+  projectId: number;
+  projectName: string;
+  level: number;
+  parentId: number | null;
+  name: string;
+  startDate: string | null;
+  duration: number | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  plannedHours: number | null;
+  actualHours: number | null;
+  progress: number;
+  status: string;
+  parentName: string | null;
+  grandparentName: string | null;
+}
 
 @Injectable()
 export class EmployeesService {
@@ -76,6 +97,52 @@ export class EmployeesService {
   remove(id: number): void {
     this.findById(id);
     this.db.delete(assignees).where(eq(assignees.id, id)).run();
+  }
+
+  // Cross-project task list assigned to an employee. Returns level=3 only
+  // and includes parent/grandparent names + project name as breadcrumb context.
+  // Tasks with start_date NULL are excluded (cannot be meaningfully sorted
+  // and almost certainly indicate an unfinished level-3 entry).
+  listAssignments(employeeId: number, from?: string, to?: string): AssignmentRow[] {
+    this.findById(employeeId); // throws NotFound if missing
+    const parents = alias(wbsTasks, 'parents');
+    const grandparents = alias(wbsTasks, 'grandparents');
+
+    const conditions: SQL[] = [
+      eq(wbsTasks.assigneeId, employeeId),
+      eq(wbsTasks.level, 3),
+      isNotNull(wbsTasks.startDate),
+    ];
+    if (from) conditions.push(gte(wbsTasks.startDate, from));
+    if (to) conditions.push(lte(wbsTasks.startDate, to));
+
+    return this.db
+      .select({
+        id: wbsTasks.id,
+        projectId: wbsTasks.projectId,
+        projectName: projects.name,
+        level: wbsTasks.level,
+        parentId: wbsTasks.parentId,
+        name: wbsTasks.name,
+        startDate: wbsTasks.startDate,
+        duration: wbsTasks.duration,
+        endDate: wbsTasks.endDate,
+        actualStartDate: wbsTasks.actualStartDate,
+        actualEndDate: wbsTasks.actualEndDate,
+        plannedHours: wbsTasks.plannedHours,
+        actualHours: wbsTasks.actualHours,
+        progress: wbsTasks.progress,
+        status: wbsTasks.status,
+        parentName: parents.name,
+        grandparentName: grandparents.name,
+      })
+      .from(wbsTasks)
+      .innerJoin(projects, eq(wbsTasks.projectId, projects.id))
+      .leftJoin(parents, eq(wbsTasks.parentId, parents.id))
+      .leftJoin(grandparents, eq(parents.parentId, grandparents.id))
+      .where(and(...conditions))
+      .orderBy(asc(wbsTasks.startDate), asc(wbsTasks.id))
+      .all();
   }
 
   private assertCodeUnique(code: string, excludeId: number | null): void {

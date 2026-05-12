@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { computeStatus, STATUS_BUCKETS, todayUtc } from '@/utils/status';
-import { RouterLink, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
@@ -20,6 +20,7 @@ const projects = useProjectsStore();
 const holidays = useHolidaysStore();
 const projectMembersStore = useProjectMembersStore();
 const router = useRouter();
+const route = useRoute();
 
 const collapsedIds = ref<Set<number>>(new Set());
 const membersDialogOpen = ref(false);
@@ -405,7 +406,37 @@ onMounted(async () => {
     holidays.fetchAll(),
     projectMembersStore.fetchMembers(props.projectId),
   ]);
+  applyFocusFromQuery();
 });
+
+// When the user lands on this page from the cross-project assignments view
+// (URL `?focus=<taskId>`), expand the task's ancestors so it's visible,
+// scroll to it, and briefly highlight the row.
+function applyFocusFromQuery(): void {
+  const raw = route.query.focus;
+  const focusId = typeof raw === 'string' ? Number(raw) : null;
+  if (!focusId || Number.isNaN(focusId)) return;
+  const task = tasks.items.find((t) => t.id === focusId);
+  if (!task) return;
+  // Walk up the ancestor chain and remove them from the collapsed set.
+  const byId = new Map(tasks.items.map((t) => [t.id, t]));
+  const next = new Set(collapsedIds.value);
+  let cursor: WbsTask | undefined = task;
+  while (cursor && cursor.parentId !== null && cursor.parentId !== undefined) {
+    next.delete(cursor.parentId);
+    cursor = byId.get(cursor.parentId);
+  }
+  collapsedIds.value = next;
+  nextTick(() => {
+    const input = document.querySelector<HTMLElement>(`input[data-task-name="${focusId}"]`);
+    if (input) {
+      input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const target = input.closest<HTMLElement>('.row.body') ?? input;
+      target.classList.add('focus-highlight');
+      setTimeout(() => target.classList.remove('focus-highlight'), 2500);
+    }
+  });
+}
 
 watch(
   () => props.projectId,

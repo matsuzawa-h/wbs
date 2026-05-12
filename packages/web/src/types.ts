@@ -45,6 +45,30 @@ export interface Holiday {
   createdAt: number;
 }
 
+// Cross-project task row used by the "担当別予定" page. Carries breadcrumb
+// fields (project / 大項目 / 中項目 names) so the list is self-explanatory
+// without a follow-up fetch.
+export interface AssignmentRow {
+  id: number;
+  projectId: number;
+  projectName: string;
+  level: number;
+  parentId: number | null;
+  name: string;
+  startDate: string | null;
+  duration: number | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  plannedHours: number | null;
+  actualHours: number | null;
+  progress: number;
+  assigneeId: number | null;
+  status: string;
+  parentName: string | null;
+  grandparentName: string | null;
+}
+
 export interface WbsTask {
   id: number;
   projectId: number;

@@ -693,4 +693,12 @@ function onStatusChange(task: WbsTask, e: Event): void {
   opacity: 0.4;
   background: #dbeafe;
 }
+/* Applied transiently when navigated from the cross-project assignments view */
+.row.body.focus-highlight {
+  animation: focus-pulse 2.5s ease-out;
+}
+@keyframes focus-pulse {
+  0%, 50% { background: #fef3c7; box-shadow: inset 4px 0 0 #f59e0b; }
+  100% { background: transparent; box-shadow: none; }
+}
 </style>
