@@ -237,7 +237,9 @@ onBeforeUnmount(() => {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 0.5rem;
+  /* No top padding so the SVG header lines up exactly with the table's
+     group-head + col-head stack. Side / bottom padding kept for breathing room. */
+  padding: 0 0.5rem 0.5rem 0.5rem;
   height: 100%;
   overflow: auto;
 }
