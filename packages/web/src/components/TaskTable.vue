@@ -150,17 +150,17 @@ function onStatusChange(task: WbsTask, e: Event): void {
       <div class="col-toggle"></div>
       <div class="col-level">階層</div>
       <div class="col-name">項目名</div>
-      <div class="col-date planned">開始</div>
+      <div class="col-date planned grp-start">開始</div>
       <div class="col-num planned">日数</div>
       <div class="col-date planned">終了</div>
       <div class="col-hours planned">工数</div>
-      <div class="col-date actual">開始</div>
+      <div class="col-date actual grp-start">開始</div>
       <div class="col-date actual">終了</div>
       <div class="col-hours actual">工数</div>
-      <div class="col-num">進捗</div>
+      <div class="col-num grp-start">進捗</div>
       <div class="col-assignee">担当</div>
       <div class="col-status">状態</div>
-      <div class="col-actions"></div>
+      <div class="col-actions grp-start"></div>
     </header>
 
     <draggable
@@ -196,7 +196,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
           </div>
 
           <!-- 予定 -->
-          <div class="col-date planned">
+          <div class="col-date planned grp-start">
             <input
               v-if="element.level === 3"
               type="date"
@@ -231,7 +231,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
           </div>
 
           <!-- 実績 -->
-          <div class="col-date actual">
+          <div class="col-date actual grp-start">
             <input
               v-if="element.level === 3"
               type="date"
@@ -261,7 +261,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
             <span v-else class="readonly">{{ fmtHours(element.actualHours) }}</span>
           </div>
 
-          <div class="col-num">
+          <div class="col-num grp-start">
             <input
               type="number"
               min="0"
@@ -286,7 +286,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
               @change="(e) => onStatusChange(element, e)"
             />
           </div>
-          <div class="col-actions">
+          <div class="col-actions grp-start">
             <button
               v-if="element.level < 3"
               class="btn"
@@ -430,11 +430,12 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .lvl-3 {
   background: #fff;
 }
-.planned {
-  background-color: rgba(219, 234, 254, 0.35);
-}
-.actual {
-  background-color: rgba(220, 252, 231, 0.35);
+/* Group separators (subtle vertical guides) - drop the cell tinting
+   that was producing muddy blends with the row hierarchy colors. */
+.grp-start {
+  border-left: 1px solid #e5e7eb;
+  padding-left: 0.3rem;
+  margin-left: 0.15rem;
 }
 .readonly {
   color: #6b7280;

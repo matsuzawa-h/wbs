@@ -18,6 +18,37 @@ const router = useRouter();
 const newAssigneeName = ref('');
 const collapsedIds = ref<Set<number>>(new Set());
 
+const STORAGE_KEY_WIDTH = 'wbs.gantt.leftWidth';
+const initialWidth = (() => {
+  const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
+  return Number.isFinite(stored) && stored >= 400 ? stored : 980;
+})();
+const leftWidth = ref<number>(initialWidth);
+
+function onSplitterMouseDown(event: MouseEvent): void {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = leftWidth.value;
+  const maxX = window.innerWidth - 320;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  const onMove = (ev: MouseEvent): void => {
+    const delta = ev.clientX - startX;
+    const next = Math.max(400, Math.min(maxX, startWidth + delta));
+    leftWidth.value = next;
+  };
+  const onUp = (): void => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    window.localStorage.setItem(STORAGE_KEY_WIDTH, String(leftWidth.value));
+  };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
 const project = computed(() =>
   projects.items.find((p) => p.id === props.projectId),
 );
@@ -279,7 +310,11 @@ function back(): void {
     <p v-else-if="tasks.items.length === 0" class="muted">
       まだタスクがありません。右上の「+ 大項目」から追加してください。
     </p>
-    <div v-else class="split">
+    <div
+      v-else
+      class="split"
+      :style="{ gridTemplateColumns: `${leftWidth}px 6px minmax(280px, 1fr)` }"
+    >
       <div class="pane left" aria-label="task list">
         <TaskTable
           :tasks="visibleTasks"
@@ -293,6 +328,14 @@ function back(): void {
           @toggle-collapse="toggleCollapse"
         />
       </div>
+      <div
+        class="splitter"
+        role="separator"
+        aria-orientation="vertical"
+        :aria-valuenow="leftWidth"
+        title="ドラッグして左右の幅を変更"
+        @mousedown="onSplitterMouseDown"
+      ></div>
       <div class="pane right" aria-label="gantt chart">
         <GanttChart
           :tasks="visibleTasks"
@@ -343,18 +386,43 @@ function back(): void {
 }
 .split {
   display: grid;
-  grid-template-columns: minmax(820px, 1.4fr) minmax(280px, 1fr);
-  gap: 0.5rem;
-  align-items: start;
+  /* grid-template-columns is set inline by leftWidth ref */
+  gap: 0;
+  align-items: stretch;
+  height: calc(100vh - 220px);
+  min-height: 360px;
 }
 .pane {
   min-width: 0;
-  overflow-x: auto;
+  overflow: auto;
+  height: 100%;
 }
-@media (max-width: 1200px) {
+.splitter {
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  user-select: none;
+}
+.splitter::before {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: #cbd5e1;
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+.splitter:hover::before,
+.splitter:active::before {
+  background: #2563eb;
+}
+@media (max-width: 1100px) {
   .split {
-    grid-template-columns: 1fr;
+    display: block;
+    height: auto;
   }
+  .pane { height: auto; max-height: 60vh; }
+  .splitter { display: none; }
 }
 .muted {
   color: #6b7280;
