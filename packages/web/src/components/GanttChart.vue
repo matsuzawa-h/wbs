@@ -155,7 +155,7 @@ function drawOverrunBars(): void {
     const barY = Number(bar.getAttribute('y') ?? '0');
     const barH = Number(bar.getAttribute('height') ?? '0');
 
-    // Case 1: finished late
+    // Case 1: finished late (historical) — lighter red to recede visually
     if (task.actualEndDate) {
       const actualEnd = parseDate(task.actualEndDate);
       if (actualEnd.getTime() <= plannedEnd.getTime()) return;
@@ -168,8 +168,8 @@ function drawOverrunBars(): void {
         endDate: actualEnd,
         barY,
         barH,
-        fill: '#dc2626',
-        opacity: '0.92',
+        fill: '#ef4444',
+        opacity: '0.55',
         title:
           `${task.name}\n遅延: ${Math.max(0, businessDaysBetween(plannedEnd, actualEnd) - 1)} 営業日\n` +
           `予定終了: ${task.endDate}\n実績終了: ${task.actualEndDate}`,
@@ -177,7 +177,7 @@ function drawOverrunBars(): void {
       return;
     }
 
-    // Case 2: currently overdue (in progress past planned end)
+    // Case 2: currently overdue (in progress past planned end) — solid deep red
     const isOverdue = today.getTime() > plannedEnd.getTime();
     if (!isOverdue) return;
     // Require either explicit actualStart or that planned start has arrived
@@ -195,8 +195,8 @@ function drawOverrunBars(): void {
       endDate: today,
       barY,
       barH,
-      fill: '#ef4444',
-      opacity: '0.55',
+      fill: '#dc2626',
+      opacity: '0.92',
       title:
         `${task.name}\n進行中（遅延中）\n予定終了: ${task.endDate}（本日: ${formatDateUtc(today)}）\n` +
         `遅延: ${Math.max(0, businessDaysBetween(plannedEnd, today) - 1)} 営業日`,
