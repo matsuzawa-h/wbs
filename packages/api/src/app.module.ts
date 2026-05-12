@@ -6,6 +6,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { EmployeesModule } from './employees/employees.module';
 import { HolidaysModule } from './holidays/holidays.module';
 import { CustomersModule } from './customers/customers.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CustomersModule } from './customers/customers.module';
     TasksModule,
     EmployeesModule,
     CustomersModule,
+    McpModule,
   ],
   controllers: [HealthController],
   providers: [],
