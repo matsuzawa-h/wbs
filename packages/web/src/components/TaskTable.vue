@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import draggable from 'vuedraggable';
 import type { WbsTask, Assignee } from '@/types';
+import ColumnFilter, { type FilterOption } from './ColumnFilter.vue';
 
 interface ColumnVisibility {
   hours: boolean;
   actual: boolean;
   status: boolean;
+}
+
+type FilterValue = string | number | null;
+interface ColumnFilters {
+  name: string;
+  levels: Set<number> | null;
+  assigneeIds: Set<FilterValue> | null;
+  statuses: Set<FilterValue> | null;
+}
+interface FilterOptions {
+  levels: FilterOption[];
+  assigneeIds: FilterOption[];
+  statuses: FilterOption[];
 }
 
 const props = defineProps<{
@@ -15,6 +29,8 @@ const props = defineProps<{
   collapsedIds: Set<number>;
   childCountByParent: Map<number, number>;
   visibility: ColumnVisibility;
+  filters: ColumnFilters;
+  filterOptions: FilterOptions;
 }>();
 
 const emit = defineEmits<{
@@ -23,7 +39,24 @@ const emit = defineEmits<{
   (e: 'add-child', parent: WbsTask | null, level: 1 | 2 | 3): void;
   (e: 'remove', id: number): void;
   (e: 'toggle-collapse', id: number): void;
+  (e: 'filter-name', value: string): void;
+  (e: 'filter-levels', value: Set<FilterValue> | null): void;
+  (e: 'filter-assignees', value: Set<FilterValue> | null): void;
+  (e: 'filter-statuses', value: Set<FilterValue> | null): void;
 }>();
+
+type FilterKey = 'name' | 'levels' | 'assigneeIds' | 'statuses';
+const openFilter = ref<FilterKey | null>(null);
+function toggleFilterPopover(key: FilterKey): void {
+  openFilter.value = openFilter.value === key ? null : key;
+}
+function closeFilter(): void {
+  openFilter.value = null;
+}
+function isFilterActive(key: FilterKey): boolean {
+  if (key === 'name') return props.filters.name !== '';
+  return props.filters[key] !== null;
+}
 
 const draggableModel = computed({
   get: () => props.tasks,
@@ -34,7 +67,8 @@ const gridTemplate = computed<string>(() => {
   // Date columns wide enough to show full 'YYYY/MM/DD' input including the
   // calendar icon (~115px) without truncation.
   const DATE_COL = '115px';
-  const parts: string[] = ['20px', '22px', '30px', 'minmax(150px, 1.4fr)'];
+  // 階層 column needs to fit '階層' label + the filter ▾ trigger button.
+  const parts: string[] = ['20px', '22px', '46px', 'minmax(150px, 1.4fr)'];
   // Planned columns (always: start / dur / end)
   parts.push(DATE_COL, '42px', DATE_COL);
   if (props.visibility.hours) parts.push('56px'); // planned hours
@@ -195,8 +229,44 @@ function onStatusChange(task: WbsTask, e: Event): void {
     <header class="row head">
       <div class="col-handle"></div>
       <div class="col-toggle"></div>
-      <div class="col-level">階層</div>
-      <div class="col-name">項目名</div>
+      <div class="col-level filterable">
+        <span class="head-label">階層</span>
+        <button
+          class="filter-trigger"
+          :class="{ active: isFilterActive('levels') }"
+          type="button"
+          :title="isFilterActive('levels') ? '階層フィルタ（適用中）' : '階層で絞り込み'"
+          @click.stop="toggleFilterPopover('levels')"
+        >▾</button>
+        <ColumnFilter
+          :open="openFilter === 'levels'"
+          type="enum"
+          title="階層で絞り込み"
+          :options="filterOptions.levels"
+          :selected="filters.levels as Set<FilterValue> | null"
+          @close="closeFilter"
+          @update-enum="(v) => emit('filter-levels', v)"
+        />
+      </div>
+      <div class="col-name filterable">
+        <span class="head-label">項目名</span>
+        <button
+          class="filter-trigger"
+          :class="{ active: isFilterActive('name') }"
+          type="button"
+          :title="isFilterActive('name') ? '項目名フィルタ（適用中）' : '項目名で検索'"
+          @click.stop="toggleFilterPopover('name')"
+        >▾</button>
+        <ColumnFilter
+          :open="openFilter === 'name'"
+          type="text"
+          title="項目名で検索"
+          :text="filters.name"
+          text-placeholder="部分一致で検索"
+          @close="closeFilter"
+          @update-text="(v) => emit('filter-name', v)"
+        />
+      </div>
       <div class="col-date planned grp-start">開始</div>
       <div class="col-num planned">日数</div>
       <div class="col-date planned">終了</div>
@@ -207,8 +277,44 @@ function onStatusChange(task: WbsTask, e: Event): void {
         <div v-if="visibility.hours" class="col-hours actual">工数</div>
       </template>
       <div class="col-num grp-start">進捗</div>
-      <div class="col-assignee">担当</div>
-      <div v-if="visibility.status" class="col-status">状態</div>
+      <div class="col-assignee filterable">
+        <span class="head-label">担当</span>
+        <button
+          class="filter-trigger"
+          :class="{ active: isFilterActive('assigneeIds') }"
+          type="button"
+          :title="isFilterActive('assigneeIds') ? '担当フィルタ（適用中）' : '担当で絞り込み'"
+          @click.stop="toggleFilterPopover('assigneeIds')"
+        >▾</button>
+        <ColumnFilter
+          :open="openFilter === 'assigneeIds'"
+          type="enum"
+          title="担当で絞り込み"
+          :options="filterOptions.assigneeIds"
+          :selected="filters.assigneeIds"
+          @close="closeFilter"
+          @update-enum="(v) => emit('filter-assignees', v)"
+        />
+      </div>
+      <div v-if="visibility.status" class="col-status filterable">
+        <span class="head-label">状態</span>
+        <button
+          class="filter-trigger"
+          :class="{ active: isFilterActive('statuses') }"
+          type="button"
+          :title="isFilterActive('statuses') ? '状態フィルタ（適用中）' : '状態で絞り込み'"
+          @click.stop="toggleFilterPopover('statuses')"
+        >▾</button>
+        <ColumnFilter
+          :open="openFilter === 'statuses'"
+          type="enum"
+          title="状態で絞り込み"
+          :options="filterOptions.statuses"
+          :selected="filters.statuses"
+          @close="closeFilter"
+          @update-enum="(v) => emit('filter-statuses', v)"
+        />
+      </div>
       <div class="col-actions grp-start"></div>
     </header>
 
@@ -368,7 +474,9 @@ function onStatusChange(task: WbsTask, e: Event): void {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  overflow: hidden;
+  /* overflow:visible so the column filter popovers can extend past the
+     table's rounded corners */
+  overflow: visible;
 }
 .row {
   display: grid;
@@ -414,6 +522,33 @@ function onStatusChange(task: WbsTask, e: Event): void {
   color: #374151;
   font-size: 0.74rem;
   min-height: 30px;
+}
+.filterable {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.filterable .head-label {
+  white-space: nowrap;
+}
+.filter-trigger {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.filter-trigger:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+.filter-trigger.active {
+  background: #1e40af;
+  color: #fff;
 }
 .row.body input[type='text'],
 .row.body input[type='number'],

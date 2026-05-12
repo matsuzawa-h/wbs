@@ -18,6 +18,125 @@ const router = useRouter();
 const newAssigneeName = ref('');
 const collapsedIds = ref<Set<number>>(new Set());
 
+// --- Column filters (Excel-style) ---
+type FilterValue = string | number | null;
+interface ColumnFilters {
+  name: string;
+  levels: Set<number> | null;
+  assigneeIds: Set<FilterValue> | null;
+  statuses: Set<FilterValue> | null;
+}
+const filters = ref<ColumnFilters>({
+  name: '',
+  levels: null,
+  assigneeIds: null,
+  statuses: null,
+});
+
+function setNameFilter(v: string): void {
+  filters.value = { ...filters.value, name: v };
+}
+function setLevelsFilter(v: Set<FilterValue> | null): void {
+  filters.value = {
+    ...filters.value,
+    levels: v ? (new Set(Array.from(v).map((x) => Number(x))) as Set<number>) : null,
+  };
+}
+function setAssigneesFilter(v: Set<FilterValue> | null): void {
+  filters.value = { ...filters.value, assigneeIds: v };
+}
+function setStatusesFilter(v: Set<FilterValue> | null): void {
+  filters.value = { ...filters.value, statuses: v };
+}
+function clearAllFilters(): void {
+  filters.value = { name: '', levels: null, assigneeIds: null, statuses: null };
+}
+const hasActiveFilters = computed(
+  () =>
+    filters.value.name !== '' ||
+    filters.value.levels !== null ||
+    filters.value.assigneeIds !== null ||
+    filters.value.statuses !== null,
+);
+
+// Filter option lists for the popovers
+const filterOptions = computed(() => {
+  const statusSet = new Set<string>();
+  for (const t of tasks.items) {
+    if (t.status) statusSet.add(t.status);
+  }
+  return {
+    levels: [
+      { value: 1, label: '大項目' },
+      { value: 2, label: '中項目' },
+      { value: 3, label: '項目' },
+    ],
+    assigneeIds: [
+      { value: null as FilterValue, label: '未割当' },
+      ...assignees.items.map((a) => ({ value: a.id as FilterValue, label: a.name })),
+    ],
+    statuses: Array.from(statusSet)
+      .sort()
+      .map((s) => ({ value: s as FilterValue, label: s })),
+  };
+});
+
+// Compute matched task ids (those that pass every active filter)
+const matchedTaskIds = computed<Set<number> | null>(() => {
+  if (!hasActiveFilters.value) return null;
+  const f = filters.value;
+  const needle = f.name.trim().toLowerCase();
+  const matched = new Set<number>();
+  for (const t of tasks.items) {
+    if (needle && !t.name.toLowerCase().includes(needle)) continue;
+    if (f.levels !== null && !f.levels.has(t.level)) continue;
+    if (f.assigneeIds !== null && !f.assigneeIds.has(t.assigneeId)) continue;
+    if (f.statuses !== null && !f.statuses.has(t.status)) continue;
+    matched.add(t.id);
+  }
+  return matched;
+});
+
+// Matched + their ancestors so the tree context survives the filter
+const visibleAfterFilter = computed<Set<number> | null>(() => {
+  const m = matchedTaskIds.value;
+  if (m === null) return null;
+  const byId = new Map<number, WbsTask>();
+  for (const t of tasks.items) byId.set(t.id, t);
+  const result = new Set(m);
+  for (const id of m) {
+    let cur = byId.get(id);
+    while (cur && cur.parentId !== null && cur.parentId !== undefined) {
+      result.add(cur.parentId);
+      cur = byId.get(cur.parentId);
+    }
+  }
+  return result;
+});
+
+// When a filter activates, auto-expand any collapsed ancestors of matches
+// so the user actually sees their matches.
+watch(matchedTaskIds, (matched) => {
+  if (!matched || matched.size === 0) return;
+  if (collapsedIds.value.size === 0) return;
+  const byId = new Map<number, WbsTask>();
+  for (const t of tasks.items) byId.set(t.id, t);
+  const ancestors = new Set<number>();
+  for (const id of matched) {
+    let cur = byId.get(id);
+    while (cur && cur.parentId !== null && cur.parentId !== undefined) {
+      ancestors.add(cur.parentId);
+      cur = byId.get(cur.parentId);
+    }
+  }
+  const next = new Set(collapsedIds.value);
+  let changed = false;
+  for (const id of ancestors) {
+    if (next.delete(id)) changed = true;
+  }
+  if (changed) collapsedIds.value = next;
+});
+
 const STORAGE_KEY_WIDTH = 'wbs.gantt.leftWidth';
 const STORAGE_KEY_VIS = 'wbs.gantt.visibility';
 type ColumnVisibility = { hours: boolean; actual: boolean; status: boolean };
@@ -112,7 +231,7 @@ watch(
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
   const needed = (() => {
-    let w = 20 + 22 + 30 + 160 + 115 + 42 + 115 + 72 + 84 + 108 + 28;
+    let w = 20 + 22 + 46 + 160 + 115 + 42 + 115 + 72 + 84 + 108 + 28;
     if (initialVisibility.hours) w += 56;
     if (initialVisibility.actual) {
       w += 115 + 115;
@@ -128,7 +247,7 @@ const leftWidth = ref<number>(initialWidth);
 
 function requiredTableWidth(v: ColumnVisibility): number {
   // Mirrors the column widths defined in TaskTable.gridTemplate, plus gaps + pane padding.
-  let w = 20 + 22 + 30 + 160; // meta block (name has minmax(150,1.4fr) - reserve 160)
+  let w = 20 + 22 + 46 + 160; // meta block (name has minmax(150,1.4fr) - reserve 160)
   w += 115 + 42 + 115; // planned start / dur / end
   if (v.hours) w += 56;
   if (v.actual) {
@@ -201,7 +320,10 @@ const treeOrderedTasks = computed<WbsTask[]>(() => {
     }
   };
   walk(0);
-  return out;
+  // Apply column filter (matched + ancestors). If no filter is active, pass through.
+  const allowed = visibleAfterFilter.value;
+  if (allowed === null) return out;
+  return out.filter((t) => allowed.has(t.id));
 });
 
 const childCountByParent = computed<Map<number, number>>(() => {
@@ -456,6 +578,13 @@ function back(): void {
           @click="toggleVisibility('status')"
         >状態</button>
         <span class="action-sep" aria-hidden="true">│</span>
+        <button
+          v-if="hasActiveFilters"
+          class="btn"
+          type="button"
+          title="すべてのフィルタを解除"
+          @click="clearAllFilters"
+        >フィルタ解除</button>
         <button class="btn" type="button" @click="expandAll" title="すべて展開">展開</button>
         <button class="btn" type="button" @click="collapseAll" title="すべて折りたたみ">折畳</button>
         <button class="btn primary" type="button" @click="addTopLevel">+ 大項目</button>
@@ -491,11 +620,17 @@ function back(): void {
             :collapsed-ids="collapsedIds"
             :child-count-by-parent="childCountByParent"
             :visibility="visibility"
+            :filters="filters"
+            :filter-options="filterOptions"
             @reorder="onReorder"
             @update="onUpdate"
             @add-child="onAddChild"
             @remove="onRemove"
             @toggle-collapse="toggleCollapse"
+            @filter-name="setNameFilter"
+            @filter-levels="setLevelsFilter"
+            @filter-assignees="setAssigneesFilter"
+            @filter-statuses="setStatusesFilter"
           />
         </div>
         <div
