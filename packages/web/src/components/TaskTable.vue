@@ -47,6 +47,15 @@ function indentStyle(level: number): { paddingLeft: string; borderLeft?: string 
   };
 }
 
+function fmtHours(value: number | null): string {
+  if (value === null || value === undefined) return '—';
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function fmtDateOrDash(value: string | null): string {
+  return value ?? '—';
+}
+
 function onNameInput(task: WbsTask, e: Event): void {
   const value = (e.target as HTMLInputElement).value;
   if (value !== task.name) emit('update', task.id, { name: value });
@@ -63,6 +72,46 @@ function onDurationChange(task: WbsTask, e: Event): void {
   const value = Number((e.target as HTMLInputElement).value);
   if (Number.isFinite(value) && value > 0 && value !== task.duration) {
     emit('update', task.id, { duration: value });
+  }
+}
+
+function onActualStartChange(task: WbsTask, e: Event): void {
+  if (task.level !== 3) return;
+  const raw = (e.target as HTMLInputElement).value;
+  const value: string | null = raw === '' ? null : raw;
+  if (value !== task.actualStartDate) emit('update', task.id, { actualStartDate: value });
+}
+
+function onActualEndChange(task: WbsTask, e: Event): void {
+  if (task.level !== 3) return;
+  const raw = (e.target as HTMLInputElement).value;
+  const value: string | null = raw === '' ? null : raw;
+  if (value !== task.actualEndDate) emit('update', task.id, { actualEndDate: value });
+}
+
+function onPlannedHoursChange(task: WbsTask, e: Event): void {
+  if (task.level !== 3) return;
+  const raw = (e.target as HTMLInputElement).value;
+  if (raw === '') {
+    if (task.plannedHours !== null) emit('update', task.id, { plannedHours: null });
+    return;
+  }
+  const value = Number(raw);
+  if (Number.isFinite(value) && value >= 0 && value !== task.plannedHours) {
+    emit('update', task.id, { plannedHours: value });
+  }
+}
+
+function onActualHoursChange(task: WbsTask, e: Event): void {
+  if (task.level !== 3) return;
+  const raw = (e.target as HTMLInputElement).value;
+  if (raw === '') {
+    if (task.actualHours !== null) emit('update', task.id, { actualHours: null });
+    return;
+  }
+  const value = Number(raw);
+  if (Number.isFinite(value) && value >= 0 && value !== task.actualHours) {
+    emit('update', task.id, { actualHours: value });
   }
 }
 
@@ -87,14 +136,27 @@ function onStatusChange(task: WbsTask, e: Event): void {
 
 <template>
   <div class="task-table">
+    <!-- Group header (spans across the same 15-column grid) -->
+    <header class="row group-head">
+      <div class="grp grp-meta"></div>
+      <div class="grp grp-planned">予定</div>
+      <div class="grp grp-actual">実績</div>
+      <div class="grp grp-other"></div>
+      <div class="grp grp-actions"></div>
+    </header>
+    <!-- Column header -->
     <header class="row head">
       <div class="col-handle"></div>
       <div class="col-toggle"></div>
       <div class="col-level">階層</div>
       <div class="col-name">項目名</div>
-      <div class="col-date">開始日</div>
-      <div class="col-num">日数</div>
-      <div class="col-date">終了日</div>
+      <div class="col-date planned">開始</div>
+      <div class="col-num planned">日数</div>
+      <div class="col-date planned">終了</div>
+      <div class="col-hours planned">工数</div>
+      <div class="col-date actual">開始</div>
+      <div class="col-date actual">終了</div>
+      <div class="col-hours actual">工数</div>
       <div class="col-num">進捗</div>
       <div class="col-assignee">担当</div>
       <div class="col-status">状態</div>
@@ -132,16 +194,18 @@ function onStatusChange(task: WbsTask, e: Event): void {
               @change="(e) => onNameInput(element, e)"
             />
           </div>
-          <div class="col-date">
+
+          <!-- 予定 -->
+          <div class="col-date planned">
             <input
               v-if="element.level === 3"
               type="date"
               :value="element.startDate ?? ''"
               @change="(e) => onStartChange(element, e)"
             />
-            <span v-else class="readonly">{{ element.startDate ?? '—' }}</span>
+            <span v-else class="readonly">{{ fmtDateOrDash(element.startDate) }}</span>
           </div>
-          <div class="col-num">
+          <div class="col-num planned">
             <input
               v-if="element.level === 3"
               type="number"
@@ -151,9 +215,52 @@ function onStatusChange(task: WbsTask, e: Event): void {
             />
             <span v-else class="readonly">{{ element.duration ?? '—' }}</span>
           </div>
-          <div class="col-date">
-            <span class="readonly">{{ element.endDate ?? '—' }}</span>
+          <div class="col-date planned">
+            <span class="readonly">{{ fmtDateOrDash(element.endDate) }}</span>
           </div>
+          <div class="col-hours planned">
+            <input
+              v-if="element.level === 3"
+              type="number"
+              min="0"
+              step="0.5"
+              :value="element.plannedHours ?? ''"
+              @change="(e) => onPlannedHoursChange(element, e)"
+            />
+            <span v-else class="readonly">{{ fmtHours(element.plannedHours) }}</span>
+          </div>
+
+          <!-- 実績 -->
+          <div class="col-date actual">
+            <input
+              v-if="element.level === 3"
+              type="date"
+              :value="element.actualStartDate ?? ''"
+              @change="(e) => onActualStartChange(element, e)"
+            />
+            <span v-else class="readonly">{{ fmtDateOrDash(element.actualStartDate) }}</span>
+          </div>
+          <div class="col-date actual">
+            <input
+              v-if="element.level === 3"
+              type="date"
+              :value="element.actualEndDate ?? ''"
+              @change="(e) => onActualEndChange(element, e)"
+            />
+            <span v-else class="readonly">{{ fmtDateOrDash(element.actualEndDate) }}</span>
+          </div>
+          <div class="col-hours actual">
+            <input
+              v-if="element.level === 3"
+              type="number"
+              min="0"
+              step="0.5"
+              :value="element.actualHours ?? ''"
+              @change="(e) => onActualHoursChange(element, e)"
+            />
+            <span v-else class="readonly">{{ fmtHours(element.actualHours) }}</span>
+          </div>
+
           <div class="col-num">
             <input
               type="number"
@@ -184,11 +291,17 @@ function onStatusChange(task: WbsTask, e: Event): void {
               v-if="element.level < 3"
               class="btn"
               type="button"
+              :title="`${levelLabel(element.level + 1)}項目を追加`"
               @click="emit('add-child', element, (element.level + 1) as 1 | 2 | 3)"
             >
-              + {{ levelLabel(element.level + 1) }}
+              ＋{{ levelLabel(element.level + 1) }}
             </button>
-            <button class="btn danger" type="button" @click="emit('remove', element.id)">
+            <button
+              class="btn danger"
+              type="button"
+              title="削除"
+              @click="emit('remove', element.id)"
+            >
               削除
             </button>
           </div>
@@ -200,7 +313,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
 
 <style scoped>
 .task-table {
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -209,25 +322,74 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .row {
   display: grid;
   grid-template-columns:
-    24px 28px 40px minmax(160px, 2fr) 120px 60px 120px 60px 110px 120px 130px;
+    /* meta */
+    20px 22px 30px minmax(150px, 1.4fr)
+    /* planned: start dur end hours */
+    92px 42px 92px 56px
+    /* actual: start end hours */
+    92px 92px 56px
+    /* other */
+    50px 84px 84px
+    /* actions */
+    122px;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.35rem 0.45rem;
+  gap: 0.2rem;
+  padding: 0.3rem 0.4rem;
   border-bottom: 1px solid #f3f4f6;
   min-height: 40px;
+  white-space: nowrap;
+}
+.row.group-head {
+  padding: 0.25rem 0.4rem;
+  background: #f9fafb;
+  min-height: 26px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 600;
+  text-align: center;
+}
+.grp {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grp-meta {
+  grid-column: 1 / 5;
+}
+.grp-planned {
+  grid-column: 5 / 9;
+  background: #dbeafe;
+  border-radius: 4px;
+  color: #1e3a8a;
+}
+.grp-actual {
+  grid-column: 9 / 12;
+  background: #dcfce7;
+  border-radius: 4px;
+  color: #14532d;
+}
+.grp-other {
+  grid-column: 12 / 15;
+}
+.grp-actions {
+  grid-column: 15;
 }
 .row.head {
   background: #f9fafb;
   font-weight: 600;
   color: #374151;
-  font-size: 0.8rem;
-  min-height: 32px;
+  font-size: 0.74rem;
+  min-height: 30px;
 }
 .row.body input[type='text'],
 .row.body input[type='number'],
 .row.body input[type='date'],
 .row.body select {
   width: 100%;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.84rem;
 }
 .col-handle .handle {
   cursor: grab;
@@ -256,7 +418,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .col-level {
   text-align: center;
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: #4b5563;
 }
 .lvl-1 {
@@ -268,8 +430,16 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .lvl-3 {
   background: #fff;
 }
+.planned {
+  background-color: rgba(219, 234, 254, 0.35);
+}
+.actual {
+  background-color: rgba(220, 252, 231, 0.35);
+}
 .readonly {
   color: #6b7280;
+  display: inline-block;
+  padding: 0 0.2rem;
 }
 .col-actions {
   display: flex;
@@ -277,8 +447,8 @@ function onStatusChange(task: WbsTask, e: Event): void {
   justify-content: flex-end;
 }
 .col-actions .btn {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.74rem;
 }
 .drag-ghost {
   opacity: 0.4;

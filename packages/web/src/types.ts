@@ -19,6 +19,10 @@ export interface WbsTask {
   startDate: string | null;
   duration: number | null;
   endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  plannedHours: number | null;
+  actualHours: number | null;
   progress: number;
   assigneeId: number | null;
   status: string;

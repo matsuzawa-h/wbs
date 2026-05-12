@@ -1,6 +1,7 @@
 import {
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -32,6 +33,24 @@ export class CreateTaskDto {
   @IsInt()
   @Min(1)
   duration?: number;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'actualStartDate must be YYYY-MM-DD' })
+  actualStartDate?: string | null;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'actualEndDate must be YYYY-MM-DD' })
+  actualEndDate?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  plannedHours?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualHours?: number | null;
 
   @IsOptional()
   @IsInt()

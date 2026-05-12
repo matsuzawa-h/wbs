@@ -325,9 +325,13 @@
     <tr><td>level</td><td>INTEGER</td><td>NOT NULL（1=大項目, 2=中項目, 3=項目）</td></tr>
     <tr><td>parent_id</td><td>INTEGER</td><td>NULL 可（level=1 は NULL 必須）</td></tr>
     <tr><td>name</td><td>TEXT</td><td>NOT NULL</td></tr>
-    <tr><td>start_date</td><td>TEXT</td><td>YYYY-MM-DD（level=3 のみ直接編集可、1/2 は集約）</td></tr>
-    <tr><td>duration</td><td>INTEGER</td><td>平日換算の日数（level=3 のみ直接編集可）</td></tr>
-    <tr><td>end_date</td><td>TEXT</td><td>YYYY-MM-DD（startDate + duration の平日カウントから算出）</td></tr>
+    <tr><td>start_date</td><td>TEXT</td><td><b>予定</b>開始日 YYYY-MM-DD（level=3 のみ直接編集可、1/2 は集約 = min(子)）</td></tr>
+    <tr><td>duration</td><td>INTEGER</td><td><b>予定</b>日数（平日換算、level=3 のみ直接編集可）</td></tr>
+    <tr><td>end_date</td><td>TEXT</td><td><b>予定</b>終了日 YYYY-MM-DD（startDate + duration の平日カウントから算出、1/2 は集約 = max(子)）</td></tr>
+    <tr><td>actual_start_date</td><td>TEXT</td><td><b>実績</b>開始日 YYYY-MM-DD（NULL 可、level=3 のみ直接編集可、1/2 は集約 = min(子, null除外)）</td></tr>
+    <tr><td>actual_end_date</td><td>TEXT</td><td><b>実績</b>終了日 YYYY-MM-DD（NULL 可、1/2 は集約 = max(子, null除外)）</td></tr>
+    <tr><td>planned_hours</td><td>REAL</td><td><b>予定</b>工数（時間、NULL 可、level=3 のみ直接編集可、1/2 は集約 = sum(子)）</td></tr>
+    <tr><td>actual_hours</td><td>REAL</td><td><b>実績</b>工数（時間、NULL 可、1/2 は集約 = sum(子)）</td></tr>
     <tr><td>progress</td><td>INTEGER</td><td>0–100、default 0</td></tr>
     <tr><td>assignee_id</td><td>INTEGER</td><td>FK → assignees.id (ON DELETE SET NULL)</td></tr>
     <tr><td>status</td><td>TEXT</td><td>default ''（自由記述、状態名）</td></tr>
@@ -335,6 +339,23 @@
   </tbody>
 </table>
 <p>インデックス: <code>(project_id)</code>, <code>(parent_id)</code>, <code>(project_id, sort_order)</code>.</p>
+
+<h4>予定 vs 実績の集約ルール</h4>
+<table>
+  <thead><tr><th>項目</th><th>level=3 (項目)</th><th>level=1, 2 (集約)</th></tr></thead>
+  <tbody>
+    <tr><td>start_date (予定開始)</td><td>直接編集</td><td>min(子.start_date)</td></tr>
+    <tr><td>end_date (予定終了)</td><td>start_date + duration の平日カウント</td><td>max(子.end_date)</td></tr>
+    <tr><td>duration (予定日数)</td><td>直接編集（平日換算）</td><td>businessDaysBetween(min start, max end)</td></tr>
+    <tr><td>actual_start_date (実績開始)</td><td>直接編集（NULL 可）</td><td>min(子.actual_start_date) — null は除外</td></tr>
+    <tr><td>actual_end_date (実績終了)</td><td>直接編集（NULL 可）</td><td>max(子.actual_end_date) — null は除外</td></tr>
+    <tr><td>planned_hours (予定工数)</td><td>直接編集（NULL 可、時間単位）</td><td>sum(子.planned_hours) — null は除外</td></tr>
+    <tr><td>actual_hours (実績工数)</td><td>直接編集（NULL 可、時間単位）</td><td>sum(子.actual_hours) — null は除外</td></tr>
+  </tbody>
+</table>
+<blockquote>
+  日付カスケード（後続タスクのシフト）は <strong>予定 end_date が変わったときだけ発火</strong>します。実績日や工数を変更しても、後続の予定日はずれません（実績は過去の事実なので）。
+</blockquote>
 
 <h2 id="sec-api">5. API 仕様</h2>
 <p>すべて <code>/api</code> プレフィックスの下にマウントされる。Content-Type は <code>application/json</code>。</p>

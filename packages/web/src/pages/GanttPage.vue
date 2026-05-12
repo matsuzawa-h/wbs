@@ -144,6 +144,10 @@ async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {
   if (patch.name !== undefined) allowed.name = patch.name;
   if (patch.startDate !== undefined && patch.startDate !== null) allowed.startDate = patch.startDate;
   if (patch.duration !== undefined && patch.duration !== null) allowed.duration = patch.duration;
+  if (patch.actualStartDate !== undefined) allowed.actualStartDate = patch.actualStartDate;
+  if (patch.actualEndDate !== undefined) allowed.actualEndDate = patch.actualEndDate;
+  if (patch.plannedHours !== undefined) allowed.plannedHours = patch.plannedHours;
+  if (patch.actualHours !== undefined) allowed.actualHours = patch.actualHours;
   if (patch.progress !== undefined) allowed.progress = patch.progress;
   if (patch.assigneeId !== undefined) allowed.assigneeId = patch.assigneeId;
   if (patch.status !== undefined) allowed.status = patch.status;
@@ -339,7 +343,7 @@ function back(): void {
 }
 .split {
   display: grid;
-  grid-template-columns: minmax(680px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(820px, 1.4fr) minmax(280px, 1fr);
   gap: 0.5rem;
   align-items: start;
 }
@@ -347,7 +351,7 @@ function back(): void {
   min-width: 0;
   overflow-x: auto;
 }
-@media (max-width: 1280px) {
+@media (max-width: 1200px) {
   .split {
     grid-template-columns: 1fr;
   }

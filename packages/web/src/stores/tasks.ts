@@ -9,6 +9,10 @@ export interface CreateTaskInput {
   name: string;
   startDate?: string;
   duration?: number;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
+  plannedHours?: number | null;
+  actualHours?: number | null;
   assigneeId?: number | null;
   status?: string;
   sortOrder?: number;
@@ -18,6 +22,10 @@ export interface UpdateTaskInput {
   name?: string;
   startDate?: string;
   duration?: number;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
+  plannedHours?: number | null;
+  actualHours?: number | null;
   progress?: number;
   assigneeId?: number | null;
   status?: string;

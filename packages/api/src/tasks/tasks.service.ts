@@ -65,6 +65,10 @@ export class TasksService {
           startDate: dto.startDate ?? null,
           duration: dto.duration ?? null,
           endDate,
+          actualStartDate: dto.actualStartDate ?? null,
+          actualEndDate: dto.actualEndDate ?? null,
+          plannedHours: dto.plannedHours ?? null,
+          actualHours: dto.actualHours ?? null,
           progress: dto.progress ?? 0,
           assigneeId: dto.assigneeId ?? null,
           status: dto.status ?? '',
@@ -82,11 +86,18 @@ export class TasksService {
   update(id: number, dto: UpdateTaskDto): WbsTask {
     const current = this.findById(id);
     if (current.level !== 3) {
-      const hasDateField =
-        dto.startDate !== undefined || dto.duration !== undefined;
-      if (hasDateField) {
+      const aggregateFields = [
+        dto.startDate,
+        dto.duration,
+        dto.actualStartDate,
+        dto.actualEndDate,
+        dto.plannedHours,
+        dto.actualHours,
+      ];
+      const tryingToSetAggregateField = aggregateFields.some((v) => v !== undefined);
+      if (tryingToSetAggregateField) {
         throw new BadRequestException(
-          'Aggregate rows (level 1/2) compute dates from children; do not set startDate/duration directly',
+          'Aggregate rows (level 1/2) compute these values from children; do not set them directly',
         );
       }
     }
@@ -107,6 +118,14 @@ export class TasksService {
           startDate: newStart,
           duration: newDuration,
           endDate: newEndDate,
+          actualStartDate:
+            dto.actualStartDate === undefined ? current.actualStartDate : dto.actualStartDate,
+          actualEndDate:
+            dto.actualEndDate === undefined ? current.actualEndDate : dto.actualEndDate,
+          plannedHours:
+            dto.plannedHours === undefined ? current.plannedHours : dto.plannedHours,
+          actualHours:
+            dto.actualHours === undefined ? current.actualHours : dto.actualHours,
           progress: dto.progress ?? current.progress,
           assigneeId:
             dto.assigneeId === undefined ? current.assigneeId : dto.assigneeId,
@@ -116,14 +135,14 @@ export class TasksService {
         .returning()
         .get();
 
-      if (current.level === 3 && prevEndDate && newEndDate) {
+      // Date cascade fires only when the planned end date changes.
+      // Editing actual dates or hours just recomputes ancestor aggregates,
+      // it never shifts subsequent tasks.
+      const plannedEndChanged =
+        current.level === 3 && prevEndDate && newEndDate && prevEndDate !== newEndDate;
+      if (plannedEndChanged) {
         const delta = this.cascade.computeDelta(prevEndDate, newEndDate);
-        this.cascade.cascadeAfterChange(
-          current.projectId,
-          row,
-          prevEndDate,
-          delta,
-        );
+        this.cascade.cascadeAfterChange(current.projectId, row, prevEndDate, delta);
       } else {
         this.cascade.recomputeAllAncestors(current.projectId);
       }

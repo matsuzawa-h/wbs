@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, index } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, index } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -28,6 +28,10 @@ export const wbsTasks = sqliteTable(
     startDate: text('start_date'),
     duration: integer('duration'),
     endDate: text('end_date'),
+    actualStartDate: text('actual_start_date'),
+    actualEndDate: text('actual_end_date'),
+    plannedHours: real('planned_hours'),
+    actualHours: real('actual_hours'),
     progress: integer('progress').notNull().default(0),
     assigneeId: integer('assignee_id').references(() => assignees.id, {
       onDelete: 'set null',

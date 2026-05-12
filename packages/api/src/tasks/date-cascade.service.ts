@@ -129,34 +129,67 @@ export class DateCascadeService {
   }
 
   private applyAggregate(node: WbsTask, children: WbsTask[]): WbsTask {
-    if (children.length === 0) {
-      this.db
-        .update(wbsTasks)
-        .set({ startDate: null, endDate: null, duration: null })
-        .where(eq(wbsTasks.id, node.id))
-        .run();
-      return { ...node, startDate: null, endDate: null, duration: null };
-    }
+    // Aggregate planned start/end + duration (skip if any child has no planned dates).
     const starts = children.map((c) => c.startDate).filter((s): s is string => !!s);
     const ends = children.map((c) => c.endDate).filter((e): e is string => !!e);
-    if (starts.length === 0 || ends.length === 0) {
-      this.db
-        .update(wbsTasks)
-        .set({ startDate: null, endDate: null, duration: null })
-        .where(eq(wbsTasks.id, node.id))
-        .run();
-      return { ...node, startDate: null, endDate: null, duration: null };
+
+    let plannedStart: string | null = null;
+    let plannedEnd: string | null = null;
+    let plannedDuration: number | null = null;
+    if (children.length > 0 && starts.length > 0 && ends.length > 0) {
+      plannedStart = starts.reduce((a, b) => (a < b ? a : b));
+      plannedEnd = ends.reduce((a, b) => (a > b ? a : b));
+      plannedDuration = businessDaysBetween(parseDate(plannedStart), parseDate(plannedEnd));
     }
-    const minStart = starts.reduce((a, b) => (a < b ? a : b));
-    const maxEnd = ends.reduce((a, b) => (a > b ? a : b));
-    const duration = businessDaysBetween(parseDate(minStart), parseDate(maxEnd));
+
+    // Aggregate actual start/end (independent: any child with values contributes).
+    const actualStarts = children
+      .map((c) => c.actualStartDate)
+      .filter((s): s is string => !!s);
+    const actualEnds = children
+      .map((c) => c.actualEndDate)
+      .filter((e): e is string => !!e);
+    const actualStart =
+      actualStarts.length > 0 ? actualStarts.reduce((a, b) => (a < b ? a : b)) : null;
+    const actualEnd =
+      actualEnds.length > 0 ? actualEnds.reduce((a, b) => (a > b ? a : b)) : null;
+
+    // Aggregate hours: sum non-null children. If no child has a value, leave null.
+    const plannedHourValues = children
+      .map((c) => c.plannedHours)
+      .filter((h): h is number => h !== null && h !== undefined);
+    const actualHourValues = children
+      .map((c) => c.actualHours)
+      .filter((h): h is number => h !== null && h !== undefined);
+    const plannedHours =
+      plannedHourValues.length > 0 ? plannedHourValues.reduce((a, b) => a + b, 0) : null;
+    const actualHours =
+      actualHourValues.length > 0 ? actualHourValues.reduce((a, b) => a + b, 0) : null;
 
     this.db
       .update(wbsTasks)
-      .set({ startDate: minStart, endDate: maxEnd, duration })
+      .set({
+        startDate: plannedStart,
+        endDate: plannedEnd,
+        duration: plannedDuration,
+        actualStartDate: actualStart,
+        actualEndDate: actualEnd,
+        plannedHours,
+        actualHours,
+      })
       .where(eq(wbsTasks.id, node.id))
       .run();
-    return { ...node, startDate: minStart, endDate: maxEnd, duration };
+
+    return {
+      ...node,
+      startDate: plannedStart,
+      endDate: plannedEnd,
+      duration: plannedDuration,
+      actualStartDate: actualStart,
+      actualEndDate: actualEnd,
+      plannedHours,
+      actualHours,
+    };
   }
 
   /**
