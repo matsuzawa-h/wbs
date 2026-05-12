@@ -97,6 +97,7 @@ function render(): void {
     drawMonthBands();
     highlightWeekends();
     drawMonthBoundaries();
+    drawTodayMarker();
     drawOverrunBars();
     attachBarTooltips();
     applyJapaneseLabels();
@@ -105,6 +106,85 @@ function render(): void {
       pendingScrollToToday = false;
     }
   });
+}
+
+/**
+ * Draws a prominent vertical line + small '今日' chip on today's column so
+ * it visually pops out from the weekend / month / overrun overlays.
+ */
+function drawTodayMarker(): void {
+  const svg = containerRef.value?.querySelector('svg');
+  if (!svg || !chart) return;
+  const ganttStart = getGanttStart();
+  const ganttEnd = getGanttEnd();
+  if (!ganttStart || !ganttEnd) return;
+  const today = todayUtc();
+  if (today.getTime() < ganttStart.getTime() || today.getTime() > ganttEnd.getTime()) {
+    // Today is outside the rendered range - nothing to draw.
+    svg.querySelectorAll('.today-marker').forEach((el) => el.remove());
+    return;
+  }
+  const cw = getColumnWidth();
+  const ONE_DAY = 86_400_000;
+  const dayOffset = Math.round((today.getTime() - ganttStart.getTime()) / ONE_DAY);
+  const colLeftX = dayOffset * cw;
+  const colCenterX = colLeftX + cw / 2;
+
+  const heightAttr = svg.getAttribute('height');
+  const totalHeight = heightAttr ? Number(heightAttr) : 400;
+
+  svg.querySelectorAll('.today-marker').forEach((el) => el.remove());
+
+  const group = document.createElementNS(SVG_NS, 'g');
+  group.setAttribute('class', 'today-marker');
+  group.setAttribute('pointer-events', 'none');
+
+  // Faint column tint that goes the full chart height (over the weekend band
+  // but under bars), so the column itself reads as 'today' from any zoom level.
+  const tint = document.createElementNS(SVG_NS, 'rect');
+  tint.setAttribute('x', String(colLeftX));
+  tint.setAttribute('y', '0');
+  tint.setAttribute('width', String(cw));
+  tint.setAttribute('height', String(totalHeight));
+  tint.setAttribute('fill', '#fde68a'); // warm amber
+  tint.setAttribute('opacity', '0.45');
+  group.appendChild(tint);
+
+  // Solid vertical line down the centre of today's column.
+  const line = document.createElementNS(SVG_NS, 'line');
+  line.setAttribute('x1', String(colCenterX));
+  line.setAttribute('x2', String(colCenterX));
+  line.setAttribute('y1', '0');
+  line.setAttribute('y2', String(totalHeight));
+  line.setAttribute('stroke', '#d97706'); // amber-600
+  line.setAttribute('stroke-width', '1.8');
+  group.appendChild(line);
+
+  // Small '今日' badge anchored at the very top of the column.
+  const padX = 4;
+  const padY = 2;
+  const labelText = '今日';
+  const approxLabelWidth = labelText.length * 11 + padX * 2; // rough width budget
+  const labelH = 16;
+  const badgeRect = document.createElementNS(SVG_NS, 'rect');
+  badgeRect.setAttribute('x', String(colCenterX - approxLabelWidth / 2));
+  badgeRect.setAttribute('y', '1');
+  badgeRect.setAttribute('width', String(approxLabelWidth));
+  badgeRect.setAttribute('height', String(labelH));
+  badgeRect.setAttribute('rx', '4');
+  badgeRect.setAttribute('fill', '#d97706');
+  group.appendChild(badgeRect);
+  const label = document.createElementNS(SVG_NS, 'text');
+  label.setAttribute('x', String(colCenterX));
+  label.setAttribute('y', String(1 + padY + 11));
+  label.setAttribute('text-anchor', 'middle');
+  label.setAttribute('font-size', '11');
+  label.setAttribute('font-weight', '700');
+  label.setAttribute('fill', '#ffffff');
+  label.textContent = labelText;
+  group.appendChild(label);
+
+  svg.appendChild(group);
 }
 
 /**
