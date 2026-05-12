@@ -570,12 +570,20 @@ onBeforeUnmount(() => {
   /* No top padding so the SVG header lines up exactly with the table's
      group-head + col-head stack. Side / bottom padding kept for breathing room. */
   padding: 0 0.5rem 0.5rem 0.5rem;
-  height: 100%;
-  overflow: auto;
+  /* Horizontal scroll stays inside the wrapper for the wide date axis.
+     Vertical scroll is owned by the outer .split-viewport so the left
+     table and right gantt stay in lockstep. */
+  overflow-x: auto;
+  overflow-y: visible;
 }
 .gantt-container {
-  height: 100%;
   min-height: 200px;
+}
+/* Frappe Gantt creates a nested .gantt-container with overflow:auto on
+   both axes. Force its vertical to visible so the outer split-viewport
+   owns the scroll. */
+.gantt-container :deep(.gantt-container) {
+  overflow-y: visible !important;
 }
 .gantt-container :deep(.empty) {
   color: #6b7280;

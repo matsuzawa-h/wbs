@@ -479,40 +479,40 @@ function back(): void {
     <p v-else-if="tasks.items.length === 0" class="muted">
       まだタスクがありません。右上の「+ 大項目」から追加してください。
     </p>
-    <div
-      v-else
-      ref="splitRef"
-      class="split"
-      :style="{ gridTemplateColumns: `${leftWidth}px 6px minmax(280px, 1fr)` }"
-    >
-      <div class="pane left" ref="leftPaneRef" aria-label="task list">
-        <TaskTable
-          :tasks="visibleTasks"
-          :assignees="assignees.items"
-          :collapsed-ids="collapsedIds"
-          :child-count-by-parent="childCountByParent"
-          :visibility="visibility"
-          @reorder="onReorder"
-          @update="onUpdate"
-          @add-child="onAddChild"
-          @remove="onRemove"
-          @toggle-collapse="toggleCollapse"
-        />
-      </div>
+    <div v-else class="split-viewport" ref="splitRef">
       <div
-        class="splitter"
-        role="separator"
-        aria-orientation="vertical"
-        :aria-valuenow="leftWidth"
-        title="ドラッグして左右の幅を変更"
-        @mousedown="onSplitterMouseDown"
-      ></div>
-      <div class="pane right" ref="rightPaneRef" aria-label="gantt chart">
-        <GanttChart
-          :tasks="visibleTasks"
-          @date-change="onChartDateChange"
-          @progress-change="onChartProgressChange"
-        />
+        class="split"
+        :style="{ gridTemplateColumns: `${leftWidth}px 6px minmax(280px, 1fr)` }"
+      >
+        <div class="pane left" ref="leftPaneRef" aria-label="task list">
+          <TaskTable
+            :tasks="visibleTasks"
+            :assignees="assignees.items"
+            :collapsed-ids="collapsedIds"
+            :child-count-by-parent="childCountByParent"
+            :visibility="visibility"
+            @reorder="onReorder"
+            @update="onUpdate"
+            @add-child="onAddChild"
+            @remove="onRemove"
+            @toggle-collapse="toggleCollapse"
+          />
+        </div>
+        <div
+          class="splitter"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-valuenow="leftWidth"
+          title="ドラッグして左右の幅を変更"
+          @mousedown="onSplitterMouseDown"
+        ></div>
+        <div class="pane right" ref="rightPaneRef" aria-label="gantt chart">
+          <GanttChart
+            :tasks="visibleTasks"
+            @date-change="onChartDateChange"
+            @progress-change="onChartProgressChange"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -581,18 +581,25 @@ function back(): void {
   border-radius: 999px;
   font-size: 0.8rem;
 }
+/* Single viewport that owns vertical scroll for both panes. The .split
+   inside grows to whatever its tallest pane needs, so scrolling here
+   moves the table and the gantt together. */
+.split-viewport {
+  height: calc(100vh - 220px);
+  min-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 .split {
   display: grid;
   /* grid-template-columns is set inline by leftWidth ref */
   gap: 0;
-  align-items: stretch;
-  height: calc(100vh - 220px);
-  min-height: 360px;
+  align-items: start;
 }
 .pane {
   min-width: 0;
-  overflow: auto;
-  height: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 .splitter {
   width: 6px;
