@@ -42,7 +42,7 @@ const gridTemplate = computed<string>(() => {
     parts.push(DATE_COL, DATE_COL); // actual start / end
     if (props.visibility.hours) parts.push('56px'); // actual hours
   }
-  parts.push('50px', '84px'); // progress / assignee
+  parts.push('72px', '84px'); // progress / assignee
   if (props.visibility.status) parts.push('84px');
   parts.push('122px'); // actions
   return parts.join(' ');

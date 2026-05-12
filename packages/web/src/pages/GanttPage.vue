@@ -43,7 +43,7 @@ const visibility = ref<ColumnVisibility>(initialVisibility);
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
   const needed = (() => {
-    let w = 20 + 22 + 30 + 160 + 115 + 42 + 115 + 50 + 84 + 122 + 28;
+    let w = 20 + 22 + 30 + 160 + 115 + 42 + 115 + 72 + 84 + 122 + 28;
     if (initialVisibility.hours) w += 56;
     if (initialVisibility.actual) {
       w += 115 + 115;
@@ -66,7 +66,7 @@ function requiredTableWidth(v: ColumnVisibility): number {
     w += 115 + 115;
     if (v.hours) w += 56;
   }
-  w += 50 + 84; // progress / assignee
+  w += 72 + 84; // progress / assignee
   if (v.status) w += 84;
   w += 122; // actions
   // Account for grid gaps (~0.2rem each) + pane padding / border.
