@@ -90,6 +90,7 @@ function render(): void {
 
   // Frappe Gantt does some async layout; defer customizations a tick.
   requestAnimationFrame(() => {
+    trimSvgHeight();
     drawMonthBands();
     highlightWeekends();
     drawMonthBoundaries();
@@ -97,6 +98,30 @@ function render(): void {
     attachBarTooltips();
     applyJapaneseLabels();
   });
+}
+
+/**
+ * Frappe Gantt leaves a generous bottom margin under the last bar (and
+ * sometimes pads the SVG height further than the row count strictly
+ * requires). Trim the SVG height to header + N rows + a small tail so the
+ * gantt pane doesn't introduce visible dead space underneath the data.
+ */
+function trimSvgHeight(): void {
+  const svg = containerRef.value?.querySelector<SVGSVGElement>('svg');
+  if (!svg || !chart) return;
+  const opts = (chart as unknown as {
+    options: { header_height: number; padding: number; bar_height: number };
+  }).options;
+  const taskCount = props.tasks.filter((t) => t.startDate && t.endDate).length;
+  if (taskCount === 0) return;
+  const header = opts.header_height ?? 48;
+  const padding = opts.padding ?? 16;
+  const barHeight = opts.bar_height ?? 24;
+  // Last bar bottom is at: header + padding + (taskCount-1) * (bar_height + padding) + bar_height
+  //                      = header + taskCount * (bar_height + padding)
+  // Add 4px tail so the bar's rounded corners aren't clipped.
+  const targetHeight = header + taskCount * (barHeight + padding) + 4;
+  svg.setAttribute('height', String(targetHeight));
 }
 
 function parseDate(value: string): Date {
