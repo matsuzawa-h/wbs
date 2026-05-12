@@ -16,9 +16,13 @@ export class DateCascadeService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
   /**
-   * Shift subsequent leaf tasks (level=3) whose startDate is on or after `prevEndDate`,
-   * by `deltaBusinessDays` business days. Then recompute aggregate dates for ancestors.
-   * Must be invoked inside the same transaction as the originating update.
+   * Shift subsequent leaf tasks (level=3) that share the SAME parent (= same
+   * 中項目) and come after `sourceTask` by `deltaBusinessDays` business days,
+   * but only those whose startDate is on or after `prevEndDate`. Then recompute
+   * aggregate dates for ancestors. Must run inside the originating transaction.
+   *
+   * Scoping the cascade to siblings keeps unrelated work (other 中項目) from
+   * jumping around when a single item is adjusted.
    */
   cascadeAfterChange(
     projectId: number,
@@ -31,10 +35,23 @@ export class DateCascadeService {
       return;
     }
 
+    // Cascade only kicks in for level-3 tasks, which always have a parent.
+    // Guard against unexpected callers anyway.
+    if (sourceTask.parentId === null) {
+      this.recomputeAllAncestors(projectId);
+      return;
+    }
+
     const successors = this.db
       .select()
       .from(wbsTasks)
-      .where(and(eq(wbsTasks.projectId, projectId), gt(wbsTasks.sortOrder, sourceTask.sortOrder)))
+      .where(
+        and(
+          eq(wbsTasks.projectId, projectId),
+          eq(wbsTasks.parentId, sourceTask.parentId),
+          gt(wbsTasks.sortOrder, sourceTask.sortOrder),
+        ),
+      )
       .all()
       .filter((t) => t.level === 3 && t.id !== sourceTask.id);
 

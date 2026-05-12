@@ -40,6 +40,16 @@ const initialVisibility = (() => {
 })();
 const visibility = ref<ColumnVisibility>(initialVisibility);
 
+const STORAGE_KEY_CASCADE = 'wbs.gantt.cascade';
+// Default ON — preserves "edit one task, schedule shifts" behaviour out of the box.
+const cascadeEnabled = ref<boolean>(
+  window.localStorage.getItem(STORAGE_KEY_CASCADE) !== '0',
+);
+function toggleCascade(): void {
+  cascadeEnabled.value = !cascadeEnabled.value;
+  window.localStorage.setItem(STORAGE_KEY_CASCADE, cascadeEnabled.value ? '1' : '0');
+}
+
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
   const needed = (() => {
@@ -243,6 +253,7 @@ async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {
   if (patch.progress !== undefined) allowed.progress = patch.progress;
   if (patch.assigneeId !== undefined) allowed.assigneeId = patch.assigneeId;
   if (patch.status !== undefined) allowed.status = patch.status;
+  if (!cascadeEnabled.value) allowed.cascade = false;
   await tasks.update(id, allowed);
 }
 
@@ -307,7 +318,12 @@ async function onChartDateChange(taskId: number, start: string, end: string): Pr
   const startDate = start;
   const duration = businessDaysBetween(start, end);
   if (duration < 1) return;
-  await tasks.update(taskId, { startDate, duration });
+  const patch: { startDate: string; duration: number; cascade?: boolean } = {
+    startDate,
+    duration,
+  };
+  if (!cascadeEnabled.value) patch.cascade = false;
+  await tasks.update(taskId, patch);
 }
 
 async function onChartProgressChange(taskId: number, progress: number): Promise<void> {
@@ -348,6 +364,16 @@ function back(): void {
         <span v-else class="muted">プロジェクト #{{ projectId }}</span>
       </h2>
       <div class="actions">
+        <button
+          class="btn pill cascade"
+          :class="{ active: cascadeEnabled }"
+          type="button"
+          :title="cascadeEnabled
+            ? '連動 ON: 予定日を変えると同じ中項目の後続タスクも自動でシフトします。クリックで OFF。'
+            : '連動 OFF: 予定日を変えてもこのタスクだけ更新されます。クリックで ON。'"
+          @click="toggleCascade"
+        >{{ cascadeEnabled ? '🔗 連動 ON' : '🔓 連動 OFF' }}</button>
+        <span class="action-sep" aria-hidden="true">│</span>
         <span class="action-sep">列:</span>
         <button
           class="btn pill"
@@ -467,6 +493,15 @@ function back(): void {
   background: #1e3a8a;
   color: #fff;
   border-color: #1e3a8a;
+}
+.btn.pill.cascade.active {
+  background: #166534;
+  border-color: #166534;
+}
+.btn.pill.cascade:not(.active) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
 }
 .assignee-row {
   display: flex;

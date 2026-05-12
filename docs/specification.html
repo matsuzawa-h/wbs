@@ -374,7 +374,7 @@
     <tr><td>GET</td><td>/api/projects/:id/tasks</td><td>配下のタスク全件（sortOrder 昇順）</td><td>200 / 404</td></tr>
     <tr><td>POST</td><td>/api/projects/:id/tasks</td><td>タスク追加（階層バリデーション）</td><td>201 / 400 / 404</td></tr>
     <tr><td>GET</td><td>/api/tasks/:id</td><td>1 件取得</td><td>200 / 404</td></tr>
-    <tr><td>PATCH</td><td>/api/tasks/:id</td><td>更新（level=3 の日付変更でカスケード発火）</td><td>200 / 400 / 404</td></tr>
+    <tr><td>PATCH</td><td>/api/tasks/:id</td><td>更新（level=3 の日付変更でカスケード発火 / <code>cascade: false</code> で抑止可能）</td><td>200 / 400 / 404</td></tr>
     <tr><td>DELETE</td><td>/api/tasks/:id</td><td>削除 + 集約再計算</td><td>204 / 404</td></tr>
     <tr><td>PUT</td><td>/api/tasks/reorder</td><td>並べ替え <code>{ items: [{ id, sortOrder }] }</code></td><td>200 / 400</td></tr>
     <tr><td>GET</td><td>/api/assignees</td><td>担当者一覧</td><td>200 OK</td></tr>
@@ -412,11 +412,18 @@
 <h3>カスケード動作</h3>
 <ol>
   <li>level=3 タスク T の <code>startDate</code> または <code>duration</code> が変更され、<code>endDate</code> が平日換算で <code>delta</code> 日（正負どちらも許容）だけずれる。</li>
-  <li>同一プロジェクトで <code>sortOrder &gt; T.sortOrder</code> かつ <code>level=3</code> のタスクのうち、<code>startDate &gt;= T の元 endDate</code> を満たすものを抽出。</li>
+  <li><strong>同じ親（中項目）配下の</strong> level=3 タスクで、かつ <code>sortOrder &gt; T.sortOrder</code> かつ <code>startDate &gt;= T の元 endDate</code> を満たすものだけを抽出。他の中項目配下のタスクは動かさない。</li>
   <li>抽出された各タスクの <code>startDate</code> を <code>addBusinessDays(start, +delta)</code> でシフトし、<code>endDate</code> も再計算。</li>
   <li>影響を受けた集約行（level=1 と level=2）を「子の最小開始日 / 最大終了日」で再集計（<code>duration</code> も再計算）。</li>
   <li>すべて単一 <code>db.transaction()</code> 内で完了させる。</li>
 </ol>
+
+<h4>連動シフトの無効化（UI 側のトグル）</h4>
+<p>
+ヘッダーの「🔗 連動 ON / 🔓 連動 OFF」トグルで、ユーザーは編集時のカスケードを一時的に無効化できる。
+OFF にした状態で予定日を変更すると、その 1 タスクだけが書き換わり、同じ中項目の後続タスクは影響を受けない。
+内部的には PATCH <code>/api/tasks/:id</code> に <code>cascade: false</code> を付与している。設定は localStorage に保存される。
+</p>
 
 <blockquote>
   例: 金曜開始 + 期間 3 平日 → 終了日は翌週火曜。<br>

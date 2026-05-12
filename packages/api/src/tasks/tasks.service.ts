@@ -135,12 +135,15 @@ export class TasksService {
         .returning()
         .get();
 
-      // Date cascade fires only when the planned end date changes.
-      // Editing actual dates or hours just recomputes ancestor aggregates,
-      // it never shifts subsequent tasks.
+      // Date cascade fires only when:
+      //   - the planned end date changes on a level-3 task, AND
+      //   - the caller did NOT pass cascade=false (default = true).
+      // When cascade is disabled we still recompute ancestors, but sibling
+      // tasks under the same 中項目 are left alone.
       const plannedEndChanged =
         current.level === 3 && prevEndDate && newEndDate && prevEndDate !== newEndDate;
-      if (plannedEndChanged) {
+      const cascadeRequested = dto.cascade !== false;
+      if (plannedEndChanged && cascadeRequested) {
         const delta = this.cascade.computeDelta(prevEndDate, newEndDate);
         this.cascade.cascadeAfterChange(current.projectId, row, prevEndDate, delta);
       } else {

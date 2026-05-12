@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsInt,
   IsNumber,
   IsOptional,
@@ -61,4 +62,13 @@ export class UpdateTaskDto {
   @IsString()
   @MaxLength(100)
   status?: string;
+
+  /**
+   * When false, an end-date change on a level-3 task only writes that single
+   * row (and recomputes its ancestors) — sibling tasks under the same 中項目
+   * are NOT shifted. Defaults to true (preserve historical cascade behavior).
+   */
+  @IsOptional()
+  @IsBoolean()
+  cascade?: boolean;
 }

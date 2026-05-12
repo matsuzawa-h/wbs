@@ -29,6 +29,8 @@ export interface UpdateTaskInput {
   progress?: number;
   assigneeId?: number | null;
   status?: string;
+  /** When false, sibling tasks under the same parent are NOT shifted. */
+  cascade?: boolean;
 }
 
 export const useTasksStore = defineStore('tasks', () => {
