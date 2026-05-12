@@ -361,6 +361,8 @@ function onStatusChange(task: WbsTask, e: Event): void {
             <input
               type="text"
               :value="element.name"
+              :data-task-name="element.id"
+              placeholder="（名称未入力）"
               @change="(e) => onNameInput(element, e)"
             />
           </div>

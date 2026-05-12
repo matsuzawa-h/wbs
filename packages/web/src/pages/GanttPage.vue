@@ -442,30 +442,27 @@ function collapseAll(): void {
 }
 
 async function addTopLevel(): Promise<void> {
-  const name = window.prompt('大項目名を入力してください');
-  if (!name) return;
-  await tasks.create({ level: 1, name: name.trim() });
+  const created = await tasks.create({ level: 1, name: '' });
+  focusNameAfterCreate(created?.id);
 }
 
 async function onAddChild(parent: WbsTask | null, level: 1 | 2 | 3): Promise<void> {
   if (!parent) return;
-  const label = level === 2 ? '中項目' : '項目';
-  const name = window.prompt(`${label}名を入力してください`);
-  if (!name) return;
+  let created;
   if (level === 3) {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
-    await tasks.create({
+    created = await tasks.create({
       level: 3,
       parentId: parent.id,
-      name: name.trim(),
+      name: '',
       startDate: `${yyyy}-${mm}-${dd}`,
       duration: 1,
     });
   } else {
-    await tasks.create({ level: 2, parentId: parent.id, name: name.trim() });
+    created = await tasks.create({ level: 2, parentId: parent.id, name: '' });
   }
   // Auto-expand parent when adding a child to it.
   if (collapsedIds.value.has(parent.id)) {
@@ -473,6 +470,23 @@ async function onAddChild(parent: WbsTask | null, level: 1 | 2 | 3): Promise<voi
     next.delete(parent.id);
     collapsedIds.value = next;
   }
+  focusNameAfterCreate(created?.id);
+}
+
+// Move keyboard focus to the freshly-created row's name field so the user
+// can start typing immediately — supports the "add many rows quickly" flow.
+function focusNameAfterCreate(taskId: number | undefined): void {
+  if (!taskId) return;
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>(
+      `input[data-task-name="${taskId}"]`,
+    );
+    if (el) {
+      el.focus();
+      el.select();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 }
 
 async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {

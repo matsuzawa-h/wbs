@@ -1,6 +1,5 @@
 import {
   IsInt,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -20,8 +19,10 @@ export class CreateTaskDto {
   @IsInt()
   parentId?: number | null;
 
+  // Name may be empty: the UI inserts a row first and lets the user type
+  // the name inline. Multiple users want to add several rows in a row
+  // without being interrupted by a name prompt.
   @IsString()
-  @IsNotEmpty()
   @MaxLength(500)
   name!: string;
 
