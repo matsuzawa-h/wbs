@@ -43,8 +43,10 @@ const gridTemplate = computed<string>(() => {
     if (props.visibility.hours) parts.push('56px'); // actual hours
   }
   parts.push('72px', '84px'); // progress / assignee
-  if (props.visibility.status) parts.push('84px');
-  parts.push('122px'); // actions
+  // 状態 (status) absorbs leftover space when shown so the status input
+  // can stretch to fill the row instead of leaving a dead gap before actions.
+  if (props.visibility.status) parts.push('minmax(84px, 1fr)');
+  parts.push('108px'); // actions (fits 削除 alone, or ＋中/＋項 + 削除)
   return parts.join(' ');
 });
 
@@ -475,7 +477,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .col-actions {
   display: flex;
   gap: 0.3rem;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 .col-actions .btn {
   padding: 0.2rem 0.45rem;
