@@ -1,14 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, asc, eq, gt } from 'drizzle-orm';
 import { AppDb, wbsTasks, WbsTask } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import {
-  addBusinessDays,
   businessDaysBetween,
   computeEndDate,
   formatDate,
+  nextBusinessDay,
   parseDate,
-  snapToBusinessDay,
 } from './business-day.util';
 
 @Injectable()
@@ -16,13 +15,19 @@ export class DateCascadeService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
   /**
-   * Shift subsequent leaf tasks (level=3) that share the SAME parent (= same
-   * 中項目) and come after `sourceTask` by `deltaBusinessDays` business days,
-   * but only those whose startDate is on or after `prevEndDate`. Then recompute
-   * aggregate dates for ancestors. Must run inside the originating transaction.
+   * Chain-style cascade for level-3 tasks under the SAME parent (中項目).
+   * Walks siblings in sortOrder ASC and only shifts each one when it would
+   * either overlap with the running chain end OR was originally contiguous
+   * (連日) to the previous task in the chain. The walk stops as soon as a
+   * gap is detected — independent tasks downstream stay put.
    *
-   * Scoping the cascade to siblings keeps unrelated work (other 中項目) from
-   * jumping around when a single item is adjusted.
+   *   A:  [-----]            (prevEnd=Thu)
+   *   B:           [---]      starts Fri → consecutive → shift with A
+   *   C:                  [--] starts 1 week later → gap → STOP, C untouched
+   *
+   * If the user really wants to drag every successor unconditionally, they
+   * can do per-task edits; if they want NO cascade at all, the 連動 toggle
+   * on the page passes cascade=false and we never get here.
    */
   cascadeAfterChange(
     projectId: number,
@@ -34,15 +39,13 @@ export class DateCascadeService {
       this.recomputeAncestors(projectId, sourceTask.parentId ?? null);
       return;
     }
-
-    // Cascade only kicks in for level-3 tasks, which always have a parent.
-    // Guard against unexpected callers anyway.
-    if (sourceTask.parentId === null) {
+    // Cascade only kicks in for level-3 tasks (which always have a parent).
+    if (sourceTask.parentId === null || !sourceTask.endDate) {
       this.recomputeAllAncestors(projectId);
       return;
     }
 
-    const successors = this.db
+    const siblings = this.db
       .select()
       .from(wbsTasks)
       .where(
@@ -52,25 +55,47 @@ export class DateCascadeService {
           gt(wbsTasks.sortOrder, sourceTask.sortOrder),
         ),
       )
+      .orderBy(asc(wbsTasks.sortOrder), asc(wbsTasks.id))
       .all()
       .filter((t) => t.level === 3 && t.id !== sourceTask.id);
 
-    const prevEnd = parseDate(prevEndDate);
+    // Chain state: prevOriginalEnd is the original end of the most recent
+    // task we processed (start with the source's original end); refEndNew
+    // is its post-shift end (start with the source's new end).
+    let prevOriginalEnd = parseDate(prevEndDate);
+    let refEndNew = parseDate(sourceTask.endDate);
 
-    for (const task of successors) {
-      if (!task.startDate || !task.duration) continue;
-      const start = parseDate(task.startDate);
-      if (start.getTime() < prevEnd.getTime()) continue;
+    for (const b of siblings) {
+      if (!b.startDate || !b.duration) continue;
+      const bStart = parseDate(b.startDate);
 
-      const newStart = snapToBusinessDay(addBusinessDays(start, deltaBusinessDays));
+      // 連日 (back-to-back): b's original start lands on or before the next
+      // business day after the previous task's original end.
+      const consecutiveBoundary = nextBusinessDay(prevOriginalEnd);
+      const wasContiguous = bStart.getTime() <= consecutiveBoundary.getTime();
+      // 重なり (overlap): b would now start before / on the chain's new end.
+      const wouldOverlap = bStart.getTime() <= refEndNew.getTime();
+
+      if (!wasContiguous && !wouldOverlap) {
+        // A gap exists and the new schedule does not consume it — stop here.
+        break;
+      }
+
+      // Shift b to start the next business day after the chain's new end.
+      const newStart = nextBusinessDay(refEndNew);
       const newStartStr = formatDate(newStart);
-      const newEndStr = computeEndDate(newStartStr, task.duration);
+      const newEndStr = computeEndDate(newStartStr, b.duration);
 
       this.db
         .update(wbsTasks)
         .set({ startDate: newStartStr, endDate: newEndStr })
-        .where(eq(wbsTasks.id, task.id))
+        .where(eq(wbsTasks.id, b.id))
         .run();
+
+      // Advance the chain. Use the task's ORIGINAL end for the next
+      // contiguity check, and its NEW end for the next overlap check.
+      prevOriginalEnd = b.endDate ? parseDate(b.endDate) : prevOriginalEnd;
+      refEndNew = parseDate(newEndStr);
     }
 
     this.recomputeAllAncestors(projectId);

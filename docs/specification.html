@@ -409,14 +409,27 @@
 <h3>終了日の算出</h3>
 <p><code>endDate = addBusinessDays(startDate, duration - 1)</code>。終了日は <strong>inclusive</strong>（duration=1 は同日終了）。</p>
 
-<h3>カスケード動作</h3>
+<h3>カスケード動作（チェーン伝播）</h3>
+<p>
+カスケードは「重なる」または「連日（直後に始まる作業）」のときだけ伝播し、ギャップがあるタスクで停止します。一律に全部シフトしません。
+</p>
 <ol>
-  <li>level=3 タスク T の <code>startDate</code> または <code>duration</code> が変更され、<code>endDate</code> が平日換算で <code>delta</code> 日（正負どちらも許容）だけずれる。</li>
-  <li><strong>同じ親（中項目）配下の</strong> level=3 タスクで、かつ <code>sortOrder &gt; T.sortOrder</code> かつ <code>startDate &gt;= T の元 endDate</code> を満たすものだけを抽出。他の中項目配下のタスクは動かさない。</li>
-  <li>抽出された各タスクの <code>startDate</code> を <code>addBusinessDays(start, +delta)</code> でシフトし、<code>endDate</code> も再計算。</li>
-  <li>影響を受けた集約行（level=1 と level=2）を「子の最小開始日 / 最大終了日」で再集計（<code>duration</code> も再計算）。</li>
-  <li>すべて単一 <code>db.transaction()</code> 内で完了させる。</li>
+  <li>level=3 タスク T の <code>startDate</code> または <code>duration</code> が変更され、<code>endDate</code> が変動。</li>
+  <li><strong>同じ親（中項目）配下</strong>かつ <code>sortOrder &gt; T.sortOrder</code> の level=3 タスクを <code>sortOrder</code> 昇順で取得（他の中項目配下は対象外）。</li>
+  <li>各タスク B について、次のいずれかを満たすときだけシフト：
+    <ul>
+      <li><strong>連日（contiguous）</strong>: B の <code>startDate</code> ≤ <em>直前タスクの元 endDate の翌営業日</em>（チェーン内で直接続いていた）</li>
+      <li><strong>重なる（overlap）</strong>: B の <code>startDate</code> ≤ <em>チェーンの新しい endDate</em>（押された結果ぶつかる）</li>
+    </ul>
+    どちらにも当てはまらなければ <strong>ギャップあり</strong>と判断してチェーンを停止。以降は触らない。
+  </li>
+  <li>シフト先は <code>nextBusinessDay(チェーンの新しい endDate)</code>。期間（<code>duration</code>）は維持して <code>endDate</code> を再計算。</li>
+  <li>影響を受けた集約行（level=1 と level=2）を「子の最小開始日 / 最大終了日」で再集計。</li>
+  <li>すべて単一 <code>db.transaction()</code> 内で完了。</li>
 </ol>
+<blockquote>
+  例: A=月〜水、B=木（連日）、C=翌々週月（ギャップあり）の場合。A を金まで伸ばすと B は土日越えで来週月〜火にシフト、C は触らない。
+</blockquote>
 
 <h4>連動シフトの無効化（UI 側のトグル）</h4>
 <p>
