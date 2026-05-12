@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
 import { useAssigneesStore } from '@/stores/assignees';
 import { useProjectsStore } from '@/stores/projects';
+import { useHolidaysStore } from '@/stores/holidays';
 import TaskTable from '@/components/TaskTable.vue';
 import GanttChart from '@/components/GanttChart.vue';
 import type { WbsTask } from '@/types';
@@ -14,6 +15,7 @@ const props = defineProps<{ projectId: number }>();
 const tasks = useTasksStore();
 const assignees = useAssigneesStore();
 const projects = useProjectsStore();
+const holidays = useHolidaysStore();
 const router = useRouter();
 
 const newAssigneeName = ref('');
@@ -357,6 +359,7 @@ onMounted(async () => {
     tasks.fetchByProject(props.projectId),
     assignees.fetchAll(),
     projects.fetchAll(),
+    holidays.fetchAll(),
   ]);
 });
 
@@ -642,6 +645,8 @@ function back(): void {
         <div class="pane right" ref="rightPaneRef" aria-label="gantt chart">
           <GanttChart
             :tasks="visibleTasks"
+            :holiday-dates="holidays.dateSet"
+            :holiday-names="holidays.dateNameMap"
             @date-change="onChartDateChange"
             @progress-change="onChartProgressChange"
           />

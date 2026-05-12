@@ -12,13 +12,19 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReorderTasksDto } from './dto/reorder-tasks.dto';
 import { DateCascadeService } from './date-cascade.service';
 import { computeEndDate } from './business-day.util';
+import { HolidaysService } from '../holidays/holidays.service';
 
 @Injectable()
 export class TasksService {
   constructor(
     @Inject(DB_TOKEN) private readonly db: AppDb,
     private readonly cascade: DateCascadeService,
+    private readonly holidaysService: HolidaysService,
   ) {}
+
+  private holidays(): Set<string> {
+    return this.holidaysService.getHolidaySet();
+  }
 
   listByProject(projectId: number): WbsTask[] {
     this.ensureProjectExists(projectId);
@@ -51,7 +57,7 @@ export class TasksService {
 
     let endDate: string | null = null;
     if (dto.level === 3 && dto.startDate && dto.duration) {
-      endDate = computeEndDate(dto.startDate, dto.duration);
+      endDate = computeEndDate(dto.startDate, dto.duration, this.holidays());
     }
 
     const inserted = this.db.transaction((tx) => {
@@ -108,7 +114,7 @@ export class TasksService {
       const prevEndDate = current.endDate;
       const newEndDate =
         current.level === 3 && newStart && newDuration
-          ? computeEndDate(newStart, newDuration)
+          ? computeEndDate(newStart, newDuration, this.holidays())
           : current.endDate;
 
       const row = tx

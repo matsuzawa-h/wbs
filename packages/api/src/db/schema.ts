@@ -54,3 +54,21 @@ export type NewAssignee = typeof assignees.$inferInsert;
 
 export type WbsTask = typeof wbsTasks.$inferSelect;
 export type NewWbsTask = typeof wbsTasks.$inferInsert;
+
+export const holidays = sqliteTable(
+  'holidays',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    date: text('date').notNull().unique(),
+    name: text('name'),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    dateIdx: index('idx_holidays_date').on(table.date),
+  }),
+);
+
+export type Holiday = typeof holidays.$inferSelect;
+export type NewHoliday = typeof holidays.$inferInsert;

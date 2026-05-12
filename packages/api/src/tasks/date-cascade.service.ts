@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt } from 'drizzle-orm';
 import { AppDb, wbsTasks, WbsTask } from '../db';
 import { DB_TOKEN } from '../db/db.module';
+import { HolidaysService } from '../holidays/holidays.service';
 import {
   businessDaysBetween,
   computeEndDate,
@@ -12,7 +13,14 @@ import {
 
 @Injectable()
 export class DateCascadeService {
-  constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
+  constructor(
+    @Inject(DB_TOKEN) private readonly db: AppDb,
+    private readonly holidaysService: HolidaysService,
+  ) {}
+
+  private holidays(): Set<string> {
+    return this.holidaysService.getHolidaySet();
+  }
 
   /**
    * Chain-style cascade for level-3 tasks under the SAME parent (中項目).
@@ -45,6 +53,7 @@ export class DateCascadeService {
       return;
     }
 
+    const holidays = this.holidays();
     const siblings = this.db
       .select()
       .from(wbsTasks)
@@ -59,9 +68,6 @@ export class DateCascadeService {
       .all()
       .filter((t) => t.level === 3 && t.id !== sourceTask.id);
 
-    // Chain state: prevOriginalEnd is the original end of the most recent
-    // task we processed (start with the source's original end); refEndNew
-    // is its post-shift end (start with the source's new end).
     let prevOriginalEnd = parseDate(prevEndDate);
     let refEndNew = parseDate(sourceTask.endDate);
 
@@ -69,22 +75,17 @@ export class DateCascadeService {
       if (!b.startDate || !b.duration) continue;
       const bStart = parseDate(b.startDate);
 
-      // 連日 (back-to-back): b's original start lands on or before the next
-      // business day after the previous task's original end.
-      const consecutiveBoundary = nextBusinessDay(prevOriginalEnd);
+      const consecutiveBoundary = nextBusinessDay(prevOriginalEnd, holidays);
       const wasContiguous = bStart.getTime() <= consecutiveBoundary.getTime();
-      // 重なり (overlap): b would now start before / on the chain's new end.
       const wouldOverlap = bStart.getTime() <= refEndNew.getTime();
 
       if (!wasContiguous && !wouldOverlap) {
-        // A gap exists and the new schedule does not consume it — stop here.
         break;
       }
 
-      // Shift b to start the next business day after the chain's new end.
-      const newStart = nextBusinessDay(refEndNew);
+      const newStart = nextBusinessDay(refEndNew, holidays);
       const newStartStr = formatDate(newStart);
-      const newEndStr = computeEndDate(newStartStr, b.duration);
+      const newEndStr = computeEndDate(newStartStr, b.duration, holidays);
 
       this.db
         .update(wbsTasks)
@@ -92,8 +93,6 @@ export class DateCascadeService {
         .where(eq(wbsTasks.id, b.id))
         .run();
 
-      // Advance the chain. Use the task's ORIGINAL end for the next
-      // contiguity check, and its NEW end for the next overlap check.
       prevOriginalEnd = b.endDate ? parseDate(b.endDate) : prevOriginalEnd;
       refEndNew = parseDate(newEndStr);
     }
@@ -181,7 +180,7 @@ export class DateCascadeService {
     if (children.length > 0 && starts.length > 0 && ends.length > 0) {
       plannedStart = starts.reduce((a, b) => (a < b ? a : b));
       plannedEnd = ends.reduce((a, b) => (a > b ? a : b));
-      plannedDuration = businessDaysBetween(parseDate(plannedStart), parseDate(plannedEnd));
+      plannedDuration = businessDaysBetween(parseDate(plannedStart), parseDate(plannedEnd), this.holidays());
     }
 
     // Aggregate actual start: "min of any child with a value" — once any
@@ -252,9 +251,10 @@ export class DateCascadeService {
     const prev = parseDate(prevEndDate);
     const next = parseDate(newEndDate);
     if (prev.getTime() === next.getTime()) return 0;
+    const h = this.holidays();
     if (next.getTime() > prev.getTime()) {
-      return businessDaysBetween(prev, next) - 1;
+      return businessDaysBetween(prev, next, h) - 1;
     }
-    return -(businessDaysBetween(next, prev) - 1);
+    return -(businessDaysBetween(next, prev, h) - 1);
   }
 }

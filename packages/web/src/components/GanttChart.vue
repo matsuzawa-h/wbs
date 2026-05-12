@@ -5,6 +5,10 @@ import type { WbsTask } from '@/types';
 
 const props = defineProps<{
   tasks: WbsTask[];
+  /** Holiday dates as YYYY-MM-DD strings; treated the same as Sundays in the chart. */
+  holidayDates?: Set<string>;
+  /** Optional name lookup for the holiday tooltip / label. */
+  holidayNames?: Map<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -588,15 +592,23 @@ function applyJapaneseLabels(): void {
   const ganttStart = getGanttStart();
   if (!ganttStart) return;
   const cw = getColumnWidth();
+  const ONE_DAY = 86_400_000;
+  const holidaySet = props.holidayDates ?? new Set<string>();
   svg.querySelectorAll<SVGTextElement>('.lower-text').forEach((t) => {
     const orig = (t.textContent ?? '').trim();
     const dow = inferDow(t, ganttStart, cw);
     if (dow === null) return;
+    const xAttr = t.getAttribute('x');
+    const x = xAttr ? Number(xAttr) : 0;
+    const idx = Math.max(0, Math.round((x - cw / 2) / cw));
+    const date = new Date(ganttStart.getTime() + idx * ONE_DAY);
+    const iso = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    const isHoliday = holidaySet.has(iso);
     // Strip any previously-applied label so re-renders don't double up.
-    const dayNumber = orig.replace(/[\s()日月火水木金土]+$/g, '');
+    const dayNumber = orig.replace(/[\s()日月火水木金土祝]+$/g, '');
     t.textContent = `${dayNumber}(${DOW_JA[dow]})`;
-    // Color the weekday label for weekends
-    if (dow === 0) t.setAttribute('fill', '#b91c1c');
+    // Color: holidays and Sundays red; Saturdays blue; otherwise default.
+    if (isHoliday || dow === 0) t.setAttribute('fill', '#b91c1c');
     else if (dow === 6) t.setAttribute('fill', '#1d4ed8');
     else t.removeAttribute('fill');
   });
@@ -630,19 +642,30 @@ function highlightWeekends(): void {
   overlayGroup.setAttribute('class', 'weekend-overlay');
   overlayGroup.setAttribute('pointer-events', 'none');
 
+  const holidaySet = props.holidayDates ?? new Set<string>();
   for (let i = 0; i < totalDays; i++) {
     const date = new Date(ganttStart.getTime() + i * ONE_DAY);
     const dow = date.getDay();
-    if (dow === 0 || dow === 6) {
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const isHoliday = holidaySet.has(iso);
+    if (dow === 0 || dow === 6 || isHoliday) {
       const rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('x', String(i * cw));
       rect.setAttribute('y', String(headerHeight));
       rect.setAttribute('width', String(cw));
       rect.setAttribute('height', String(bodyHeight));
-      // Sunday tinted red-pink, Saturday blue
-      rect.setAttribute('fill', dow === 0 ? '#fecaca' : '#bfdbfe');
+      // Holidays and Sundays use the same red-pink; Saturdays stay blue.
+      // (Holiday + Saturday combo prefers the holiday red so it stands out.)
+      const fill = dow === 6 && !isHoliday ? '#bfdbfe' : '#fecaca';
+      rect.setAttribute('fill', fill);
       rect.setAttribute('opacity', '0.35');
       overlayGroup.appendChild(rect);
+      if (isHoliday) {
+        const name = props.holidayNames?.get(iso);
+        const titleEl = document.createElementNS(SVG_NS, 'title');
+        titleEl.textContent = name ? `${iso} ${name}` : `${iso} 休日`;
+        rect.appendChild(titleEl);
+      }
     }
   }
 

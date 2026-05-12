@@ -10,6 +10,13 @@ export interface Assignee {
   isActive: number;
 }
 
+export interface Holiday {
+  id: number;
+  date: string; // YYYY-MM-DD
+  name: string | null;
+  createdAt: number;
+}
+
 export interface WbsTask {
   id: number;
   projectId: number;

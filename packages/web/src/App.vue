@@ -8,6 +8,10 @@ import { RouterView, RouterLink } from 'vue-router';
       <h1>
         <RouterLink to="/">WBS Web</RouterLink>
       </h1>
+      <nav class="app-nav">
+        <RouterLink to="/" class="nav-link" exact-active-class="active">プロジェクト</RouterLink>
+        <RouterLink to="/holidays" class="nav-link" active-class="active">休日設定</RouterLink>
+      </nav>
     </header>
     <main class="app-main">
       <RouterView />
@@ -26,6 +30,9 @@ import { RouterView, RouterLink } from 'vue-router';
   color: #f9fafb;
   padding: 0.75rem 1.25rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
 }
 .app-header h1 {
   font-size: 1.1rem;
@@ -35,6 +42,24 @@ import { RouterView, RouterLink } from 'vue-router';
 .app-header a {
   color: inherit;
   text-decoration: none;
+}
+.app-nav {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+}
+.app-nav .nav-link {
+  color: #cbd5e1;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+}
+.app-nav .nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+.app-nav .nav-link.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
 }
 .app-main {
   flex: 1;
