@@ -178,8 +178,10 @@ function extractMessage(e: unknown): string | null {
 }
 
 const groupedByYear = computed(() => {
-  const map = new Map<string, typeof holidays.items.value>();
-  for (const h of holidays.items.value) {
+  // Pinia setup-store state is auto-unwrapped, so holidays.items is the array
+  // directly, NOT a ref — don't use .value here.
+  const map = new Map<string, typeof holidays.items>();
+  for (const h of holidays.items) {
     const y = h.date.slice(0, 4);
     const arr = map.get(y) ?? [];
     arr.push(h);
