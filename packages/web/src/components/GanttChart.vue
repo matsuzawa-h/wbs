@@ -90,9 +90,121 @@ function render(): void {
 
   // Frappe Gantt does some async layout; defer customizations a tick.
   requestAnimationFrame(() => {
-    applyJapaneseLabels();
+    drawMonthBands();
     highlightWeekends();
+    drawMonthBoundaries();
+    applyJapaneseLabels();
   });
+}
+
+function drawMonthBands(): void {
+  const svg = containerRef.value?.querySelector('svg');
+  if (!svg || !chart) return;
+  const ganttStart = getGanttStart();
+  const ganttEnd = getGanttEnd();
+  if (!ganttStart || !ganttEnd) return;
+
+  const cw = getColumnWidth();
+  const gridBg = svg.querySelector<SVGRectElement>('.grid-background');
+  const totalHeight = gridBg ? Number(gridBg.getAttribute('height')) : 400;
+  const ONE_DAY = 86_400_000;
+  const totalDays = Math.round((ganttEnd.getTime() - ganttStart.getTime()) / ONE_DAY) + 1;
+
+  svg.querySelectorAll('.month-band').forEach((el) => el.remove());
+
+  const group = document.createElementNS(SVG_NS, 'g');
+  group.setAttribute('class', 'month-band');
+  group.setAttribute('pointer-events', 'none');
+
+  let segStart = 0;
+  let currentMonth = ganttStart.getMonth();
+  let bandIndex = 0;
+
+  const flushBand = (endIdx: number): void => {
+    // Tint every other month so adjacent months read as distinct stripes.
+    const fill = bandIndex % 2 === 0 ? '#ffffff' : '#e0e7ff';
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', String(segStart * cw));
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', String((endIdx - segStart) * cw));
+    rect.setAttribute('height', String(totalHeight));
+    rect.setAttribute('fill', fill);
+    rect.setAttribute('opacity', '0.55');
+    group.appendChild(rect);
+  };
+
+  for (let i = 1; i < totalDays; i++) {
+    const date = new Date(ganttStart.getTime() + i * ONE_DAY);
+    if (date.getMonth() !== currentMonth) {
+      flushBand(i);
+      segStart = i;
+      currentMonth = date.getMonth();
+      bandIndex++;
+    }
+  }
+  flushBand(totalDays);
+
+  const gridGroup = svg.querySelector('g.grid');
+  if (gridGroup) {
+    // Insert at the start of grid so weekend / today / bars sit on top.
+    gridGroup.insertBefore(group, gridGroup.firstChild?.nextSibling ?? null);
+  } else {
+    svg.insertBefore(group, svg.firstChild);
+  }
+}
+
+function drawMonthBoundaries(): void {
+  const svg = containerRef.value?.querySelector('svg');
+  if (!svg || !chart) return;
+  const ganttStart = getGanttStart();
+  const ganttEnd = getGanttEnd();
+  if (!ganttStart || !ganttEnd) return;
+
+  const cw = getColumnWidth();
+  const gridBg = svg.querySelector<SVGRectElement>('.grid-background');
+  const totalHeight = gridBg ? Number(gridBg.getAttribute('height')) : 400;
+  const ONE_DAY = 86_400_000;
+  const totalDays = Math.round((ganttEnd.getTime() - ganttStart.getTime()) / ONE_DAY) + 1;
+
+  svg.querySelectorAll('.month-boundary').forEach((el) => el.remove());
+
+  const group = document.createElementNS(SVG_NS, 'g');
+  group.setAttribute('class', 'month-boundary');
+  group.setAttribute('pointer-events', 'none');
+
+  for (let i = 1; i < totalDays; i++) {
+    const date = new Date(ganttStart.getTime() + i * ONE_DAY);
+    if (date.getDate() === 1) {
+      const x = i * cw;
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', String(x));
+      line.setAttribute('x2', String(x));
+      line.setAttribute('y1', '0');
+      line.setAttribute('y2', String(totalHeight));
+      line.setAttribute('stroke', '#1e293b');
+      line.setAttribute('stroke-width', '2.5');
+      group.appendChild(line);
+
+      // Place a duplicate month-label badge just to the right of the line so users
+      // see which month they're entering even when the chart-level upper-text is
+      // scrolled off-screen.
+      const label = document.createElementNS(SVG_NS, 'text');
+      label.setAttribute('x', String(x + 6));
+      label.setAttribute('y', '18');
+      label.setAttribute('font-size', '12');
+      label.setAttribute('font-weight', '700');
+      label.setAttribute('fill', '#1e293b');
+      label.textContent = `${date.getMonth() + 1}月`;
+      group.appendChild(label);
+    }
+  }
+
+  const gridGroup = svg.querySelector('g.grid');
+  if (gridGroup) {
+    gridGroup.appendChild(group);
+  } else {
+    svg.appendChild(group);
+  }
 }
 
 function applyJapaneseLabels(): void {
