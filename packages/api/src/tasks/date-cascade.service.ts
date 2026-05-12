@@ -62,6 +62,9 @@ export class DateCascadeService {
   /**
    * Recompute startDate/endDate for all aggregate (level 1, 2) rows in this project.
    * Aggregate.start = min(child.start), Aggregate.end = max(child.end).
+   *
+   * Two-pass: level=2 first, then level=1. The in-memory byParent map is
+   * patched after each level-2 update so the level-1 pass sees fresh values.
    */
   recomputeAllAncestors(projectId: number): void {
     const all = this.db
@@ -80,7 +83,8 @@ export class DateCascadeService {
 
     const mid = all.filter((t) => t.level === 2);
     for (const m of mid) {
-      this.applyAggregate(m, byParent.get(m.id) ?? []);
+      const updated = this.applyAggregate(m, byParent.get(m.id) ?? []);
+      this.patchSibling(byParent, updated);
     }
 
     const top = all.filter((t) => t.level === 1);
@@ -110,19 +114,28 @@ export class DateCascadeService {
     while (currentId !== null) {
       const node = all.find((t) => t.id === currentId);
       if (!node) break;
-      this.applyAggregate(node, byParent.get(node.id) ?? []);
+      const updated = this.applyAggregate(node, byParent.get(node.id) ?? []);
+      this.patchSibling(byParent, updated);
       currentId = node.parentId ?? null;
     }
   }
 
-  private applyAggregate(node: WbsTask, children: WbsTask[]): void {
+  private patchSibling(byParent: Map<number, WbsTask[]>, updated: WbsTask): void {
+    const key = updated.parentId ?? 0;
+    const siblings = byParent.get(key);
+    if (!siblings) return;
+    const idx = siblings.findIndex((s) => s.id === updated.id);
+    if (idx >= 0) siblings[idx] = updated;
+  }
+
+  private applyAggregate(node: WbsTask, children: WbsTask[]): WbsTask {
     if (children.length === 0) {
       this.db
         .update(wbsTasks)
         .set({ startDate: null, endDate: null, duration: null })
         .where(eq(wbsTasks.id, node.id))
         .run();
-      return;
+      return { ...node, startDate: null, endDate: null, duration: null };
     }
     const starts = children.map((c) => c.startDate).filter((s): s is string => !!s);
     const ends = children.map((c) => c.endDate).filter((e): e is string => !!e);
@@ -132,7 +145,7 @@ export class DateCascadeService {
         .set({ startDate: null, endDate: null, duration: null })
         .where(eq(wbsTasks.id, node.id))
         .run();
-      return;
+      return { ...node, startDate: null, endDate: null, duration: null };
     }
     const minStart = starts.reduce((a, b) => (a < b ? a : b));
     const maxEnd = ends.reduce((a, b) => (a > b ? a : b));
@@ -143,6 +156,7 @@ export class DateCascadeService {
       .set({ startDate: minStart, endDate: maxEnd, duration })
       .where(eq(wbsTasks.id, node.id))
       .run();
+    return { ...node, startDate: minStart, endDate: maxEnd, duration };
   }
 
   /**
