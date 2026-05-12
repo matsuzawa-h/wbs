@@ -5,6 +5,7 @@ import { useTasksStore } from '@/stores/tasks';
 import { useAssigneesStore } from '@/stores/assignees';
 import { useProjectsStore } from '@/stores/projects';
 import TaskTable from '@/components/TaskTable.vue';
+import GanttChart from '@/components/GanttChart.vue';
 import type { WbsTask } from '@/types';
 
 const props = defineProps<{ projectId: number }>();
@@ -91,6 +92,41 @@ async function onAddAssignee(): Promise<void> {
   newAssigneeName.value = '';
 }
 
+// Frappe Gantt drag/resize -> compute duration from start+end and update server.
+// Only level-3 tasks accept date edits; the API will return 400 for aggregates.
+async function onChartDateChange(taskId: number, start: string, end: string): Promise<void> {
+  const task = tasks.items.find((t) => t.id === taskId);
+  if (!task || task.level !== 3) return;
+  const startDate = start;
+  const duration = businessDaysBetween(start, end);
+  if (duration < 1) return;
+  await tasks.update(taskId, { startDate, duration });
+}
+
+async function onChartProgressChange(taskId: number, progress: number): Promise<void> {
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  await tasks.update(taskId, { progress: clamped });
+}
+
+function businessDaysBetween(startISO: string, endISO: string): number {
+  const start = parseIso(startISO);
+  const end = parseIso(endISO);
+  if (start > end) return 0;
+  let count = 0;
+  const cursor = new Date(start.getTime());
+  while (cursor.getTime() <= end.getTime()) {
+    const dow = cursor.getUTCDay();
+    if (dow !== 0 && dow !== 6) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
+function parseIso(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+}
+
 function back(): void {
   router.push({ name: 'projects' });
 }
@@ -126,15 +162,21 @@ function back(): void {
     <p v-else-if="tasks.items.length === 0" class="muted">
       まだタスクがありません。右上の「+ 大項目」から追加してください。
     </p>
-    <TaskTable
-      v-else
-      :tasks="tasks.items"
-      :assignees="assignees.items"
-      @reorder="onReorder"
-      @update="onUpdate"
-      @add-child="onAddChild"
-      @remove="onRemove"
-    />
+    <template v-else>
+      <GanttChart
+        :tasks="tasks.items"
+        @date-change="onChartDateChange"
+        @progress-change="onChartProgressChange"
+      />
+      <TaskTable
+        :tasks="tasks.items"
+        :assignees="assignees.items"
+        @reorder="onReorder"
+        @update="onUpdate"
+        @add-child="onAddChild"
+        @remove="onRemove"
+      />
+    </template>
   </div>
 </template>
 
