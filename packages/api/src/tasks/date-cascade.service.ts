@@ -184,17 +184,26 @@ export class DateCascadeService {
       plannedDuration = businessDaysBetween(parseDate(plannedStart), parseDate(plannedEnd));
     }
 
-    // Aggregate actual start/end (independent: any child with values contributes).
+    // Aggregate actual start: "min of any child with a value" — once any
+    // child has started, the rollup has started.
     const actualStarts = children
       .map((c) => c.actualStartDate)
       .filter((s): s is string => !!s);
+    const actualStart =
+      actualStarts.length > 0 ? actualStarts.reduce((a, b) => (a < b ? a : b)) : null;
+
+    // Aggregate actual end: "all-or-nothing". Only marks the rollup as
+    // finished when EVERY child has its actualEndDate set, so a 大/中 row
+    // stays '実行中' until the last leaf is done.
     const actualEnds = children
       .map((c) => c.actualEndDate)
       .filter((e): e is string => !!e);
-    const actualStart =
-      actualStarts.length > 0 ? actualStarts.reduce((a, b) => (a < b ? a : b)) : null;
+    const everyChildComplete =
+      children.length > 0 && children.every((c) => !!c.actualEndDate);
     const actualEnd =
-      actualEnds.length > 0 ? actualEnds.reduce((a, b) => (a > b ? a : b)) : null;
+      everyChildComplete && actualEnds.length > 0
+        ? actualEnds.reduce((a, b) => (a > b ? a : b))
+        : null;
 
     // Aggregate hours: sum non-null children. If no child has a value, leave null.
     const plannedHourValues = children

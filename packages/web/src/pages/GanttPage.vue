@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computeStatus, STATUS_BUCKETS, todayUtc } from '@/utils/status';
 import { useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
 import { useAssigneesStore } from '@/stores/assignees';
@@ -60,38 +61,35 @@ const hasActiveFilters = computed(
 );
 
 // Filter option lists for the popovers
-const filterOptions = computed(() => {
-  const statusSet = new Set<string>();
-  for (const t of tasks.items) {
-    if (t.status) statusSet.add(t.status);
-  }
-  return {
-    levels: [
-      { value: 1, label: '大項目' },
-      { value: 2, label: '中項目' },
-      { value: 3, label: '項目' },
-    ],
-    assigneeIds: [
-      { value: null as FilterValue, label: '未割当' },
-      ...assignees.items.map((a) => ({ value: a.id as FilterValue, label: a.name })),
-    ],
-    statuses: Array.from(statusSet)
-      .sort()
-      .map((s) => ({ value: s as FilterValue, label: s })),
-  };
-});
+const filterOptions = computed(() => ({
+  levels: [
+    { value: 1, label: '大項目' },
+    { value: 2, label: '中項目' },
+    { value: 3, label: '項目' },
+  ],
+  assigneeIds: [
+    { value: null as FilterValue, label: '未割当' },
+    ...assignees.items.map((a) => ({ value: a.id as FilterValue, label: a.name })),
+  ],
+  // Fixed set of computed status buckets, not free-text values.
+  statuses: STATUS_BUCKETS.map((b) => ({ value: b.bucket as FilterValue, label: b.label })),
+}));
 
 // Compute matched task ids (those that pass every active filter)
 const matchedTaskIds = computed<Set<number> | null>(() => {
   if (!hasActiveFilters.value) return null;
   const f = filters.value;
   const needle = f.name.trim().toLowerCase();
+  const todayD = todayUtc();
   const matched = new Set<number>();
   for (const t of tasks.items) {
     if (needle && !t.name.toLowerCase().includes(needle)) continue;
     if (f.levels !== null && !f.levels.has(t.level)) continue;
     if (f.assigneeIds !== null && !f.assigneeIds.has(t.assigneeId)) continue;
-    if (f.statuses !== null && !f.statuses.has(t.status)) continue;
+    if (f.statuses !== null) {
+      const bucket = computeStatus(t, todayD).bucket as FilterValue;
+      if (!f.statuses.has(bucket)) continue;
+    }
     matched.add(t.id);
   }
   return matched;

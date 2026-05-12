@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import draggable from 'vuedraggable';
 import type { WbsTask, Assignee } from '@/types';
 import ColumnFilter, { type FilterOption } from './ColumnFilter.vue';
+import { computeStatus } from '@/utils/status';
 
 interface ColumnVisibility {
   hours: boolean;
@@ -437,11 +438,17 @@ function onStatusChange(task: WbsTask, e: Event): void {
             </select>
           </div>
           <div v-if="visibility.status" class="col-status">
-            <input
-              type="text"
-              :value="element.status"
-              @change="(e) => onStatusChange(element, e)"
-            />
+            <span
+              :class="['status-badge', computeStatus(element).className]"
+              :title="`${computeStatus(element).label}${
+                computeStatus(element).extended ? ` (${computeStatus(element).extended})` : ''
+              }`"
+            >
+              <span class="status-label">{{ computeStatus(element).label }}</span>
+              <span v-if="computeStatus(element).extended" class="status-extended">
+                {{ computeStatus(element).extended }}
+              </span>
+            </span>
           </div>
           <div class="col-actions grp-start">
             <button
@@ -608,6 +615,52 @@ function onStatusChange(task: WbsTask, e: Event): void {
   color: #6b7280;
   display: inline-block;
   padding: 0 0.2rem;
+}
+/* Status badge (computed: 完了 / 実行中 / 遅延中 / 着手遅れ / 未着手) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.status-badge .status-label {
+  flex-shrink: 0;
+}
+.status-badge .status-extended {
+  font-weight: 500;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+.status-completed-late {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.status-in-progress {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+.status-overdue {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.status-late-start {
+  background: #ffedd5;
+  color: #9a3412;
+}
+.status-not-started {
+  background: #f3f4f6;
+  color: #4b5563;
 }
 .col-actions {
   display: flex;
