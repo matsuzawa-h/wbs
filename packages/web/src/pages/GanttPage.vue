@@ -19,14 +19,9 @@ const newAssigneeName = ref('');
 const collapsedIds = ref<Set<number>>(new Set());
 
 const STORAGE_KEY_WIDTH = 'wbs.gantt.leftWidth';
-const initialWidth = (() => {
-  const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
-  return Number.isFinite(stored) && stored >= 400 ? stored : 700;
-})();
-const leftWidth = ref<number>(initialWidth);
-
 const STORAGE_KEY_VIS = 'wbs.gantt.visibility';
 type ColumnVisibility = { hours: boolean; actual: boolean; status: boolean };
+
 const initialVisibility = (() => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_VIS);
@@ -45,9 +40,50 @@ const initialVisibility = (() => {
 })();
 const visibility = ref<ColumnVisibility>(initialVisibility);
 
+const initialWidth = (() => {
+  const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
+  const needed = (() => {
+    let w = 20 + 22 + 30 + 160 + 115 + 42 + 115 + 50 + 84 + 122 + 28;
+    if (initialVisibility.hours) w += 56;
+    if (initialVisibility.actual) {
+      w += 115 + 115;
+      if (initialVisibility.hours) w += 56;
+    }
+    if (initialVisibility.status) w += 84;
+    return w;
+  })();
+  const fromStorage = Number.isFinite(stored) && stored >= 400 ? stored : 700;
+  return Math.max(fromStorage, needed);
+})();
+const leftWidth = ref<number>(initialWidth);
+
+function requiredTableWidth(v: ColumnVisibility): number {
+  // Mirrors the column widths defined in TaskTable.gridTemplate, plus gaps + pane padding.
+  let w = 20 + 22 + 30 + 160; // meta block (name has minmax(150,1.4fr) - reserve 160)
+  w += 115 + 42 + 115; // planned start / dur / end
+  if (v.hours) w += 56;
+  if (v.actual) {
+    w += 115 + 115;
+    if (v.hours) w += 56;
+  }
+  w += 50 + 84; // progress / assignee
+  if (v.status) w += 84;
+  w += 122; // actions
+  // Account for grid gaps (~0.2rem each) + pane padding / border.
+  return w + 28;
+}
+
 function toggleVisibility(key: keyof ColumnVisibility): void {
   visibility.value = { ...visibility.value, [key]: !visibility.value[key] };
   window.localStorage.setItem(STORAGE_KEY_VIS, JSON.stringify(visibility.value));
+  // Auto-widen the left pane if the new column set won't fit.
+  const needed = requiredTableWidth(visibility.value);
+  const maxX = window.innerWidth - 320;
+  const target = Math.min(needed, maxX);
+  if (leftWidth.value < target) {
+    leftWidth.value = target;
+    window.localStorage.setItem(STORAGE_KEY_WIDTH, String(target));
+  }
 }
 
 function onSplitterMouseDown(event: MouseEvent): void {

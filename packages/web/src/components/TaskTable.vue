@@ -31,12 +31,15 @@ const draggableModel = computed({
 });
 
 const gridTemplate = computed<string>(() => {
+  // Date columns wide enough to show full 'YYYY/MM/DD' input including the
+  // calendar icon (~115px) without truncation.
+  const DATE_COL = '115px';
   const parts: string[] = ['20px', '22px', '30px', 'minmax(150px, 1.4fr)'];
   // Planned columns (always: start / dur / end)
-  parts.push('92px', '42px', '92px');
+  parts.push(DATE_COL, '42px', DATE_COL);
   if (props.visibility.hours) parts.push('56px'); // planned hours
   if (props.visibility.actual) {
-    parts.push('92px', '92px'); // actual start / end
+    parts.push(DATE_COL, DATE_COL); // actual start / end
     if (props.visibility.hours) parts.push('56px'); // actual hours
   }
   parts.push('50px', '84px'); // progress / assignee
