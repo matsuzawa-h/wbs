@@ -594,7 +594,9 @@ function back(): void {
   display: grid;
   /* grid-template-columns is set inline by leftWidth ref */
   gap: 0;
-  align-items: start;
+  /* stretch so the splitter (which has no own height) fills the row height
+     defined by the taller pane and stays grab-able along the full edge */
+  align-items: stretch;
 }
 .pane {
   min-width: 0;
