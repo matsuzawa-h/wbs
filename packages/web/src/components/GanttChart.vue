@@ -14,6 +14,9 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement | null>(null);
 let chart: Gantt | null = null;
+// True only for the very first successful render so we can center on today
+// once per mount without trampling user scroll on subsequent re-renders.
+let pendingScrollToToday = true;
 
 interface FrappeTask {
   id: string;
@@ -97,7 +100,42 @@ function render(): void {
     drawOverrunBars();
     attachBarTooltips();
     applyJapaneseLabels();
+    if (pendingScrollToToday) {
+      centerOnToday();
+      pendingScrollToToday = false;
+    }
   });
+}
+
+/**
+ * On first render, scroll the gantt's horizontal scroll container so that
+ * today's date sits in the middle of the visible area. Falls back to the
+ * left edge when today's column is so close to the chart start that
+ * centering would underflow.
+ */
+function centerOnToday(): void {
+  if (!containerRef.value || !chart) return;
+  const ganttStart = getGanttStart();
+  if (!ganttStart) return;
+  const cw = getColumnWidth();
+  const today = todayUtc();
+  const dayOffset = Math.round((today.getTime() - ganttStart.getTime()) / 86_400_000);
+  const todayCenterX = dayOffset * cw + cw / 2;
+
+  // Find the descendant element that owns the horizontal scroll. Frappe Gantt
+  // creates a wrapper inside containerRef whose scrollWidth > clientWidth.
+  const scrollEl = findHorizontalScroller(containerRef.value);
+  if (!scrollEl) return;
+  const target = todayCenterX - scrollEl.clientWidth / 2;
+  scrollEl.scrollLeft = Math.max(0, Math.min(target, scrollEl.scrollWidth - scrollEl.clientWidth));
+}
+
+function findHorizontalScroller(root: HTMLElement): HTMLElement | null {
+  if (root.scrollWidth > root.clientWidth) return root;
+  for (const el of root.querySelectorAll<HTMLElement>('*')) {
+    if (el.scrollWidth > el.clientWidth) return el;
+  }
+  return null;
 }
 
 /**
