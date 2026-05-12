@@ -6,9 +6,11 @@ import { useTasksStore } from '@/stores/tasks';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
 import { useHolidaysStore } from '@/stores/holidays';
+import { useProjectMembersStore } from '@/stores/projectMembers';
 import TaskTable from '@/components/TaskTable.vue';
 import GanttChart from '@/components/GanttChart.vue';
-import type { WbsTask } from '@/types';
+import ProjectMembersDialog from '@/components/ProjectMembersDialog.vue';
+import type { Employee, WbsTask } from '@/types';
 
 const props = defineProps<{ projectId: number }>();
 
@@ -16,9 +18,51 @@ const tasks = useTasksStore();
 const assignees = useEmployeesStore();
 const projects = useProjectsStore();
 const holidays = useHolidaysStore();
+const projectMembersStore = useProjectMembersStore();
 const router = useRouter();
 
 const collapsedIds = ref<Set<number>>(new Set());
+const membersDialogOpen = ref(false);
+
+// Members live in projectMembersStore keyed by projectId; resolved per render.
+const projectMembers = computed<Employee[]>(() =>
+  projectMembersStore.membersOf(props.projectId),
+);
+const projectMemberIds = computed<Set<number>>(
+  () => new Set(projectMembers.value.map((m) => m.id)),
+);
+
+// Every employee referenced by at least one task in this project. Used by the
+// members dialog to warn when an assigned employee is being deselected.
+const assignedEmployeeIds = computed<number[]>(() => {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const t of tasks.items) {
+    if (t.assigneeId !== null && t.assigneeId !== undefined && !seen.has(t.assigneeId)) {
+      seen.add(t.assigneeId);
+      out.push(t.assigneeId);
+    }
+  }
+  return out;
+});
+
+// Subset that are NOT currently members — these get the "（メンバー外）" tag in
+// the chip row and dropdown.
+const assignedNonMemberIds = computed<number[]>(() =>
+  assignedEmployeeIds.value.filter((id) => !projectMemberIds.value.has(id)),
+);
+
+// Combined list passed to TaskTable: members first, then orphaned assignees.
+const projectAssignees = computed<Employee[]>(() => {
+  const empById = new Map(assignees.items.map((e) => [e.id, e]));
+  const result: Employee[] = [];
+  for (const m of projectMembers.value) result.push(m);
+  for (const id of assignedNonMemberIds.value) {
+    const e = empById.get(id);
+    if (e) result.push(e);
+  }
+  return result;
+});
 
 // --- Column filters (Excel-style) ---
 type FilterValue = string | number | null;
@@ -70,7 +114,7 @@ const filterOptions = computed(() => ({
   ],
   assigneeIds: [
     { value: null as FilterValue, label: '未割当' },
-    ...assignees.items.map((a) => ({ value: a.id as FilterValue, label: a.name })),
+    ...projectAssignees.value.map((a) => ({ value: a.id as FilterValue, label: a.name })),
   ],
   // Fixed set of computed status buckets, not free-text values.
   statuses: STATUS_BUCKETS.map((b) => ({ value: b.bucket as FilterValue, label: b.label })),
@@ -359,13 +403,22 @@ onMounted(async () => {
     assignees.fetchAll(),
     projects.fetchAll(),
     holidays.fetchAll(),
+    projectMembersStore.fetchMembers(props.projectId),
   ]);
 });
 
 watch(
   () => props.projectId,
-  (id) => tasks.fetchByProject(id),
+  (id) => {
+    tasks.fetchByProject(id);
+    projectMembersStore.fetchMembers(id);
+  },
 );
+
+async function onSaveMembers(employeeIds: number[]): Promise<void> {
+  await projectMembersStore.setMembers(props.projectId, employeeIds);
+  membersDialogOpen.value = false;
+}
 
 function toggleCollapse(id: number): void {
   const next = new Set(collapsedIds.value);
@@ -585,15 +638,24 @@ function back(): void {
     </header>
 
     <section class="assignee-row">
-      <strong>担当者：</strong>
+      <strong>メンバー：</strong>
       <span v-if="assignees.activeItems.length === 0" class="muted">
-        未登録です。
+        社員が未登録です。
         <RouterLink to="/employees" class="link">社員マスタ</RouterLink>
         から登録してください。
       </span>
       <template v-else>
-        <span v-for="a in assignees.activeItems" :key="a.id" class="chip">{{ a.name }}</span>
-        <RouterLink to="/employees" class="link">社員マスタを編集 →</RouterLink>
+        <span v-if="projectMembers.length === 0" class="muted">
+          このプロジェクトのメンバーは未設定です。「メンバー管理」から選択してください。
+        </span>
+        <span v-for="a in projectMembers" :key="a.id" class="chip">{{ a.name }}</span>
+        <span
+          v-for="id in assignedNonMemberIds"
+          :key="`orphan-${id}`"
+          class="chip orphan"
+          title="メンバー外（既存タスクに割当中）"
+        >{{ (assignees.items.find((e) => e.id === id) || { name: '?' }).name }}（メンバー外）</span>
+        <button class="btn small" type="button" @click="membersDialogOpen = true">メンバー管理</button>
       </template>
     </section>
 
@@ -610,7 +672,8 @@ function back(): void {
         <div class="pane left" ref="leftPaneRef" aria-label="task list">
           <TaskTable
             :tasks="visibleTasks"
-            :assignees="assignees.items"
+            :assignees="projectAssignees"
+            :non-member-ids="new Set(assignedNonMemberIds)"
             :collapsed-ids="collapsedIds"
             :child-count-by-parent="childCountByParent"
             :visibility="visibility"
@@ -646,6 +709,16 @@ function back(): void {
         </div>
       </div>
     </div>
+
+    <ProjectMembersDialog
+      :open="membersDialogOpen"
+      :project-name="(projects.items.find((p) => p.id === projectId) || { name: '' }).name"
+      :all-employees="assignees.items"
+      :current-member-ids="projectMembers.map((m) => m.id)"
+      :assigned-employee-ids="assignedEmployeeIds"
+      @close="membersDialogOpen = false"
+      @save="onSaveMembers"
+    />
   </div>
 </template>
 

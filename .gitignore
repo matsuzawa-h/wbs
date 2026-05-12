@@ -38,6 +38,10 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+# Playwright MCP cli artifacts (snapshots/logs)
+.playwright-cli/
+
 # Temp
 *.tmp
 *.temp
+

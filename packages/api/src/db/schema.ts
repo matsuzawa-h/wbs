@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, real, sqliteTable, text, index } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, index, primaryKey } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -93,3 +93,26 @@ export const holidays = sqliteTable(
 
 export type Holiday = typeof holidays.$inferSelect;
 export type NewHoliday = typeof holidays.$inferInsert;
+
+// Which employees should appear in each project's picker. Tasks already
+// assigned to a now-removed member keep their assignee_id (soft removal);
+// the UI shows them tagged "(メンバー外)" and disables new assignments.
+export const projectMembers = sqliteTable(
+  'project_members',
+  {
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => assignees.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.projectId, table.employeeId] }),
+    projectIdx: index('idx_project_members_project').on(table.projectId),
+  }),
+);
+
+export type ProjectMember = typeof projectMembers.$inferSelect;
+export type NewProjectMember = typeof projectMembers.$inferInsert;

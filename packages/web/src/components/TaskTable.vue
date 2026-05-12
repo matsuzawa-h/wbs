@@ -27,12 +27,26 @@ interface FilterOptions {
 const props = defineProps<{
   tasks: WbsTask[];
   assignees: Assignee[];
+  // Employees assigned to tasks but no longer in the project's members list.
+  // Their id remains valid (soft removal), but the dropdown labels them
+  // "(メンバー外)" and shows them at the bottom.
+  nonMemberIds?: Set<number>;
   collapsedIds: Set<number>;
   childCountByParent: Map<number, number>;
   visibility: ColumnVisibility;
   filters: ColumnFilters;
   filterOptions: FilterOptions;
 }>();
+
+const assigneeOptions = computed(() => {
+  const nonMembers = props.nonMemberIds ?? new Set<number>();
+  const members = props.assignees.filter((a) => !nonMembers.has(a.id));
+  const orphans = props.assignees.filter((a) => nonMembers.has(a.id));
+  return [
+    ...members.map((a) => ({ a, suffix: '' })),
+    ...orphans.map((a) => ({ a, suffix: '（メンバー外）' })),
+  ];
+});
 
 const emit = defineEmits<{
   (e: 'reorder', payload: WbsTask[]): void;
@@ -434,7 +448,9 @@ function onStatusChange(task: WbsTask, e: Event): void {
               @change="(e) => onAssigneeChange(element, e)"
             >
               <option value="">未割当</option>
-              <option v-for="a in assignees" :key="a.id" :value="a.id">{{ a.name }}</option>
+              <option v-for="opt in assigneeOptions" :key="opt.a.id" :value="opt.a.id">
+                {{ opt.a.name }}{{ opt.suffix }}
+              </option>
             </select>
           </div>
           <div v-if="visibility.status" class="col-status">

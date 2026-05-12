@@ -9,14 +9,20 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { SetMembersDto } from './dto/set-members.dto';
+import { ProjectMembersService } from './project-members.service';
 import { ProjectsService } from './projects.service';
 
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projects: ProjectsService) {}
+  constructor(
+    private readonly projects: ProjectsService,
+    private readonly members: ProjectMembersService,
+  ) {}
 
   @Get()
   list() {
@@ -42,5 +48,15 @@ export class ProjectsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseIntPipe) id: number): void {
     this.projects.remove(id);
+  }
+
+  @Get(':id/members')
+  listMembers(@Param('id', ParseIntPipe) id: number) {
+    return this.members.listMembers(id);
+  }
+
+  @Put(':id/members')
+  setMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: SetMembersDto) {
+    return this.members.setMembers(id, dto.employeeIds);
   }
 }

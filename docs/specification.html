@@ -351,6 +351,17 @@
 </table>
 <p>インデックス: <code>(project_id)</code>, <code>(parent_id)</code>, <code>(project_id, sort_order)</code>.</p>
 
+<h3><code>project_members</code>（プロジェクト⇔社員 多対多）</h3>
+<table>
+  <thead><tr><th>カラム</th><th>型</th><th>制約 / 用途</th></tr></thead>
+  <tbody>
+    <tr><td>project_id</td><td>INTEGER</td><td>NOT NULL, FK → projects.id (ON DELETE CASCADE)</td></tr>
+    <tr><td>employee_id</td><td>INTEGER</td><td>NOT NULL, FK → assignees.id (ON DELETE CASCADE)</td></tr>
+    <tr><td>sort_order</td><td>INTEGER</td><td>NOT NULL default 0（ダイアログで保存された順）</td></tr>
+  </tbody>
+</table>
+<p>主キー: <code>(project_id, employee_id)</code>。インデックス: <code>(project_id)</code>。</p>
+
 <h4>予定 vs 実績の集約ルール</h4>
 <table>
   <thead><tr><th>項目</th><th>level=3 (項目)</th><th>level=1, 2 (集約)</th></tr></thead>
@@ -392,8 +403,18 @@
     <tr><td>POST</td><td>/api/employees</td><td>追加 <code>{ code?, name, nameKana?, department?, role?, email?, employmentStart?, employmentEnd?, worksOnHolidays?, isActive?, note?, sortOrder? }</code>（code 省略時は E### で自動採番）</td><td>201 / 400 / 409</td></tr>
     <tr><td>PATCH</td><td>/api/employees/:id</td><td>更新（同上、部分指定可）</td><td>200 / 400 / 404 / 409</td></tr>
     <tr><td>DELETE</td><td>/api/employees/:id</td><td>削除（タスクの assignee_id は SET NULL）</td><td>204 / 404</td></tr>
+    <tr><td>GET</td><td>/api/projects/:id/members</td><td>そのプロジェクトのメンバー一覧（Employee 配列、sortOrder 昇順）</td><td>200 / 404</td></tr>
+    <tr><td>PUT</td><td>/api/projects/:id/members</td><td>メンバーを一括差し替え <code>{ employeeIds: number[] }</code></td><td>200 / 400 / 404</td></tr>
   </tbody>
 </table>
+
+<h3>メンバー管理の挙動（ソフト削除）</h3>
+<ul>
+  <li>プロジェクトごとに、ガント画面の「メンバー管理」ダイアログから表示する社員を選択する。</li>
+  <li>メンバー外の社員はタスク行の担当ドロップダウンに出ない。</li>
+  <li>既割当社員をメンバーから外しても <b>タスクの <code>assignee_id</code> は変更されない</b>。担当者バーとドロップダウンで「（メンバー外）」とラベルされ、フィルタ候補にも残る（履歴保持）。</li>
+  <li>メンバー外の社員を担当に新規割当てるには、まずメンバー管理で追加する必要がある。</li>
+</ul>
 
 <h3>主要 DTO（抜粋）</h3>
 <pre><code>POST /api/projects/:id/tasks  Body:
