@@ -9,11 +9,30 @@ export const projects = sqliteTable('projects', {
     .default(sql`(unixepoch())`),
 });
 
-export const assignees = sqliteTable('assignees', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  isActive: integer('is_active').notNull().default(1),
-});
+// Employee master. Table name remains `assignees` so the existing
+// wbs_tasks.assignee_id FK continues to work.
+export const assignees = sqliteTable(
+  'assignees',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code'),
+    name: text('name').notNull(),
+    nameKana: text('name_kana'),
+    department: text('department'),
+    role: text('role'),
+    email: text('email'),
+    employmentStart: text('employment_start'),
+    employmentEnd: text('employment_end'),
+    worksOnHolidays: integer('works_on_holidays').notNull().default(0),
+    isActive: integer('is_active').notNull().default(1),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => ({
+    codeIdx: index('idx_assignees_code').on(table.code),
+    sortIdx: index('idx_assignees_sort').on(table.sortOrder),
+  }),
+);
 
 export const wbsTasks = sqliteTable(
   'wbs_tasks',
@@ -51,6 +70,8 @@ export type NewProject = typeof projects.$inferInsert;
 
 export type Assignee = typeof assignees.$inferSelect;
 export type NewAssignee = typeof assignees.$inferInsert;
+export type Employee = Assignee;
+export type NewEmployee = NewAssignee;
 
 export type WbsTask = typeof wbsTasks.$inferSelect;
 export type NewWbsTask = typeof wbsTasks.$inferInsert;

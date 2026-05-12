@@ -22,6 +22,13 @@
       "when": 1749000000000,
       "tag": "0002_add_holidays",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1750000000000,
+      "tag": "0003_extend_employees",
+      "breakpoints": true
     }
   ]
 }

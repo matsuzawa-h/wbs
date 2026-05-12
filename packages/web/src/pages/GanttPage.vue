@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { computeStatus, STATUS_BUCKETS, todayUtc } from '@/utils/status';
-import { useRouter } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import { useTasksStore } from '@/stores/tasks';
-import { useAssigneesStore } from '@/stores/assignees';
+import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
 import { useHolidaysStore } from '@/stores/holidays';
 import TaskTable from '@/components/TaskTable.vue';
@@ -13,12 +13,11 @@ import type { WbsTask } from '@/types';
 const props = defineProps<{ projectId: number }>();
 
 const tasks = useTasksStore();
-const assignees = useAssigneesStore();
+const assignees = useEmployeesStore();
 const projects = useProjectsStore();
 const holidays = useHolidaysStore();
 const router = useRouter();
 
-const newAssigneeName = ref('');
 const collapsedIds = ref<Set<number>>(new Set());
 
 // --- Column filters (Excel-style) ---
@@ -487,13 +486,6 @@ async function onReorder(visibleNext: WbsTask[]): Promise<void> {
   await tasks.reorder(items);
 }
 
-async function onAddAssignee(): Promise<void> {
-  const name = newAssigneeName.value.trim();
-  if (!name) return;
-  await assignees.create(name);
-  newAssigneeName.value = '';
-}
-
 async function onChartDateChange(taskId: number, start: string, end: string): Promise<void> {
   const task = tasks.items.find((t) => t.id === taskId);
   if (!task || task.level !== 3) return;
@@ -594,14 +586,15 @@ function back(): void {
 
     <section class="assignee-row">
       <strong>担当者：</strong>
-      <span v-for="a in assignees.items" :key="a.id" class="chip">{{ a.name }}</span>
-      <input
-        v-model="newAssigneeName"
-        type="text"
-        placeholder="新規担当者"
-        @keydown.enter.prevent="onAddAssignee"
-      />
-      <button class="btn" type="button" @click="onAddAssignee">追加</button>
+      <span v-if="assignees.activeItems.length === 0" class="muted">
+        未登録です。
+        <RouterLink to="/employees" class="link">社員マスタ</RouterLink>
+        から登録してください。
+      </span>
+      <template v-else>
+        <span v-for="a in assignees.activeItems" :key="a.id" class="chip">{{ a.name }}</span>
+        <RouterLink to="/employees" class="link">社員マスタを編集 →</RouterLink>
+      </template>
     </section>
 
     <p v-if="tasks.loading" class="muted">読込中…</p>

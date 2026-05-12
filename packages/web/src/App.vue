@@ -10,6 +10,7 @@ import { RouterView, RouterLink } from 'vue-router';
       </h1>
       <nav class="app-nav">
         <RouterLink to="/" class="nav-link" exact-active-class="active">プロジェクト</RouterLink>
+        <RouterLink to="/employees" class="nav-link" active-class="active">社員マスタ</RouterLink>
         <RouterLink to="/holidays" class="nav-link" active-class="active">休日設定</RouterLink>
       </nav>
     </header>

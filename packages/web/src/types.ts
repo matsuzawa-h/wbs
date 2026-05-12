@@ -4,10 +4,38 @@ export interface Project {
   createdAt: number;
 }
 
-export interface Assignee {
+export interface Employee {
   id: number;
+  code: string | null;
   name: string;
+  nameKana: string | null;
+  department: string | null;
+  role: string | null;
+  email: string | null;
+  employmentStart: string | null;
+  employmentEnd: string | null;
+  worksOnHolidays: number;
   isActive: number;
+  note: string | null;
+  sortOrder: number;
+}
+
+// Legacy alias retained while call sites still reference "Assignee".
+export type Assignee = Employee;
+
+export interface EmployeeInput {
+  code?: string | null;
+  name: string;
+  nameKana?: string | null;
+  department?: string | null;
+  role?: string | null;
+  email?: string | null;
+  employmentStart?: string | null;
+  employmentEnd?: string | null;
+  worksOnHolidays?: boolean;
+  isActive?: boolean;
+  note?: string | null;
+  sortOrder?: number;
 }
 
 export interface Holiday {

@@ -306,13 +306,24 @@
   </tbody>
 </table>
 
-<h3><code>assignees</code></h3>
+<h3><code>assignees</code>（社員マスタ）</h3>
+<p class="muted">テーブル名は <code>assignees</code> のまま（<code>wbs_tasks.assignee_id</code> FK との後方互換）。エンドポイントは <code>/api/employees</code>。</p>
 <table>
   <thead><tr><th>カラム</th><th>型</th><th>制約 / 用途</th></tr></thead>
   <tbody>
     <tr><td>id</td><td>INTEGER</td><td>PK, AUTOINCREMENT</td></tr>
-    <tr><td>name</td><td>TEXT</td><td>NOT NULL</td></tr>
-    <tr><td>is_active</td><td>INTEGER</td><td>0/1, default 1</td></tr>
+    <tr><td>code</td><td>TEXT</td><td>社員コード（UNIQUE, 空欄で自動採番 E001…）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL 氏名</td></tr>
+    <tr><td>name_kana</td><td>TEXT</td><td>フリガナ（検索用）</td></tr>
+    <tr><td>department</td><td>TEXT</td><td>所属</td></tr>
+    <tr><td>role</td><td>TEXT</td><td>役職</td></tr>
+    <tr><td>email</td><td>TEXT</td><td>メールアドレス</td></tr>
+    <tr><td>employment_start</td><td>TEXT</td><td>在籍開始 YYYY-MM-DD</td></tr>
+    <tr><td>employment_end</td><td>TEXT</td><td>在籍終了 YYYY-MM-DD（退職日）</td></tr>
+    <tr><td>works_on_holidays</td><td>INTEGER</td><td>0/1 default 0（休日出勤あり）</td></tr>
+    <tr><td>is_active</td><td>INTEGER</td><td>0/1 default 1（割当候補に出すか）</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
+    <tr><td>sort_order</td><td>INTEGER</td><td>NOT NULL default 0</td></tr>
   </tbody>
 </table>
 
@@ -377,10 +388,10 @@
     <tr><td>PATCH</td><td>/api/tasks/:id</td><td>更新（level=3 の日付変更でカスケード発火 / <code>cascade: false</code> で抑止可能）</td><td>200 / 400 / 404</td></tr>
     <tr><td>DELETE</td><td>/api/tasks/:id</td><td>削除 + 集約再計算</td><td>204 / 404</td></tr>
     <tr><td>PUT</td><td>/api/tasks/reorder</td><td>並べ替え <code>{ items: [{ id, sortOrder }] }</code></td><td>200 / 400</td></tr>
-    <tr><td>GET</td><td>/api/assignees</td><td>担当者一覧</td><td>200 OK</td></tr>
-    <tr><td>POST</td><td>/api/assignees</td><td>追加 <code>{ name, isActive? }</code></td><td>201 / 400</td></tr>
-    <tr><td>PATCH</td><td>/api/assignees/:id</td><td>更新</td><td>200 / 400 / 404</td></tr>
-    <tr><td>DELETE</td><td>/api/assignees/:id</td><td>削除（タスクの assignee_id は SET NULL）</td><td>204 / 404</td></tr>
+    <tr><td>GET</td><td>/api/employees</td><td>社員一覧（sortOrder, code, id 昇順）</td><td>200 OK</td></tr>
+    <tr><td>POST</td><td>/api/employees</td><td>追加 <code>{ code?, name, nameKana?, department?, role?, email?, employmentStart?, employmentEnd?, worksOnHolidays?, isActive?, note?, sortOrder? }</code>（code 省略時は E### で自動採番）</td><td>201 / 400 / 409</td></tr>
+    <tr><td>PATCH</td><td>/api/employees/:id</td><td>更新（同上、部分指定可）</td><td>200 / 400 / 404 / 409</td></tr>
+    <tr><td>DELETE</td><td>/api/employees/:id</td><td>削除（タスクの assignee_id は SET NULL）</td><td>204 / 404</td></tr>
   </tbody>
 </table>
 
