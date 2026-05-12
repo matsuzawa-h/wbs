@@ -4,6 +4,7 @@ import GanttPage from './pages/GanttPage.vue';
 import HolidayPage from './pages/HolidayPage.vue';
 import EmployeePage from './pages/EmployeePage.vue';
 import AssignmentsPage from './pages/AssignmentsPage.vue';
+import CustomerPage from './pages/CustomerPage.vue';
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'projects', component: ProjectListPage },
@@ -16,6 +17,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/holidays', name: 'holidays', component: HolidayPage },
   { path: '/employees', name: 'employees', component: EmployeePage },
   { path: '/assignments', name: 'assignments', component: AssignmentsPage },
+  { path: '/customers', name: 'customers', component: CustomerPage },
 ];
 
 export const router = createRouter({

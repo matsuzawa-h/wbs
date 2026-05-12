@@ -1,5 +1,34 @@
+export interface Customer {
+  id: number;
+  code: string | null;
+  name: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  address: string | null;
+  isActive: number;
+  note: string | null;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface CustomerInput {
+  code?: string | null;
+  name: string;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  address?: string | null;
+  isActive?: boolean;
+  note?: string | null;
+  sortOrder?: number;
+}
+
 export interface Project {
   id: number;
+  customerId: number | null;
+  customerName: string | null;
+  customerIsActive: number | null;
   name: string;
   createdAt: number;
 }

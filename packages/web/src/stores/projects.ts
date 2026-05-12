@@ -21,8 +21,8 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
-  async function create(name: string): Promise<Project> {
-    const res = await api.post<Project>('/projects', { name });
+  async function create(name: string, customerId: number | null = null): Promise<Project> {
+    const res = await api.post<Project>('/projects', { name, customerId });
     items.value = [...items.value, res.data];
     return res.data;
   }
@@ -38,5 +38,11 @@ export const useProjectsStore = defineStore('projects', () => {
     return res.data;
   }
 
-  return { items, loading, error, fetchAll, create, remove, rename };
+  async function setCustomer(id: number, customerId: number | null): Promise<Project> {
+    const res = await api.patch<Project>(`/projects/${id}`, { customerId });
+    items.value = items.value.map((p) => (p.id === id ? res.data : p));
+    return res.data;
+  }
+
+  return { items, loading, error, fetchAll, create, remove, rename, setCustomer };
 });

@@ -1,13 +1,44 @@
 import { sql } from 'drizzle-orm';
 import { integer, real, sqliteTable, text, index, primaryKey } from 'drizzle-orm/sqlite-core';
 
-export const projects = sqliteTable('projects', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  createdAt: integer('created_at')
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const customers = sqliteTable(
+  'customers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code'),
+    name: text('name').notNull(),
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
+    contactPhone: text('contact_phone'),
+    address: text('address'),
+    isActive: integer('is_active').notNull().default(1),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    sortIdx: index('idx_customers_sort').on(table.sortOrder),
+  }),
+);
+
+export const projects = sqliteTable(
+  'projects',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    customerId: integer('customer_id').references(() => customers.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    customerIdx: index('idx_projects_customer').on(table.customerId),
+  }),
+);
 
 // Employee master. Table name remains `assignees` so the existing
 // wbs_tasks.assignee_id FK continues to work.
@@ -67,6 +98,9 @@ export const wbsTasks = sqliteTable(
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+
+export type Customer = typeof customers.$inferSelect;
+export type NewCustomer = typeof customers.$inferInsert;
 
 export type Assignee = typeof assignees.$inferSelect;
 export type NewAssignee = typeof assignees.$inferInsert;

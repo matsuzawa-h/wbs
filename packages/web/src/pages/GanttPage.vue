@@ -632,7 +632,10 @@ function back(): void {
     <header class="page-header">
       <button class="btn" type="button" @click="back">← プロジェクト一覧</button>
       <h2 class="title">
-        <span v-if="project">{{ project.name }}</span>
+        <template v-if="project">
+          <span v-if="project.customerName" class="customer-tag">{{ project.customerName }}</span>
+          <span>{{ project.name }}</span>
+        </template>
         <span v-else class="muted">プロジェクト #{{ projectId }}</span>
       </h2>
       <div class="actions">
@@ -781,6 +784,18 @@ function back(): void {
   margin: 0;
   flex: 1;
   font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.customer-tag {
+  display: inline-block;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 .actions {
   display: flex;
