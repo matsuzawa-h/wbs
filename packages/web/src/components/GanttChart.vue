@@ -51,7 +51,6 @@ function render(): void {
   chart = new Gantt(containerRef.value, data, {
     view_mode: 'Day',
     date_format: 'YYYY-MM-DD',
-    language: 'ja',
     bar_height: 22,
     padding: 18,
     on_date_change: (task: FrappeTask, start: Date, end: Date) => {

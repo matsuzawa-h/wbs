@@ -16,10 +16,60 @@ const projects = useProjectsStore();
 const router = useRouter();
 
 const newAssigneeName = ref('');
+const collapsedIds = ref<Set<number>>(new Set());
 
 const project = computed(() =>
   projects.items.find((p) => p.id === props.projectId),
 );
+
+const treeOrderedTasks = computed<WbsTask[]>(() => {
+  const byParent = new Map<number, WbsTask[]>();
+  for (const t of tasks.items) {
+    const key = t.parentId ?? 0;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(t);
+  }
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  }
+  const out: WbsTask[] = [];
+  const walk = (parentId: number): void => {
+    for (const t of byParent.get(parentId) ?? []) {
+      out.push(t);
+      walk(t.id);
+    }
+  };
+  walk(0);
+  return out;
+});
+
+const childCountByParent = computed<Map<number, number>>(() => {
+  const m = new Map<number, number>();
+  for (const t of tasks.items) {
+    if (t.parentId !== null) {
+      m.set(t.parentId, (m.get(t.parentId) ?? 0) + 1);
+    }
+  }
+  return m;
+});
+
+const visibleTasks = computed<WbsTask[]>(() => {
+  const collapsed = collapsedIds.value;
+  if (collapsed.size === 0) return treeOrderedTasks.value;
+  const result: WbsTask[] = [];
+  const hiddenAncestors = new Set<number>();
+  for (const t of treeOrderedTasks.value) {
+    if (t.parentId !== null && hiddenAncestors.has(t.parentId)) {
+      hiddenAncestors.add(t.id);
+      continue;
+    }
+    result.push(t);
+    if (collapsed.has(t.id)) {
+      hiddenAncestors.add(t.id);
+    }
+  }
+  return result;
+});
 
 onMounted(async () => {
   await Promise.all([
@@ -33,6 +83,27 @@ watch(
   () => props.projectId,
   (id) => tasks.fetchByProject(id),
 );
+
+function toggleCollapse(id: number): void {
+  const next = new Set(collapsedIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  collapsedIds.value = next;
+}
+
+function expandAll(): void {
+  collapsedIds.value = new Set();
+}
+
+function collapseAll(): void {
+  const next = new Set<number>();
+  for (const t of tasks.items) {
+    if (t.level < 3 && (childCountByParent.value.get(t.id) ?? 0) > 0) {
+      next.add(t.id);
+    }
+  }
+  collapsedIds.value = next;
+}
 
 async function addTopLevel(): Promise<void> {
   const name = window.prompt('大項目名を入力してください');
@@ -60,6 +131,12 @@ async function onAddChild(parent: WbsTask | null, level: 1 | 2 | 3): Promise<voi
   } else {
     await tasks.create({ level: 2, parentId: parent.id, name: name.trim() });
   }
+  // Auto-expand parent when adding a child to it.
+  if (collapsedIds.value.has(parent.id)) {
+    const next = new Set(collapsedIds.value);
+    next.delete(parent.id);
+    collapsedIds.value = next;
+  }
 }
 
 async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {
@@ -80,8 +157,44 @@ async function onRemove(id: number): Promise<void> {
   await tasks.remove(id);
 }
 
-async function onReorder(next: WbsTask[]): Promise<void> {
-  const items = next.map((t, idx) => ({ id: t.id, sortOrder: idx }));
+/**
+ * When DnD reorders the *visible* rows, rebuild the full sortOrder for the project
+ * such that any hidden descendants stay grouped under their (visible) ancestor.
+ */
+async function onReorder(visibleNext: WbsTask[]): Promise<void> {
+  const visibleIds = new Set(visibleNext.map((t) => t.id));
+  const all = tasks.items;
+  const taskById = new Map<number, WbsTask>();
+  for (const t of all) taskById.set(t.id, t);
+
+  const findVisibleAncestor = (taskId: number): number | null => {
+    const t = taskById.get(taskId);
+    if (!t || t.parentId === null) return null;
+    if (visibleIds.has(t.parentId)) return t.parentId;
+    return findVisibleAncestor(t.parentId);
+  };
+
+  const hiddenUnder = new Map<number, WbsTask[]>();
+  for (const t of all) {
+    if (visibleIds.has(t.id)) continue;
+    const ancId = findVisibleAncestor(t.id);
+    if (ancId === null) continue;
+    const arr = hiddenUnder.get(ancId) ?? [];
+    arr.push(t);
+    hiddenUnder.set(ancId, arr);
+  }
+  for (const arr of hiddenUnder.values()) {
+    arr.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  const fullOrder: WbsTask[] = [];
+  for (const v of visibleNext) {
+    fullOrder.push(v);
+    const kids = hiddenUnder.get(v.id) ?? [];
+    fullOrder.push(...kids);
+  }
+
+  const items = fullOrder.map((t, idx) => ({ id: t.id, sortOrder: idx }));
   await tasks.reorder(items);
 }
 
@@ -92,8 +205,6 @@ async function onAddAssignee(): Promise<void> {
   newAssigneeName.value = '';
 }
 
-// Frappe Gantt drag/resize -> compute duration from start+end and update server.
-// Only level-3 tasks accept date edits; the API will return 400 for aggregates.
 async function onChartDateChange(taskId: number, start: string, end: string): Promise<void> {
   const task = tasks.items.find((t) => t.id === taskId);
   if (!task || task.level !== 3) return;
@@ -141,6 +252,8 @@ function back(): void {
         <span v-else class="muted">プロジェクト #{{ projectId }}</span>
       </h2>
       <div class="actions">
+        <button class="btn" type="button" @click="expandAll" title="すべて展開">展開</button>
+        <button class="btn" type="button" @click="collapseAll" title="すべて折りたたみ">折畳</button>
         <button class="btn primary" type="button" @click="addTopLevel">+ 大項目</button>
       </div>
     </header>
@@ -162,21 +275,28 @@ function back(): void {
     <p v-else-if="tasks.items.length === 0" class="muted">
       まだタスクがありません。右上の「+ 大項目」から追加してください。
     </p>
-    <template v-else>
-      <GanttChart
-        :tasks="tasks.items"
-        @date-change="onChartDateChange"
-        @progress-change="onChartProgressChange"
-      />
-      <TaskTable
-        :tasks="tasks.items"
-        :assignees="assignees.items"
-        @reorder="onReorder"
-        @update="onUpdate"
-        @add-child="onAddChild"
-        @remove="onRemove"
-      />
-    </template>
+    <div v-else class="split">
+      <div class="pane left" aria-label="task list">
+        <TaskTable
+          :tasks="visibleTasks"
+          :assignees="assignees.items"
+          :collapsed-ids="collapsedIds"
+          :child-count-by-parent="childCountByParent"
+          @reorder="onReorder"
+          @update="onUpdate"
+          @add-child="onAddChild"
+          @remove="onRemove"
+          @toggle-collapse="toggleCollapse"
+        />
+      </div>
+      <div class="pane right" aria-label="gantt chart">
+        <GanttChart
+          :tasks="visibleTasks"
+          @date-change="onChartDateChange"
+          @progress-change="onChartProgressChange"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -195,6 +315,10 @@ function back(): void {
   flex: 1;
   font-size: 1.1rem;
 }
+.actions {
+  display: flex;
+  gap: 0.4rem;
+}
 .assignee-row {
   display: flex;
   flex-wrap: wrap;
@@ -212,6 +336,21 @@ function back(): void {
   border: 1px solid #c7d2fe;
   border-radius: 999px;
   font-size: 0.8rem;
+}
+.split {
+  display: grid;
+  grid-template-columns: minmax(680px, 1fr) minmax(320px, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+.pane {
+  min-width: 0;
+  overflow-x: auto;
+}
+@media (max-width: 1280px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
 }
 .muted {
   color: #6b7280;

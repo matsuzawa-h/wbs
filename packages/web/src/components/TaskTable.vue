@@ -6,6 +6,8 @@ import type { WbsTask, Assignee } from '@/types';
 const props = defineProps<{
   tasks: WbsTask[];
   assignees: Assignee[];
+  collapsedIds: Set<number>;
+  childCountByParent: Map<number, number>;
 }>();
 
 const emit = defineEmits<{
@@ -13,20 +15,20 @@ const emit = defineEmits<{
   (e: 'update', id: number, patch: Partial<WbsTask>): void;
   (e: 'add-child', parent: WbsTask | null, level: 1 | 2 | 3): void;
   (e: 'remove', id: number): void;
+  (e: 'toggle-collapse', id: number): void;
 }>();
 
-const sorted = computed(() =>
-  [...props.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
-);
-
 const draggableModel = computed({
-  get: () => sorted.value,
+  get: () => props.tasks,
   set: (next: WbsTask[]) => emit('reorder', next),
 });
 
-function assigneeName(id: number | null): string {
-  if (id === null) return '';
-  return props.assignees.find((a) => a.id === id)?.name ?? '';
+function hasChildren(taskId: number): boolean {
+  return (props.childCountByParent.get(taskId) ?? 0) > 0;
+}
+
+function isCollapsed(taskId: number): boolean {
+  return props.collapsedIds.has(taskId);
 }
 
 function levelLabel(level: number): string {
@@ -35,6 +37,14 @@ function levelLabel(level: number): string {
 
 function levelClass(level: number): string {
   return `lvl lvl-${level}`;
+}
+
+function indentStyle(level: number): { paddingLeft: string; borderLeft?: string } {
+  if (level === 1) return { paddingLeft: '0' };
+  return {
+    paddingLeft: `${(level - 1) * 24}px`,
+    borderLeft: `3px solid ${level === 2 ? '#c7d2fe' : '#a7f3d0'}`,
+  };
 }
 
 function onNameInput(task: WbsTask, e: Event): void {
@@ -79,6 +89,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
   <div class="task-table">
     <header class="row head">
       <div class="col-handle"></div>
+      <div class="col-toggle"></div>
       <div class="col-level">階層</div>
       <div class="col-name">項目名</div>
       <div class="col-date">開始日</div>
@@ -101,8 +112,20 @@ function onStatusChange(task: WbsTask, e: Event): void {
       <template #item="{ element }">
         <div class="row body" :class="levelClass(element.level)">
           <div class="col-handle"><span class="handle" aria-label="drag">⋮⋮</span></div>
+          <div class="col-toggle">
+            <button
+              v-if="element.level < 3 && hasChildren(element.id)"
+              class="toggle"
+              type="button"
+              :aria-expanded="!isCollapsed(element.id)"
+              :title="isCollapsed(element.id) ? '展開' : '折りたたむ'"
+              @click="emit('toggle-collapse', element.id)"
+            >
+              {{ isCollapsed(element.id) ? '▶' : '▼' }}
+            </button>
+          </div>
           <div class="col-level">{{ levelLabel(element.level) }}</div>
-          <div class="col-name">
+          <div class="col-name" :style="indentStyle(element.level)">
             <input
               type="text"
               :value="element.name"
@@ -177,7 +200,7 @@ function onStatusChange(task: WbsTask, e: Event): void {
 
 <style scoped>
 .task-table {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -186,16 +209,19 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .row {
   display: grid;
   grid-template-columns:
-    28px 48px minmax(180px, 2fr) 130px 70px 130px 70px 130px 130px 160px;
+    24px 28px 40px minmax(160px, 2fr) 120px 60px 120px 60px 110px 120px 130px;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.5rem;
+  gap: 0.3rem;
+  padding: 0.35rem 0.45rem;
   border-bottom: 1px solid #f3f4f6;
+  min-height: 40px;
 }
 .row.head {
   background: #f9fafb;
   font-weight: 600;
   color: #374151;
+  font-size: 0.8rem;
+  min-height: 32px;
 }
 .row.body input[type='text'],
 .row.body input[type='number'],
@@ -211,10 +237,26 @@ function onStatusChange(task: WbsTask, e: Event): void {
 .col-handle .handle:active {
   cursor: grabbing;
 }
+.col-toggle {
+  display: flex;
+  justify-content: center;
+}
+.col-toggle .toggle {
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  font-size: 0.75rem;
+  padding: 0 0.2rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.col-toggle .toggle:hover {
+  color: #1f2937;
+}
 .col-level {
   text-align: center;
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: #4b5563;
 }
 .lvl-1 {
@@ -235,8 +277,8 @@ function onStatusChange(task: WbsTask, e: Event): void {
   justify-content: flex-end;
 }
 .col-actions .btn {
-  padding: 0.25rem 0.55rem;
-  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
 }
 .drag-ghost {
   opacity: 0.4;
