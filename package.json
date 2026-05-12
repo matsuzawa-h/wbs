@@ -1,0 +1,28 @@
+{
+  "name": "wbs-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web-based WBS / Gantt chart application (NestJS + Vue 3, SQLite, Windows service)",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matsuzawa-h/wbs.git"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @wbs/api start:dev",
+    "dev:web": "pnpm --filter @wbs/web dev",
+    "build": "pnpm --filter @wbs/web build && pnpm --filter @wbs/api build",
+    "build:api": "pnpm --filter @wbs/api build",
+    "build:web": "pnpm --filter @wbs/web build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
