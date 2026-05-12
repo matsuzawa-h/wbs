@@ -1,0 +1,62 @@
+:root {
+  font-family: system-ui, 'Yu Gothic UI', 'Meiryo', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #2563eb;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button.btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+button.btn:hover {
+  background: #f3f4f6;
+}
+button.btn.primary {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+button.btn.primary:hover {
+  background: #1d4ed8;
+}
+button.btn.danger {
+  background: #fff;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+button.btn.danger:hover {
+  background: #fef2f2;
+}
+
+input[type='text'],
+input[type='date'],
+input[type='number'],
+select {
+  font: inherit;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+  background: #fff;
+}
