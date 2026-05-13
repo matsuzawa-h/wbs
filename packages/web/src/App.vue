@@ -14,6 +14,7 @@ import { RouterView, RouterLink } from 'vue-router';
         <RouterLink to="/customers" class="nav-link" active-class="active">顧客マスタ</RouterLink>
         <RouterLink to="/employees" class="nav-link" active-class="active">社員マスタ</RouterLink>
         <RouterLink to="/holidays" class="nav-link" active-class="active">休日設定</RouterLink>
+        <RouterLink to="/downloads" class="nav-link" active-class="active">ダウンロード</RouterLink>
       </nav>
     </header>
     <main class="app-main">

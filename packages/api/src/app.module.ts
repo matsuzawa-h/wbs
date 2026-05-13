@@ -9,6 +9,7 @@ import { CustomersModule } from './customers/customers.module';
 import { McpModule } from './mcp/mcp.module';
 import { ExcelModule } from './excel/excel.module';
 import { ExcelImportModule } from './excel/import/excel-import.module';
+import { DownloadsModule } from './downloads/downloads.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ExcelImportModule } from './excel/import/excel-import.module';
     CustomersModule,
     ExcelModule,
     ExcelImportModule,
+    DownloadsModule,
     McpModule,
   ],
   controllers: [HealthController],
