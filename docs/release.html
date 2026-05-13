@@ -271,6 +271,12 @@ v20.x.x
   <strong>💡 corepack</strong>
   Node.js 16.10 以降に同梱されている公式のパッケージマネージャ管理ツールです。<code>pnpm</code> を別途インストールせずに使えます。
 </div>
+<div class="warn">
+  <strong>⚠ <code>npm.ps1 を読み込むことができません</code> エラーが出る場合</strong>
+  Windows のクリーン環境では PowerShell の ExecutionPolicy が <code>Restricted</code> になっていて、Node.js 同梱の <code>npm.ps1</code> / <code>pnpm.ps1</code> が実行できません。下記を 1 回実行 → PowerShell を再起動してください:
+  <pre><span class="prompt">PS&gt;</span> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</pre>
+  確認プロンプトには <code>Y</code> で答えます。<code>-Scope CurrentUser</code> なので、サービスを実行する LocalSystem アカウントには影響しません（NSSM は <code>node.exe</code> を直接呼ぶため ExecutionPolicy 非依存）。
+</div>
 
 <h3 class="section"><span class="num">2.3</span>NSSM をダウンロード</h3>
 <ol class="steps">
@@ -590,6 +596,14 @@ NSSM 2.24-101-...</pre>
     <tr>
       <td>NSSM コマンドが見つからない</td>
       <td>2.3 で配置した <code>C:\Tools\nssm.exe</code> のパス指定が必須。<code>nssm</code> 単体では呼び出せない</td>
+    </tr>
+    <tr>
+      <td><code>npm.ps1 / pnpm.ps1 を読み込むことができません</code></td>
+      <td>
+        PowerShell の ExecutionPolicy が Restricted のため Node 同梱の .ps1 が実行できない。下記を 1 回叩いて PowerShell を再起動:<br>
+        <code>Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</code><br>
+        または <code>npm.cmd</code> / <code>pnpm.cmd</code> を直接叩く（一時回避）
+      </td>
     </tr>
     <tr>
       <td>サービス削除して再登録したい</td>
