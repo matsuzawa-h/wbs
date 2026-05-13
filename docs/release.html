@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>WBS Web リリース手順書</title>
+<style>
+  :root {
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --warn: #92400e;
+    --warn-bg: #fef3c7;
+    --tip-bg: #ecfdf5;
+    --tip-border: #34d399;
+    --code-bg: #f1f5f9;
+    --danger: #b91c1c;
+    --danger-bg: #fef2f2;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  header.title {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  header.title h1 {
+    font-size: 1.8rem;
+    margin: 0 0 0.2rem;
+  }
+  header.title .lead {
+    color: var(--muted);
+    margin: 0;
+  }
+  header.title .meta {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 0.3rem;
+  }
+  nav.toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.4rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--muted);
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 1.3rem;
+  }
+  nav.toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  nav.toc a:hover { text-decoration: underline; }
+  h2.chapter {
+    font-size: 1.35rem;
+    margin: 2.5rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3.section {
+    font-size: 1.1rem;
+    margin: 1.8rem 0 0.6rem;
+  }
+  h3.section .num {
+    display: inline-block;
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 0.4rem;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 0.9rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    font-family: "Menlo", "Consolas", monospace;
+    line-height: 1.55;
+  }
+  pre .comment { color: #64748b; }
+  pre .prompt { color: #94a3b8; }
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05rem 0.35rem;
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 0.85em;
+  }
+  table.cmd {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.6rem 0 1rem;
+    font-size: 0.92rem;
+  }
+  table.cmd th, table.cmd td {
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.cmd th {
+    background: var(--code-bg);
+    font-weight: 600;
+  }
+  table.cmd td code { background: #fff; }
+  ol.steps, ul.bullets {
+    padding-left: 1.3rem;
+  }
+  ol.steps > li, ul.bullets > li {
+    margin-bottom: 0.4rem;
+  }
+  .tip, .warn, .note, .danger {
+    border-left: 4px solid;
+    padding: 0.7rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+  }
+  .tip { background: var(--tip-bg); border-color: var(--tip-border); }
+  .warn { background: var(--warn-bg); border-color: #f59e0b; color: var(--warn); }
+  .danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+  .note { background: #eff6ff; border-color: var(--accent); }
+  .tip strong, .warn strong, .note strong, .danger strong {
+    display: inline-block;
+    margin-right: 0.4rem;
+  }
+  .role-tag {
+    display: inline-block;
+    padding: 0.1rem 0.55rem;
+    border-radius: 3px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    margin-right: 0.3rem;
+    vertical-align: middle;
+  }
+  .role-dev { background: #dbeafe; color: #1e40af; }
+  .role-prod { background: #fef3c7; color: #92400e; }
+  .role-common { background: #f3f4f6; color: #4b5563; }
+  pre.diagram {
+    background: #f1f5f9;
+    color: #1f2937;
+    border: 1px solid var(--border);
+  }
+  footer.foot {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .wrap { max-width: 100%; padding: 0; }
+    pre { background: #fafafa; color: #1f2937; border: 1px solid var(--border); }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <h1>WBS Web リリース手順書</h1>
+  <p class="lead">同一 LAN 内 Windows 11 マシンへ本番デプロイする手順（10 ユーザ想定）</p>
+  <p class="meta">対象構成: Windows 11 / Node.js 20 / NSSM サービス常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
+</header>
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#ch1">前提・構成図</a></li>
+    <li><a href="#ch2">本番マシン側 ワンタイム準備（Node.js / pnpm / NSSM / ディレクトリ）</a></li>
+    <li><a href="#ch3">開発機側でビルド</a></li>
+    <li><a href="#ch4">ファイル転送と既存 DB の持ち込み</a></li>
+    <li><a href="#ch5">本番マシン側 初回サービス登録</a></li>
+    <li><a href="#ch6">ファイアウォール開放と動作確認</a></li>
+    <li><a href="#ch7">利用者への案内</a></li>
+    <li><a href="#ch8">更新リリース手順（2 回目以降）</a></li>
+    <li><a href="#ch9">バックアップ</a></li>
+    <li><a href="#ch10">トラブルシューティング</a></li>
+    <li><a href="#chA">付録: 凡例</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch1">1. 前提・構成図</h2>
+
+<table class="cmd">
+  <thead><tr><th>項目</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>本番マシン</td><td>Windows 11 PC 1 台（社内 LAN）</td></tr>
+    <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で問題なし）</td></tr>
+    <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code> （HTTP / 平文）</td></tr>
+    <tr><td>常駐方式</td><td>NSSM で Windows サービス化、OS 再起動で自動起動</td></tr>
+    <tr><td>MCP モジュール</td><td>同梱（同一マシンからのみアクセス可、Bearer トークン必須）</td></tr>
+    <tr><td>既存データ</td><td>開発機の SQLite を丸ごと持ち込み</td></tr>
+  </tbody>
+</table>
+
+<h3 class="section">配置イメージ</h3>
+<pre class="diagram">本番マシン（Windows 11）
+├── C:\Apps\WbsWeb\               ← アプリ本体（更新で書き換わる）
+│   ├── dist\main.js
+│   ├── node_modules\
+│   └── public\                   ← Vue ビルド成果物
+├── C:\AppsData\WbsWeb\           ← 永続データ（更新でも触らない）
+│   ├── wbs.db                    ← SQLite データ
+│   ├── wbs.db-wal / -shm         ← SQLite ジャーナル
+│   └── logs\
+│       ├── stdout.log
+│       └── stderr.log
+└── C:\Tools\nssm.exe             ← Windows サービス化ツール</pre>
+
+<div class="note">
+  <strong>📌 役割の表示</strong>
+  以降の手順では、操作するマシンを <span class="role-tag role-dev">DEV</span>（開発機）／<span class="role-tag role-prod">PROD</span>（本番マシン）／<span class="role-tag role-common">共通</span> で示します。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch2"><span class="role-tag role-prod">PROD</span>2. 本番マシン側 ワンタイム準備</h2>
+
+<p>初回のみ、本番マシン上で以下を実施します。<strong>すべて管理者として PowerShell を開いて実行</strong>してください。</p>
+
+<h3 class="section"><span class="num">2.1</span>Node.js 20 LTS のインストール</h3>
+<ol class="steps">
+  <li>ブラウザで <code>https://nodejs.org/</code> を開く</li>
+  <li>「LTS」（推奨版）の Windows Installer（<code>.msi</code>）をダウンロード</li>
+  <li>インストーラーを起動 → 既定設定で完了（PATH 追加にチェックが入っていることを確認）</li>
+  <li>PowerShell を一度閉じて開き直し、確認:
+  <pre><span class="prompt">PS&gt;</span> node --version
+v20.x.x
+<span class="prompt">PS&gt;</span> npm --version
+10.x.x</pre>
+  </li>
+</ol>
+
+<h3 class="section"><span class="num">2.2</span>pnpm を有効化</h3>
+<pre><span class="prompt">PS&gt;</span> corepack enable
+<span class="prompt">PS&gt;</span> pnpm --version
+9.x.x</pre>
+<div class="tip">
+  <strong>💡 corepack</strong>
+  Node.js 16.10 以降に同梱されている公式のパッケージマネージャ管理ツールです。<code>pnpm</code> を別途インストールせずに使えます。
+</div>
+
+<h3 class="section"><span class="num">2.3</span>NSSM をダウンロード</h3>
+<ol class="steps">
+  <li>ブラウザで <code>https://nssm.cc/download</code> を開く</li>
+  <li>「Latest release」の zip をダウンロードして展開</li>
+  <li><code>win64\nssm.exe</code> を <code>C:\Tools\nssm.exe</code> に配置（<code>C:\Tools</code> が無ければ作成）</li>
+</ol>
+<pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Tools | Out-Null
+<span class="comment"># nssm.exe を C:\Tools にコピー（手作業）</span>
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe version
+NSSM 2.24-101-...</pre>
+
+<h3 class="section"><span class="num">2.4</span>ディレクトリ作成</h3>
+<pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Apps\WbsWeb | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\logs | Out-Null</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch3"><span class="role-tag role-dev">DEV</span>3. 開発機側でビルド</h2>
+
+<p>このマシン（<code>c:\Git\WBS\WbsWeb\</code>）で本番用成果物を作成します。</p>
+
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+
+<span class="comment"># 1) Vue 本番ビルド</span>
+<span class="prompt">PS&gt;</span> pnpm --filter web build
+<span class="comment">→ packages\web\dist\ が生成される</span>
+
+<span class="comment"># 2) Vue 成果物を API の public へ同期</span>
+<span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
+
+<span class="comment"># 3) NestJS 本番ビルド</span>
+<span class="prompt">PS&gt;</span> pnpm --filter api build
+<span class="comment">→ packages\api\dist\ が生成される</span>
+
+<span class="comment"># 4) 本番依存だけまとめた配布ディレクトリを生成</span>
+<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy</pre>
+
+<div class="tip">
+  <strong>💡 pnpm deploy</strong>
+  pnpm の本番デプロイ専用コマンド。<code>node_modules</code> と <code>dist</code> と <code>public</code> を含む完結した配布ディレクトリを <code>C:\tmp\WbsWeb-deploy</code> に作ります。lockfile を尊重するので開発機と同じ依存バージョンになります。
+</div>
+
+<h3 class="section"><span class="num">3.5</span>public のコピー漏れを補正</h3>
+<p><code>pnpm deploy</code> は <code>src</code> の <code>public/</code> を拾わないことがあります。確認＆補正：</p>
+<pre><span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch4"><span class="role-tag role-common">共通</span>4. ファイル転送と既存 DB の持ち込み</h2>
+
+<h3 class="section"><span class="num">4.1</span>アプリを本番マシンへ転送</h3>
+<p>下記いずれかの方法で <code>C:\tmp\WbsWeb-deploy</code> の中身を本番マシンの <code>C:\Apps\WbsWeb\</code> に配置します。</p>
+<table class="cmd">
+  <thead><tr><th>方法</th><th>例</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>同一 LAN 上で共有経由</td>
+      <td><code>robocopy C:\tmp\WbsWeb-deploy \\&lt;本番IP&gt;\C$\Apps\WbsWeb /MIR /XD logs</code><br>※ 本番マシンの管理共有 <code>C$</code> が有効＆管理者認証が通る前提</td>
+    </tr>
+    <tr>
+      <td>USB / ファイルサーバ経由</td>
+      <td><code>C:\tmp\WbsWeb-deploy</code> 全体を zip 化して持ち運び、本番側で <code>C:\Apps\WbsWeb</code> に展開</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">4.2</span>既存 SQLite データを持ち込み</h3>
+<p><span class="role-tag role-dev">DEV</span>開発機の SQLite ファイルを本番側に配置：</p>
+<pre><span class="comment"># 開発機側で、SQLite を一度安全にスナップショット（推奨）</span>
+<span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb\packages\api
+<span class="prompt">PS&gt;</span> node -e "const D=require('better-sqlite3');const d=new D('data\\wbs.db',{readonly:true});d.exec('VACUUM INTO ''C:\\tmp\\wbs-export.db''');d.close()"
+<span class="comment"># C:\tmp\wbs-export.db ができる</span></pre>
+
+<p><span class="role-tag role-prod">PROD</span>本番側に配置：</p>
+<pre><span class="prompt">PS&gt;</span> <span class="comment"># 開発機から C:\tmp\wbs-export.db を本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\wbs-export.db C:\AppsData\WbsWeb\wbs.db</pre>
+
+<div class="note">
+  <strong>📌 VACUUM INTO とは</strong>
+  SQLite を停止せずに一貫性のあるコピーを取る公式の方法です。<code>copy</code> でファイル直コピーすると WAL ファイルとズレが生じて壊れる場合があるため、必ずこちらを使ってください。
+</div>
+
+<h3 class="section"><span class="num">4.3</span>マイグレーションを本番 DB に適用</h3>
+<p>もしマイグレーションが追加されていた場合に備えて、本番側でも一度実行します（重複適用は安全）：</p>
+<pre><span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
+<span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch5"><span class="role-tag role-prod">PROD</span>5. 初回サービス登録</h2>
+
+<h3 class="section"><span class="num">5.1</span>MCP トークンを生成（16 文字以上のランダム）</h3>
+<p>本番運用では <code>MCP_TOKEN</code> 環境変数の設定が必須です。下記で 32 文字のトークンを生成します：</p>
+<pre><span class="prompt">PS&gt;</span> $token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
+<span class="prompt">PS&gt;</span> $token
+<span class="comment"># 例: aB3xK9mP2qR7nW4yL8tZ5jH6cV1fD0sE</span>
+
+<span class="comment"># この値をメモしてください（後の NSSM 設定で使います）</span></pre>
+
+<div class="warn">
+  <strong>⚠ MCP_TOKEN の扱い</strong>
+  このトークンは MCP エンドポイント（<code>/mcp</code>）の Bearer 認証に使われます。<strong>同一マシンからしかアクセスできない</strong>仕組み（Origin が localhost / 127.0.0.1 限定）なので外部漏れリスクは小さいですが、平文ログに残さないよう注意してください。
+</div>
+
+<h3 class="section"><span class="num">5.2</span>NSSM でサービスを登録</h3>
+<p><strong>$token は前ステップで生成した値に置き換えてください</strong>：</p>
+<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe install WbsWeb "C:\Program Files\nodejs\node.exe" "C:\Apps\WbsWeb\dist\main.js"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppDirectory "C:\Apps\WbsWeb"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppEnvironmentExtra `
+        "PORT=5000" `
+        "HOST=0.0.0.0" `
+        "NODE_ENV=production" `
+        "DB_PATH=C:\AppsData\WbsWeb\wbs.db" `
+        "MCP_TOKEN=$token"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStdout "C:\AppsData\WbsWeb\logs\stdout.log"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStderr "C:\AppsData\WbsWeb\logs\stderr.log"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStdoutCreationDisposition 4
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStderrCreationDisposition 4
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppRotateFiles 1
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppRotateBytes 10485760
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb Start SERVICE_AUTO_START
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb</pre>
+
+<h3 class="section"><span class="num">5.3</span>環境変数の意味</h3>
+<table class="cmd">
+  <thead><tr><th>変数</th><th>意味</th><th>本番値</th></tr></thead>
+  <tbody>
+    <tr><td><code>PORT</code></td><td>HTTP リッスンポート</td><td>5000</td></tr>
+    <tr><td><code>HOST</code></td><td>バインドアドレス（必ず <code>0.0.0.0</code>、これがないと別 PC からつながらない）</td><td>0.0.0.0</td></tr>
+    <tr><td><code>NODE_ENV</code></td><td>NestJS の本番モード切替</td><td>production</td></tr>
+    <tr><td><code>DB_PATH</code></td><td>SQLite ファイルの絶対パス</td><td>C:\AppsData\WbsWeb\wbs.db</td></tr>
+    <tr><td><code>MCP_TOKEN</code></td><td>MCP Bearer 認証用シークレット（16 文字以上）</td><td>5.1 で生成した値</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch6"><span class="role-tag role-prod">PROD</span>6. ファイアウォール開放と動作確認</h2>
+
+<h3 class="section"><span class="num">6.1</span>受信ポート 5000 を許可</h3>
+<pre><span class="prompt">PS&gt;</span> New-NetFirewallRule -DisplayName "WbsWeb 5000" `
+        -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow</pre>
+
+<h3 class="section"><span class="num">6.2</span>本番マシンの IP アドレスを確認</h3>
+<pre><span class="prompt">PS&gt;</span> Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object { $_.InterfaceAlias -notmatch "Loopback|vEthernet" } |
+        Select-Object IPAddress, InterfaceAlias</pre>
+
+<h3 class="section"><span class="num">6.3</span>動作確認</h3>
+<ol class="steps">
+  <li>本番マシン自身で <code>http://localhost:5000/</code> を開く → プロジェクト一覧が表示される</li>
+  <li>同一 LAN の別 PC のブラウザで <code>http://&lt;本番マシンの IP&gt;:5000/</code> を開く → 同じ画面</li>
+  <li>持ち込んだ既存データ（プロジェクト・顧客・社員）が表示されていることを確認</li>
+  <li>マシンを再起動して、再度ブラウザでアクセス → サービスが自動起動して開く</li>
+</ol>
+
+<h3 class="section"><span class="num">6.4</span>サービス状態の確認コマンド</h3>
+<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe status WbsWeb       <span class="comment"># SERVICE_RUNNING であれば OK</span>
+<span class="prompt">PS&gt;</span> Get-Service WbsWeb
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30  <span class="comment"># 起動ログ</span>
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stderr.log -Tail 30  <span class="comment"># エラーログ</span></pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch7">7. 利用者への案内</h2>
+
+<p>同一 LAN 内のユーザ（〜10 名）には以下を周知してください。</p>
+
+<table class="cmd">
+  <thead><tr><th>項目</th><th>案内内容</th></tr></thead>
+  <tbody>
+    <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code></td></tr>
+    <tr><td>ブラウザ</td><td>Chrome / Edge 最新版を推奨</td></tr>
+    <tr><td>ブックマーク</td><td>↑ の URL をブックマークしてもらう</td></tr>
+    <tr><td>「保護されていない通信」表示</td><td>HTTP なので警告が出るが、社内 LAN なので利用 OK と案内</td></tr>
+    <tr><td>同時編集</td><td>本バージョンは同時編集非対応。同一プロジェクトを 2 人以上で開いて編集しないこと</td></tr>
+    <tr><td>使い方</td><td><a href="manual.html">manual.html</a> を参照</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch8">8. 更新リリース手順（2 回目以降）</h2>
+
+<p>機能追加・修正後に本番を更新する手順。<strong>マイグレーションが追加されていない場合と、追加されている場合で 1 ステップ違います</strong>。</p>
+
+<h3 class="section"><span class="num">8.1</span>共通: <span class="role-tag role-dev">DEV</span>開発機でビルド</h3>
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+<span class="prompt">PS&gt;</span> pnpm --filter web build
+<span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
+<span class="prompt">PS&gt;</span> pnpm --filter api build
+<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy
+<span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
+
+<h3 class="section"><span class="num">8.2</span><span class="role-tag role-prod">PROD</span>本番マシンでサービス停止 → 差し替え → 起動</h3>
+<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe stop WbsWeb
+
+<span class="comment"># アプリ部分のみ差し替え（C:\AppsData\ は触らない）</span>
+<span class="prompt">PS&gt;</span> robocopy \\&lt;DEV-IP&gt;\C$\tmp\WbsWeb-deploy C:\Apps\WbsWeb /MIR /XD logs
+
+<span class="comment"># マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
+<span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
+<span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH
+
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe status WbsWeb</pre>
+
+<div class="tip">
+  <strong>💡 ダウンタイム目安</strong>
+  停止 → 差し替え → マイグレーション → 起動で <strong>1〜2 分</strong>。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch9"><span class="role-tag role-prod">PROD</span>9. バックアップ</h2>
+
+<h3 class="section"><span class="num">9.1</span>無停止バックアップ（推奨・日次）</h3>
+<pre><span class="prompt">PS&gt;</span> $stamp = Get-Date -Format yyyyMMdd_HHmmss
+<span class="prompt">PS&gt;</span> $dst = "C:\Backup\wbs_$stamp.db"
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Backup | Out-Null
+<span class="prompt">PS&gt;</span> $env:SRC = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> $env:DST = $dst
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node -e "const D=require('better-sqlite3');const d=new D(process.env.SRC,{readonly:true});d.exec(`VACUUM INTO '${process.env.DST.replace(/\\/g,'\\\\')}'`);d.close();"
+<span class="prompt">PS&gt;</span> Remove-Item Env:SRC, Env:DST</pre>
+<p>これをタスクスケジューラに毎日 22:00 などで登録するのがおすすめです。</p>
+
+<h3 class="section"><span class="num">9.2</span>復旧</h3>
+<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe stop WbsWeb
+<span class="prompt">PS&gt;</span> Copy-Item C:\Backup\wbs_YYYYMMDD_HHMMSS.db C:\AppsData\WbsWeb\wbs.db -Force
+<span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-wal -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-shm -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch10">10. トラブルシューティング</h2>
+
+<table class="cmd">
+  <thead><tr><th>症状</th><th>対処</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>別 PC からアクセスできない（localhost からは OK）</td>
+      <td>
+        ① ファイアウォール（6.1 のルール）が有効か<br>
+        ② 環境変数 <code>HOST=0.0.0.0</code> が NSSM に設定されているか（<code>C:\Tools\nssm.exe get WbsWeb AppEnvironmentExtra</code> で確認）<br>
+        ③ <code>netstat -ano | findstr :5000</code> で <code>0.0.0.0:5000</code> リッスンしているか
+      </td>
+    </tr>
+    <tr>
+      <td>サービスが起動しない / すぐ落ちる</td>
+      <td>
+        <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
+        ・<code>MCP_TOKEN environment variable must be set</code> → 5.1 のトークン未設定 or 16 文字未満<br>
+        ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足
+      </td>
+    </tr>
+    <tr>
+      <td>「壊れた DB」エラー</td>
+      <td>WAL モードでサービス停止せずファイル直コピーした疑い。9.2 の復旧手順で直近バックアップから戻す</td>
+    </tr>
+    <tr>
+      <td>更新後、画面が古いまま</td>
+      <td>ブラウザのハードリロード（Ctrl + Shift + R）。それでも変わらないなら <code>C:\Apps\WbsWeb\public\</code> に新しい <code>index.html</code> がコピーされているか確認</td>
+    </tr>
+    <tr>
+      <td>NSSM コマンドが見つからない</td>
+      <td>2.3 で配置した <code>C:\Tools\nssm.exe</code> のパス指定が必須。<code>nssm</code> 単体では呼び出せない</td>
+    </tr>
+    <tr>
+      <td>サービス削除して再登録したい</td>
+      <td><code>C:\Tools\nssm.exe remove WbsWeb confirm</code> で登録解除 → 5.2 をやり直し</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="danger">
+  <strong>🚫 やってはいけないこと</strong>
+  <ul class="bullets" style="margin-top:0.4rem;color:var(--danger);">
+    <li>サービス起動中に <code>C:\AppsData\WbsWeb\wbs.db</code> を直接コピー／編集（壊れる）</li>
+    <li>更新リリース時の <code>robocopy /MIR</code> でうっかり <code>C:\AppsData\</code> を含める（永続データが消える）</li>
+    <li><code>HOST</code> 未設定で 0.0.0.0 にバインドされない状態で「動かない」と騒ぐ</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="chA">付録. 凡例</h2>
+
+<table class="cmd">
+  <thead><tr><th>記号</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td><span class="role-tag role-dev">DEV</span></td><td>開発機（このリポジトリがある PC）で実行</td></tr>
+    <tr><td><span class="role-tag role-prod">PROD</span></td><td>本番マシンで実行</td></tr>
+    <tr><td><span class="role-tag role-common">共通</span></td><td>両方どちらで実施しても良い</td></tr>
+    <tr><td><code>PS&gt;</code></td><td>PowerShell プロンプト（管理者推奨）</td></tr>
+  </tbody>
+</table>
+
+<footer class="foot">
+  WBS Web リリース手順書 ／ 2026 年 5 月版
+</footer>
+</div>
+</body>
+</html>
