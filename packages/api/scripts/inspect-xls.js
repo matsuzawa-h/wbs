@@ -3,7 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const TEMPLATE_PATH = path.resolve(__dirname, '../../../../テンプレートファイル.xls');
+const DEFAULT_TEMPLATE_PATH = path.resolve(__dirname, '../../../../テンプレートファイル.xls');
+const TEMPLATE_PATH = process.argv[2]
+  ? path.resolve(process.cwd(), process.argv[2])
+  : DEFAULT_TEMPLATE_PATH;
 const TARGET_SHEET = 'スケジュール';
 
 const FREESECT = 0xffffffff;

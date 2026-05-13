@@ -625,6 +625,19 @@ function parseIso(value: string): Date {
 function back(): void {
   router.push({ name: 'projects' });
 }
+
+// Triggers a download of the project as the legacy .xls. The endpoint
+// surgically edits c:/Git/WBS/テンプレートファイル.xls so the file opens
+// in Excel with macros still rendering the gantt area.
+function exportXls(): void {
+  const url = `/api/projects/${props.projectId}/export.xls`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `project-${props.projectId}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 </script>
 
 <template>
@@ -681,6 +694,12 @@ function back(): void {
         >フィルタ解除</button>
         <button class="btn" type="button" @click="expandAll" title="すべて展開">展開</button>
         <button class="btn" type="button" @click="collapseAll" title="すべて折りたたみ">折畳</button>
+        <button
+          class="btn"
+          type="button"
+          title="このプロジェクトの工程表を、旧 Excel テンプレートに流し込んでダウンロードします"
+          @click="exportXls"
+        >Excel 出力</button>
         <button class="btn primary" type="button" @click="addTopLevel">+ 大項目</button>
       </div>
     </header>
