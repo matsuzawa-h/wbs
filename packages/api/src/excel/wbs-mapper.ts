@@ -17,6 +17,7 @@ export interface WbsExportTask {
   actualStartDate: string | null;
   actualEndDate: string | null;
   plannedHours: number | null;
+  actualHours: number | null;
   progress: number;
   assigneeName?: string | null;
   status: string | null;
@@ -67,7 +68,8 @@ export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
       { row, col: WBS_COLUMNS.actualEndDate, value: toExcelSerialDate(task.actualEndDate) },
       { row, col: WBS_COLUMNS.delay, value: delayDays(task) },
       { row, col: WBS_COLUMNS.progress, value: task.progress / 100 },
-      { row, col: WBS_COLUMNS.plannedHours, value: task.plannedHours },
+      // Template column N is 実績工数 (actual hours logged), not plan.
+      { row, col: WBS_COLUMNS.actualHours, value: task.actualHours },
       { row, col: WBS_COLUMNS.assignee, value: task.assigneeName ?? null },
       { row, col: WBS_COLUMNS.status, value: emptyToNull(task.status) },
     );

@@ -12,6 +12,9 @@
 //   大項目=1, 中項目=2, 項番=3, 項目(項目名)=4, 開始日=5, 日数=6,
 //   終了日=7, 開始(実績)=8, 実績日数=9, 終了(実績)=10, 遅れ=11,
 //   進捗=12, 工数=13, 先行関係=14, 先行関係補助=15, 担当=16, 状態=17.
+// - "工数" (col 13, Excel column N) represents 実績工数 — actual hours
+//   logged after the work was performed. Plan hours have no place in
+//   this template.
 
 export const SCHEDULE_SHEET_NAME = 'スケジュール';
 
@@ -32,7 +35,7 @@ export const WBS_COLUMNS = {
   actualEndDate: 10,
   delay: 11,
   progress: 12,
-  plannedHours: 13,
+  actualHours: 13,
   predecessor: 14,
   predecessorLink: 15,
   assignee: 16,
@@ -52,7 +55,7 @@ export const DATA_COLUMNS_TO_CLEAR = [
   WBS_COLUMNS.actualEndDate,
   WBS_COLUMNS.delay,
   WBS_COLUMNS.progress,
-  WBS_COLUMNS.plannedHours,
+  WBS_COLUMNS.actualHours,
   WBS_COLUMNS.predecessor,
   WBS_COLUMNS.predecessorLink,
   WBS_COLUMNS.assignee,

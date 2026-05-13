@@ -51,6 +51,7 @@ export class ExcelService {
         actualStartDate: wbsTasks.actualStartDate,
         actualEndDate: wbsTasks.actualEndDate,
         plannedHours: wbsTasks.plannedHours,
+        actualHours: wbsTasks.actualHours,
         progress: wbsTasks.progress,
         assigneeName: assignees.name,
         status: wbsTasks.status,
