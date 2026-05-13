@@ -7,6 +7,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { HolidaysModule } from './holidays/holidays.module';
 import { CustomersModule } from './customers/customers.module';
 import { McpModule } from './mcp/mcp.module';
+import { ExcelModule } from './excel/excel.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { McpModule } from './mcp/mcp.module';
     TasksModule,
     EmployeesModule,
     CustomersModule,
+    ExcelModule,
     McpModule,
   ],
   controllers: [HealthController],

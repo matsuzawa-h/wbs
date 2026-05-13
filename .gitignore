@@ -41,6 +41,11 @@ coverage/
 # Playwright MCP cli artifacts (snapshots/logs)
 .playwright-cli/
 
+# Excel exporter runtime artifacts (inspector dumps + test exports)
+packages/api/scripts/inspect-out.txt
+packages/api/scripts/out.xls
+packages/api/scripts/*.xlsx
+
 # Temp
 *.tmp
 *.temp
