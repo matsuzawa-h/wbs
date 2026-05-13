@@ -628,12 +628,13 @@ function back(): void {
 
 // Triggers a download of the project as the legacy .xls. The endpoint
 // surgically edits c:/Git/WBS/テンプレートファイル.xls so the file opens
-// in Excel with macros still rendering the gantt area.
+// in Excel with macros still rendering the gantt area. We don't set
+// `a.download` — the server returns Content-Disposition with the
+// customer_project_timestamp filename, which the browser uses.
 function exportXls(): void {
   const url = `/api/projects/${props.projectId}/export.xls`;
   const a = document.createElement('a');
   a.href = url;
-  a.download = `project-${props.projectId}.xls`;
   document.body.appendChild(a);
   a.click();
   a.remove();

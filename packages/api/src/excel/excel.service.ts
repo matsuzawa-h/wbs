@@ -7,21 +7,27 @@ import {
 import { asc, eq } from 'drizzle-orm';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { AppDb, assignees, projects, wbsTasks } from '../db';
+import { AppDb, assignees, customers, projects, wbsTasks } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { applyCellUpdates } from './biff-writer';
 import { EMPLOYEES_SHEET_NAME } from './column-map';
 import { buildEmployeeCellUpdates, EmployeeExportRow } from './employees-mapper';
 import { buildWbsCellUpdates, WbsExportTask } from './wbs-mapper';
 
+export interface ExcelExportResult {
+  buffer: Buffer;
+  filename: string;
+}
+
 @Injectable()
 export class ExcelService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
-  exportProject(projectId: number): Buffer {
+  exportProject(projectId: number): ExcelExportResult {
     const project = this.db
-      .select({ id: projects.id })
+      .select({ id: projects.id, name: projects.name, customerName: customers.name })
       .from(projects)
+      .leftJoin(customers, eq(projects.customerId, customers.id))
       .where(eq(projects.id, projectId))
       .get();
     if (!project) {
@@ -44,7 +50,11 @@ export class ExcelService {
     // added to the SST by the first pass.
     const template = readFileSync(this.templatePath());
     const afterSchedule = applyCellUpdates(template, scheduleUpdates);
-    return applyCellUpdates(afterSchedule, employeeUpdates, EMPLOYEES_SHEET_NAME);
+    const buffer = applyCellUpdates(afterSchedule, employeeUpdates, EMPLOYEES_SHEET_NAME);
+    return {
+      buffer,
+      filename: buildExportFilename(project.customerName, project.name, new Date()),
+    };
   }
 
   private loadEmployees(): EmployeeExportRow[] {
@@ -105,4 +115,32 @@ export class ExcelService {
     }
     return found;
   }
+}
+
+// Builds the export filename: 顧客名_プロジェクト名_YYYYMMDD-HHmmss.xls
+// Characters that are illegal in Windows filenames are replaced with `_`.
+// Empty customer falls back to no customer prefix (just the project name).
+export function buildExportFilename(
+  customerName: string | null | undefined,
+  projectName: string,
+  now: Date,
+): string {
+  const stamp = formatTimestamp(now);
+  const proj = sanitizeFilenamePart(projectName) || `project`;
+  const cust = customerName ? sanitizeFilenamePart(customerName) : '';
+  const stem = cust ? `${cust}_${proj}_${stamp}` : `${proj}_${stamp}`;
+  return `${stem}.xls`;
+}
+
+function sanitizeFilenamePart(value: string): string {
+  // Replace characters disallowed in Windows + path separators + control chars.
+  return value
+    .replace(/[\\\/:*?"<>|\r\n\t]/g, '_')
+    .replace(/^[. ]+|[. ]+$/g, '')
+    .trim();
+}
+
+function formatTimestamp(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
