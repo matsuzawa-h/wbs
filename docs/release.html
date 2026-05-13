@@ -186,14 +186,14 @@
 <header class="title">
   <h1>WBS Web リリース手順書</h1>
   <p class="lead">同一 LAN 内 Windows 11 マシンへ本番デプロイする手順（10 ユーザ想定）</p>
-  <p class="meta">対象構成: Windows 11 / Node.js 20 / NSSM サービス常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
+  <p class="meta">対象構成: Windows 11 / Node.js 20 / タスクスケジューラ常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
 </header>
 
 <nav class="toc">
   <h2>目次</h2>
   <ol>
     <li><a href="#ch1">前提・構成図</a></li>
-    <li><a href="#ch2">本番マシン側 ワンタイム準備（Node.js / pnpm / NSSM / ディレクトリ）</a></li>
+    <li><a href="#ch2">本番マシン側 ワンタイム準備（Node.js / pnpm / 常駐方式選定 / ディレクトリ）</a></li>
     <li><a href="#ch3">開発機側でビルド</a></li>
     <li><a href="#ch4">ファイル転送（アプリ / DB / テンプレ / アドイン）</a></li>
     <li><a href="#ch5">本番マシン側 初回サービス登録</a></li>
@@ -216,7 +216,7 @@
     <tr><td>本番マシン</td><td>Windows 11 PC 1 台（社内 LAN）</td></tr>
     <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で問題なし）</td></tr>
     <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code> （HTTP / 平文）</td></tr>
-    <tr><td>常駐方式</td><td>NSSM で Windows サービス化、OS 再起動で自動起動</td></tr>
+    <tr><td>常駐方式</td><td>Windows タスクスケジューラ（追加インストール不要）、OS 再起動で自動起動</td></tr>
     <tr><td>MCP モジュール</td><td>同梱（同一マシンからのみアクセス可、Bearer トークン必須）</td></tr>
     <tr><td>既存データ</td><td>開発機の SQLite を丸ごと持ち込み</td></tr>
   </tbody>
@@ -228,17 +228,18 @@
 │   ├── dist\main.js
 │   ├── node_modules\
 │   └── public\                   ← Vue ビルド成果物
-├── C:\AppsData\WbsWeb\           ← 永続データ（更新でも触らない）
-│   ├── wbs.db                    ← SQLite データ
-│   ├── wbs.db-wal / -shm         ← SQLite ジャーナル
-│   ├── templates\
-│   │   └── テンプレートファイル.xls   ← Excel 出力／取込で使う旧テンプレ
-│   ├── addins\
-│   │   └── km_module.xla         ← /downloads から利用者に配布する Excel アドイン
-│   └── logs\
-│       ├── stdout.log
-│       └── stderr.log
-└── C:\Tools\nssm.exe             ← Windows サービス化ツール</pre>
+└── C:\AppsData\WbsWeb\           ← 永続データ（更新でも触らない）
+    ├── wbs.db                    ← SQLite データ
+    ├── wbs.db-wal / -shm         ← SQLite ジャーナル
+    ├── start.cmd                 ← タスクスケジューラから呼ばれる起動スクリプト
+    │                                (環境変数 + ログリダイレクト + node 起動)
+    ├── templates\
+    │   └── テンプレートファイル.xls   ← Excel 出力／取込で使う旧テンプレ
+    ├── addins\
+    │   └── km_module.xla         ← /downloads から利用者に配布する Excel アドイン
+    └── logs\
+        ├── stdout.log
+        └── stderr.log</pre>
 
 <div class="note">
   <strong>📌 役割の表示</strong>
@@ -275,19 +276,29 @@ v20.x.x
   <strong>⚠ <code>npm.ps1 を読み込むことができません</code> エラーが出る場合</strong>
   Windows のクリーン環境では PowerShell の ExecutionPolicy が <code>Restricted</code> になっていて、Node.js 同梱の <code>npm.ps1</code> / <code>pnpm.ps1</code> が実行できません。下記を 1 回実行 → PowerShell を再起動してください:
   <pre><span class="prompt">PS&gt;</span> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</pre>
-  確認プロンプトには <code>Y</code> で答えます。<code>-Scope CurrentUser</code> なので、サービスを実行する LocalSystem アカウントには影響しません（NSSM は <code>node.exe</code> を直接呼ぶため ExecutionPolicy 非依存）。
+  確認プロンプトには <code>Y</code> で答えます。<code>-Scope CurrentUser</code> なので、サービスを実行する SYSTEM アカウントには影響しません（タスクスケジューラから直接 <code>node.exe</code> を呼ぶため ExecutionPolicy 非依存）。
 </div>
 
-<h3 class="section"><span class="num">2.3</span>NSSM をダウンロード</h3>
-<ol class="steps">
-  <li>ブラウザで <code>https://nssm.cc/download</code> を開く</li>
-  <li>「Latest release」の zip をダウンロードして展開</li>
-  <li><code>win64\nssm.exe</code> を <code>C:\Tools\nssm.exe</code> に配置（<code>C:\Tools</code> が無ければ作成）</li>
-</ol>
-<pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Tools | Out-Null
-<span class="comment"># nssm.exe を C:\Tools にコピー（手作業）</span>
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe version
-NSSM 2.24-101-...</pre>
+<h3 class="section"><span class="num">2.3</span>常駐方式：Windows タスクスケジューラを使う</h3>
+<p>
+  本構成では <strong>追加ソフトを入れず、Windows 標準のタスクスケジューラ</strong>で
+  Node.js プロセスを常駐させます。NSSM などの 3rd party サービスマネージャは不要です。
+</p>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>方式</th></tr></thead>
+  <tbody>
+    <tr><td>起動トリガ</td><td>システム起動時（At startup）</td></tr>
+    <tr><td>実行アカウント</td><td>SYSTEM（ユーザがログオンしていなくても動く）</td></tr>
+    <tr><td>環境変数 / ログリダイレクト</td><td>ラッパー <code>start.cmd</code> 経由（5.2 で作成）</td></tr>
+    <tr><td>自動再起動</td><td>タスクの「失敗時に再起動」設定で 1 分後にリトライ × 999 回</td></tr>
+    <tr><td>停止 / 起動</td><td><code>Stop-ScheduledTask / Start-ScheduledTask</code>（プロセスを確実に止めるには <code>Stop-Process</code> も併用）</td></tr>
+  </tbody>
+</table>
+<div class="tip">
+  <strong>💡 NSSM 等を使いたい場合</strong>
+  より高機能なサービス管理（services.msc 連携、組込みログローテーション等）が必要な場合は
+  NSSM や WinSW を導入する余地もありますが、本手順では <strong>追加インストール 0</strong> を優先。
+</div>
 
 <h3 class="section"><span class="num">2.4</span>ディレクトリ作成</h3>
 <pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Apps\WbsWeb | Out-Null
@@ -404,35 +415,74 @@ NSSM 2.24-101-...</pre>
 <span class="prompt">PS&gt;</span> $token
 <span class="comment"># 例: aB3xK9mP2qR7nW4yL8tZ5jH6cV1fD0sE</span>
 
-<span class="comment"># この値をメモしてください（後の NSSM 設定で使います）</span></pre>
+<span class="comment"># この値をメモしてください（5.2 の start.cmd に埋め込みます）</span></pre>
 
 <div class="warn">
   <strong>⚠ MCP_TOKEN の扱い</strong>
   このトークンは MCP エンドポイント（<code>/mcp</code>）の Bearer 認証に使われます。<strong>同一マシンからしかアクセスできない</strong>仕組み（Origin が localhost / 127.0.0.1 限定）なので外部漏れリスクは小さいですが、平文ログに残さないよう注意してください。
 </div>
 
-<h3 class="section"><span class="num">5.2</span>NSSM でサービスを登録</h3>
-<p><strong>$token は前ステップで生成した値に置き換えてください</strong>：</p>
-<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe install WbsWeb "C:\Program Files\nodejs\node.exe" "C:\Apps\WbsWeb\dist\main.js"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppDirectory "C:\Apps\WbsWeb"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppEnvironmentExtra `
-        "PORT=5000" `
-        "HOST=0.0.0.0" `
-        "NODE_ENV=production" `
-        "DB_PATH=C:\AppsData\WbsWeb\wbs.db" `
-        "XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls" `
-        "XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla" `
-        "MCP_TOKEN=$token"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStdout "C:\AppsData\WbsWeb\logs\stdout.log"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStderr "C:\AppsData\WbsWeb\logs\stderr.log"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStdoutCreationDisposition 4
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStderrCreationDisposition 4
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppRotateFiles 1
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppRotateBytes 10485760
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb Start SERVICE_AUTO_START
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb</pre>
+<h3 class="section"><span class="num">5.2</span>起動スクリプト <code>start.cmd</code> を作成</h3>
+<p>環境変数の設定とログリダイレクトをまとめたラッパースクリプトを <code>C:\AppsData\WbsWeb\start.cmd</code> として保存します。
+  <strong>5.1 で生成したトークンを <code>MCP_TOKEN=</code> 行に貼り付けてください。</strong>
+</p>
+<pre><span class="comment">@echo off
+REM WBS Web 起動スクリプト (タスクスケジューラから呼ばれる)</span>
+set PORT=5000
+set HOST=0.0.0.0
+set NODE_ENV=production
+set DB_PATH=C:\AppsData\WbsWeb\wbs.db
+set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
+set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+set MCP_TOKEN=<span class="comment">&lt;5.1 で生成した 32 文字を貼る&gt;</span>
+cd /d C:\Apps\WbsWeb
+"C:\Program Files\nodejs\node.exe" dist\main.js ^
+  &gt;&gt; C:\AppsData\WbsWeb\logs\stdout.log ^
+  2&gt;&gt; C:\AppsData\WbsWeb\logs\stderr.log</pre>
 
-<h3 class="section"><span class="num">5.3</span>環境変数の意味</h3>
+<div class="note">
+  <strong>📌 保存方法</strong>
+  メモ帳で作る場合は「ファイル → 名前を付けて保存」で
+  <strong>「ファイルの種類」を「すべてのファイル (*.*)」</strong>に切替えて
+  <code>start.cmd</code> として保存（拡張子が <code>.txt</code> にならないように注意）。
+  文字コードは <strong>ANSI / Shift_JIS</strong> を選択（UTF-8 だと set 文字列が化ける可能性あり）。
+</div>
+
+<h3 class="section"><span class="num">5.3</span>タスクスケジューラに登録</h3>
+<p>PowerShell（<strong>管理者</strong>）で実行：</p>
+<pre><span class="prompt">PS&gt;</span> $action = New-ScheduledTaskAction -Execute "C:\AppsData\WbsWeb\start.cmd"
+<span class="prompt">PS&gt;</span> $trigger = New-ScheduledTaskTrigger -AtStartup
+<span class="prompt">PS&gt;</span> $principal = New-ScheduledTaskPrincipal `
+        -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+<span class="prompt">PS&gt;</span> $settings = New-ScheduledTaskSettingsSet `
+        -RestartCount 999 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+<span class="prompt">PS&gt;</span> Register-ScheduledTask -TaskName "WbsWeb" `
+        -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
+
+<div class="tip">
+  <strong>💡 各パラメータの意味</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li><code>-AtStartup</code>: Windows 起動時に発火（ログオン不要）</li>
+    <li><code>SYSTEM + Highest</code>: SYSTEM アカウントで最高権限。ファイアウォール開放したポートにバインド可能</li>
+    <li><code>RestartCount 999 / Interval 1 min</code>: クラッシュ時に 1 分後に再起動 × 最大 999 回（実質無限）</li>
+    <li><code>ExecutionTimeLimit 0</code>: 実行時間制限なし（永続常駐させる）</li>
+    <li><code>AllowStartIfOnBatteries / DontStop</code>: ノート PC のバッテリ駆動でも止めない</li>
+  </ul>
+</div>
+
+<h3 class="section"><span class="num">5.4</span>動作確認（起動直後）</h3>
+<pre><span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo
+<span class="comment"># LastTaskResult が 267009 (= currently running) であれば OK</span>
+<span class="prompt">PS&gt;</span> Get-Process node -ErrorAction SilentlyContinue
+<span class="comment"># node.exe プロセスが見える</span>
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30</pre>
+
+<h3 class="section"><span class="num">5.5</span>環境変数の意味</h3>
 <table class="cmd">
   <thead><tr><th>変数</th><th>意味</th><th>本番値</th></tr></thead>
   <tbody>
@@ -477,9 +527,13 @@ NSSM 2.24-101-...</pre>
   <li>マシンを再起動して、再度ブラウザでアクセス → サービスが自動起動して開く</li>
 </ol>
 
-<h3 class="section"><span class="num">6.4</span>サービス状態の確認コマンド</h3>
-<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe status WbsWeb       <span class="comment"># SERVICE_RUNNING であれば OK</span>
-<span class="prompt">PS&gt;</span> Get-Service WbsWeb
+<h3 class="section"><span class="num">6.4</span>常駐状態の確認コマンド</h3>
+<pre><span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo
+<span class="comment"># LastTaskResult=267009 が「稼働中」、267011 は「未稼働」</span>
+<span class="prompt">PS&gt;</span> Get-Process node -ErrorAction SilentlyContinue
+<span class="comment"># node.exe プロセスが見えれば常駐 OK</span>
+<span class="prompt">PS&gt;</span> netstat -ano | findstr :5000
+<span class="comment"># 0.0.0.0:5000 が LISTENING になっていれば外部公開 OK</span>
 <span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30  <span class="comment"># 起動ログ</span>
 <span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stderr.log -Tail 30  <span class="comment"># エラーログ</span></pre>
 
@@ -515,20 +569,27 @@ NSSM 2.24-101-...</pre>
 <span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
 
 <h3 class="section"><span class="num">8.2</span><span class="role-tag role-prod">PROD</span>本番マシンでサービス停止 → 差し替え → 起動</h3>
-<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe stop WbsWeb
+<pre><span class="comment"># 1) タスクと実プロセスの両方を止める</span>
+<span class="comment">#    Stop-ScheduledTask は task instance を終了させるが、子プロセス node.exe が</span>
+<span class="comment">#    残ることがあるので念のため Stop-Process も実行</span>
+<span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb" -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> Get-CimInstance Win32_Process |
+        Where-Object { $_.CommandLine -like "*WbsWeb\dist\main.js*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
-<span class="comment"># アプリ部分のみ差し替え（C:\AppsData\ は触らない）</span>
-<span class="comment"># テンプレ／アドイン (C:\AppsData\WbsWeb\templates / addins) もそのまま温存</span>
+<span class="comment"># 2) アプリ部分のみ差し替え（C:\AppsData\ は触らない）</span>
+<span class="comment">#    テンプレ／アドイン (C:\AppsData\WbsWeb\templates / addins) もそのまま温存</span>
 <span class="prompt">PS&gt;</span> robocopy \\&lt;DEV-IP&gt;\C$\tmp\WbsWeb-deploy C:\Apps\WbsWeb /MIR /XD logs
 
-<span class="comment"># マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
+<span class="comment"># 3) マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
 <span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
 <span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
 <span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
 <span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH
 
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe status WbsWeb</pre>
+<span class="comment"># 4) タスクを起動</span>
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo</pre>
 
 <div class="note">
   <strong>📌 テンプレ／アドインを更新したい場合</strong>
@@ -557,11 +618,14 @@ NSSM 2.24-101-...</pre>
 <p>これをタスクスケジューラに毎日 22:00 などで登録するのがおすすめです。</p>
 
 <h3 class="section"><span class="num">9.2</span>復旧</h3>
-<pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe stop WbsWeb
+<pre><span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Get-CimInstance Win32_Process |
+        Where-Object { $_.CommandLine -like "*WbsWeb\dist\main.js*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 <span class="prompt">PS&gt;</span> Copy-Item C:\Backup\wbs_YYYYMMDD_HHMMSS.db C:\AppsData\WbsWeb\wbs.db -Force
 <span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-wal -ErrorAction SilentlyContinue
 <span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-shm -ErrorAction SilentlyContinue
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb</pre>
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
 
 <!-- ================================================ -->
 <h2 class="chapter" id="ch10">10. トラブルシューティング</h2>
@@ -573,15 +637,15 @@ NSSM 2.24-101-...</pre>
       <td>別 PC からアクセスできない（localhost からは OK）</td>
       <td>
         ① ファイアウォール（6.1 のルール）が有効か<br>
-        ② 環境変数 <code>HOST=0.0.0.0</code> が NSSM に設定されているか（<code>C:\Tools\nssm.exe get WbsWeb AppEnvironmentExtra</code> で確認）<br>
+        ② <code>start.cmd</code> に <code>set HOST=0.0.0.0</code> が含まれているか<br>
         ③ <code>netstat -ano | findstr :5000</code> で <code>0.0.0.0:5000</code> リッスンしているか
       </td>
     </tr>
     <tr>
-      <td>サービスが起動しない / すぐ落ちる</td>
+      <td>node.exe が起動しない / すぐ落ちる</td>
       <td>
         <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
-        ・<code>MCP_TOKEN environment variable must be set</code> → 5.1 のトークン未設定 or 16 文字未満<br>
+        ・<code>MCP_TOKEN environment variable must be set</code> → 5.2 の <code>start.cmd</code> に <code>set MCP_TOKEN=...</code> が無い、または 16 文字未満<br>
         ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足
       </td>
     </tr>
@@ -594,8 +658,18 @@ NSSM 2.24-101-...</pre>
       <td>ブラウザのハードリロード（Ctrl + Shift + R）。それでも変わらないなら <code>C:\Apps\WbsWeb\public\</code> に新しい <code>index.html</code> がコピーされているか確認</td>
     </tr>
     <tr>
-      <td>NSSM コマンドが見つからない</td>
-      <td>2.3 で配置した <code>C:\Tools\nssm.exe</code> のパス指定が必須。<code>nssm</code> 単体では呼び出せない</td>
+      <td>タスクスケジューラで「タスクは終了しました (0x41306)」</td>
+      <td>
+        子プロセス (node.exe) が異常終了したサイン。<code>stderr.log</code> を確認。<br>
+        多くは <code>MCP_TOKEN</code> 未設定 or <code>start.cmd</code> 内のパス誤り。
+      </td>
+    </tr>
+    <tr>
+      <td>タスクスケジューラで「実行中」だが node.exe が見えない</td>
+      <td>
+        ラッパー (<code>start.cmd</code>) は終了しているが子の <code>node.exe</code> が起動していない。<br>
+        <code>start.cmd</code> 内のパス（<code>C:\Program Files\nodejs\node.exe</code> 等）が正しいか確認。
+      </td>
     </tr>
     <tr>
       <td><code>npm.ps1 / pnpm.ps1 を読み込むことができません</code></td>
@@ -606,15 +680,16 @@ NSSM 2.24-101-...</pre>
       </td>
     </tr>
     <tr>
-      <td>サービス削除して再登録したい</td>
-      <td><code>C:\Tools\nssm.exe remove WbsWeb confirm</code> で登録解除 → 5.2 をやり直し</td>
+      <td>タスクを削除して再登録したい</td>
+      <td><code>Unregister-ScheduledTask -TaskName "WbsWeb" -Confirm:$false</code> で登録解除 → 5.3 をやり直し</td>
     </tr>
     <tr>
       <td>Excel 出力で 500 エラー</td>
       <td>
         <code>XLS_TEMPLATE_PATH</code> が指すファイルが存在しているか確認:<br>
         <code>Test-Path "C:\AppsData\WbsWeb\templates\テンプレートファイル.xls"</code><br>
-        false なら 4.3 でテンプレを再配置。NSSM 環境変数も <code>C:\Tools\nssm.exe get WbsWeb AppEnvironmentExtra</code> で確認
+        false なら 4.3 でテンプレを再配置。<br>
+        環境変数も <code>start.cmd</code> を開いて <code>set XLS_TEMPLATE_PATH=...</code> 行を確認
       </td>
     </tr>
     <tr>
@@ -704,9 +779,11 @@ NSSM 2.24-101-...</pre>
 <span class="comment">#    - import { McpAuthGuard } ...</span>
 <span class="comment">#    - guards: [McpAuthGuard]</span>
 <span class="comment">#    - providers 配列内の McpAuthGuard</span>
-<span class="comment"># 2) NSSM 環境変数 MCP_TOKEN に 16 文字以上のランダム値を設定</span>
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppEnvironmentExtra ... "MCP_TOKEN=$token"
-<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe restart WbsWeb</pre>
+<span class="comment"># 2) start.cmd に MCP_TOKEN 行を追記 / 既存値を更新</span>
+<span class="comment">#    set MCP_TOKEN=&lt;16 文字以上のランダム値&gt;</span>
+<span class="comment"># 3) タスクを再起動</span>
+<span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
 
 <div class="note">
   <strong>📌 関連 TODO の位置</strong>
