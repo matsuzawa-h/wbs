@@ -1,6 +1,8 @@
 import { CellUpdate } from './biff-writer';
 import {
   DATA_COLUMNS_TO_CLEAR,
+  SCHEDULE_TITLE_COL,
+  SCHEDULE_TITLE_ROW,
   TEMPLATE_DATA_END_ROW,
   TEMPLATE_DATA_START_ROW,
   WBS_COLUMNS,
@@ -24,7 +26,10 @@ export interface WbsExportTask {
   sortOrder: number;
 }
 
-export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
+export function buildWbsCellUpdates(
+  tasks: WbsExportTask[],
+  projectTitle?: string,
+): CellUpdate[] {
   // Only leaf (level=3) tasks consume rows. 大項目 / 中項目 names piggy-back on
   // the first leaf row under them; subsequent leaves under the same parent
   // leave those columns blank. This matches the legacy Excel template's
@@ -38,6 +43,10 @@ export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
   }
 
   const updates: CellUpdate[] = [];
+  if (projectTitle !== undefined) {
+    // DEFW_DspGp_Title → スケジュール!B1; drives the gantt header title.
+    updates.push({ row: SCHEDULE_TITLE_ROW, col: SCHEDULE_TITLE_COL, value: projectTitle });
+  }
   let lastMajorId: number | null = null;
   let lastMiddleId: number | null = null;
 

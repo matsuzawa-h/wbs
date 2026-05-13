@@ -10,8 +10,9 @@ import { resolve } from 'path';
 import { AppDb, assignees, customers, projects, wbsTasks } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { applyCellUpdates } from './biff-writer';
-import { EMPLOYEES_SHEET_NAME } from './column-map';
+import { EMPLOYEES_SHEET_NAME, SETTINGS_SHEET_NAME } from './column-map';
 import { buildEmployeeCellUpdates, EmployeeExportRow } from './employees-mapper';
+import { buildSettingsCellUpdates } from './settings-mapper';
 import { buildWbsCellUpdates, WbsExportTask } from './wbs-mapper';
 
 export interface ExcelExportResult {
@@ -34,26 +35,29 @@ export class ExcelService {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
+    const now = new Date();
     const tasks = this.loadTasks(projectId);
     const employees = this.loadEmployees();
     let scheduleUpdates;
     let employeeUpdates;
+    let settingsUpdates;
     try {
-      scheduleUpdates = buildWbsCellUpdates(tasks);
+      scheduleUpdates = buildWbsCellUpdates(tasks, project.name);
       employeeUpdates = buildEmployeeCellUpdates(employees);
+      settingsUpdates = buildSettingsCellUpdates(tasks, now);
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
 
-    // Pipeline the surgical edits: schedule first, then employees on the
-    // already-modified buffer so the second pass sees and reuses any strings
-    // added to the SST by the first pass.
+    // Pipeline the surgical edits across the three sheets. Each pass uses
+    // the modified buffer so SST entries added by earlier passes are reused.
     const template = readFileSync(this.templatePath());
     const afterSchedule = applyCellUpdates(template, scheduleUpdates);
-    const buffer = applyCellUpdates(afterSchedule, employeeUpdates, EMPLOYEES_SHEET_NAME);
+    const afterEmployees = applyCellUpdates(afterSchedule, employeeUpdates, EMPLOYEES_SHEET_NAME);
+    const buffer = applyCellUpdates(afterEmployees, settingsUpdates, SETTINGS_SHEET_NAME);
     return {
       buffer,
-      filename: buildExportFilename(project.customerName, project.name, new Date()),
+      filename: buildExportFilename(project.customerName, project.name, now),
     };
   }
 

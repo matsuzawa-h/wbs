@@ -18,6 +18,19 @@
 
 export const SCHEDULE_SHEET_NAME = 'スケジュール';
 export const EMPLOYEES_SHEET_NAME = '担当者一覧';
+export const SETTINGS_SHEET_NAME = '設定';
+
+// "DEFW_DspGp_Title" named range points to スケジュール!B1 (verified by
+// parsing the NAME record in the workbook). This cell drives the title
+// shown on the gantt chart area.
+export const SCHEDULE_TITLE_ROW = 0;
+export const SCHEDULE_TITLE_COL = 1;
+
+// 設定 sheet cells driving chart display range.
+// Labels at row 14 / 23 col 2; values at the row below.
+export const SETTINGS_CHART_START_ROW = 15;
+export const SETTINGS_BASE_DATE_ROW = 24;
+export const SETTINGS_VALUE_COL = 2;
 
 export const TEMPLATE_DATA_START_ROW = 5;
 export const TEMPLATE_DATA_END_ROW = 45;
