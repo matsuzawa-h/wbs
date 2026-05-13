@@ -7,7 +7,7 @@ const DEFAULT_TEMPLATE_PATH = path.resolve(__dirname, '../../../../テンプレ�
 const TEMPLATE_PATH = process.argv[2]
   ? path.resolve(process.cwd(), process.argv[2])
   : DEFAULT_TEMPLATE_PATH;
-const TARGET_SHEET = 'スケジュール';
+const TARGET_SHEET = process.argv[3] || 'スケジュール';
 
 const FREESECT = 0xffffffff;
 const ENDOFCHAIN = 0xfffffffe;

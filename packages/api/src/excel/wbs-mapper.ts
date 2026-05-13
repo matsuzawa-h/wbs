@@ -163,6 +163,22 @@ export function toExcelSerialDate(value: string | null): number | null {
   return serial >= 60 ? serial + 1 : serial;
 }
 
+// Inverse of toExcelSerialDate. Returns YYYY-MM-DD, or null for nullish/NaN.
+// Handles Excel's 1900-leap-year bug (serial 60 = fictitious 1900-02-29) by
+// shifting back for serials > 60.
+export function fromExcelSerialDate(serial: number | null | undefined): string | null {
+  if (serial === null || serial === undefined) return null;
+  if (typeof serial !== 'number' || !Number.isFinite(serial)) return null;
+  const intSerial = Math.floor(serial);
+  const adjusted = intSerial >= 61 ? intSerial - 1 : intSerial;
+  const utcMs = Date.UTC(1899, 11, 31) + adjusted * 86_400_000;
+  const d = new Date(utcMs);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function clearRow(row: number): CellUpdate[] {
   return DATA_COLUMNS_TO_CLEAR.map((col) => ({ row, col, value: null }));
 }

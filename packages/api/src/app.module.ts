@@ -8,6 +8,7 @@ import { HolidaysModule } from './holidays/holidays.module';
 import { CustomersModule } from './customers/customers.module';
 import { McpModule } from './mcp/mcp.module';
 import { ExcelModule } from './excel/excel.module';
+import { ExcelImportModule } from './excel/import/excel-import.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ExcelModule } from './excel/excel.module';
     EmployeesModule,
     CustomersModule,
     ExcelModule,
+    ExcelImportModule,
     McpModule,
   ],
   controllers: [HealthController],

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '@/stores/projects';
 import { useCustomersStore } from '@/stores/customers';
+import ProjectImportDialog from '@/components/ProjectImportDialog.vue';
 import type { Project } from '@/types';
 
 const projects = useProjectsStore();
@@ -12,6 +13,7 @@ const newName = ref('');
 const newCustomerId = ref<number | null>(null);
 const submitting = ref(false);
 const collapsedCustomers = ref<Set<string>>(new Set());
+const importDialogOpen = ref(false);
 
 onMounted(async () => {
   await Promise.all([projects.fetchAll(), customers.fetchAll()]);
@@ -157,6 +159,13 @@ function formatCreatedAt(ts: number): string {
         <RouterLink to="/customers" class="link">顧客マスタ</RouterLink>
         から先に登録すると一覧がグループ表示されます。
       </p>
+      <hr class="divider" />
+      <div class="import-row">
+        <span class="muted">既存の Excel ファイルから取込むこともできます。</span>
+        <button class="btn" type="button" @click="importDialogOpen = true">
+          Excel 取込で新規作成
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -193,6 +202,11 @@ function formatCreatedAt(ts: number): string {
         </section>
       </div>
     </section>
+
+    <ProjectImportDialog
+      :open="importDialogOpen"
+      @close="importDialogOpen = false"
+    />
   </div>
 </template>
 
@@ -241,6 +255,18 @@ function formatCreatedAt(ts: number): string {
   text-decoration: none;
 }
 .link:hover { text-decoration: underline; }
+.divider {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0.9rem 0 0.5rem;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .groups {
   display: grid;
   gap: 0.6rem;
