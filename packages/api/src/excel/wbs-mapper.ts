@@ -24,33 +24,40 @@ export interface WbsExportTask {
 }
 
 export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
-  const flatRows = flattenTasks(tasks);
+  // Only leaf (level=3) tasks consume rows. 大項目 / 中項目 names piggy-back on
+  // the first leaf row under them; subsequent leaves under the same parent
+  // leave those columns blank. This matches the legacy Excel template's
+  // visual format where the leftmost two columns are vertically merged.
+  const leafRows = collectLeafRowsWithAncestry(tasks);
   const capacity = TEMPLATE_DATA_END_ROW - TEMPLATE_DATA_START_ROW + 1;
-  if (flatRows.length > capacity) {
+  if (leafRows.length > capacity) {
     throw new Error(
-      `Template capacity exceeded: ${flatRows.length} WBS rows for ${capacity} template rows`,
+      `Template capacity exceeded: ${leafRows.length} leaf rows for ${capacity} template rows`,
     );
   }
 
   const updates: CellUpdate[] = [];
-  let leafSequence = 1;
+  let lastMajorId: number | null = null;
+  let lastMiddleId: number | null = null;
 
-  flatRows.forEach((task, index) => {
+  leafRows.forEach(({ task, majorItem, middleItem }, index) => {
     const row = TEMPLATE_DATA_START_ROW + index;
     updates.push(...clearRow(row));
 
-    if (task.level === 1) {
-      updates.push({ row, col: WBS_COLUMNS.majorItem, value: task.name });
-      return;
+    if (majorItem && majorItem.id !== lastMajorId) {
+      updates.push({ row, col: WBS_COLUMNS.majorItem, value: majorItem.name });
+      lastMajorId = majorItem.id;
+      // A new 大項目 also restarts the 中項目 sequence so the first 中項目
+      // under it always gets its name written.
+      lastMiddleId = null;
     }
-
-    if (task.level === 2) {
-      updates.push({ row, col: WBS_COLUMNS.middleItem, value: task.name });
-      return;
+    if (middleItem && middleItem.id !== lastMiddleId) {
+      updates.push({ row, col: WBS_COLUMNS.middleItem, value: middleItem.name });
+      lastMiddleId = middleItem.id;
     }
 
     updates.push(
-      { row, col: WBS_COLUMNS.itemNumber, value: formatItemNumber(leafSequence) },
+      { row, col: WBS_COLUMNS.itemNumber, value: formatItemNumber(index + 1) },
       { row, col: WBS_COLUMNS.itemName, value: task.name },
       { row, col: WBS_COLUMNS.startDate, value: toExcelSerialDate(task.startDate) },
       { row, col: WBS_COLUMNS.duration, value: task.duration },
@@ -64,11 +71,10 @@ export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
       { row, col: WBS_COLUMNS.assignee, value: task.assigneeName ?? null },
       { row, col: WBS_COLUMNS.status, value: emptyToNull(task.status) },
     );
-    leafSequence += 1;
   });
 
   for (
-    let row = TEMPLATE_DATA_START_ROW + flatRows.length;
+    let row = TEMPLATE_DATA_START_ROW + leafRows.length;
     row <= TEMPLATE_DATA_END_ROW;
     row += 1
   ) {
@@ -76,6 +82,28 @@ export function buildWbsCellUpdates(tasks: WbsExportTask[]): CellUpdate[] {
   }
 
   return updates;
+}
+
+interface LeafRow {
+  task: WbsExportTask;
+  majorItem: WbsExportTask | null;
+  middleItem: WbsExportTask | null;
+}
+
+function collectLeafRowsWithAncestry(tasks: WbsExportTask[]): LeafRow[] {
+  const flat = flattenTasks(tasks);
+  const byId = new Map(flat.map((t) => [t.id, t]));
+  const result: LeafRow[] = [];
+  for (const task of flat) {
+    if (task.level !== 3) continue;
+    const middleItem = task.parentId !== null ? byId.get(task.parentId) ?? null : null;
+    const majorItem =
+      middleItem && middleItem.parentId !== null
+        ? byId.get(middleItem.parentId) ?? null
+        : null;
+    result.push({ task, majorItem, middleItem });
+  }
+  return result;
 }
 
 export function flattenTasks(tasks: WbsExportTask[]): WbsExportTask[] {
