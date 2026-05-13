@@ -195,7 +195,7 @@
     <li><a href="#ch1">前提・構成図</a></li>
     <li><a href="#ch2">本番マシン側 ワンタイム準備（Node.js / pnpm / NSSM / ディレクトリ）</a></li>
     <li><a href="#ch3">開発機側でビルド</a></li>
-    <li><a href="#ch4">ファイル転送と既存 DB の持ち込み</a></li>
+    <li><a href="#ch4">ファイル転送（アプリ / DB / テンプレ / アドイン）</a></li>
     <li><a href="#ch5">本番マシン側 初回サービス登録</a></li>
     <li><a href="#ch6">ファイアウォール開放と動作確認</a></li>
     <li><a href="#ch7">利用者への案内</a></li>
@@ -231,6 +231,10 @@
 ├── C:\AppsData\WbsWeb\           ← 永続データ（更新でも触らない）
 │   ├── wbs.db                    ← SQLite データ
 │   ├── wbs.db-wal / -shm         ← SQLite ジャーナル
+│   ├── templates\
+│   │   └── テンプレートファイル.xls   ← Excel 出力／取込で使う旧テンプレ
+│   ├── addins\
+│   │   └── km_module.xla         ← /downloads から利用者に配布する Excel アドイン
 │   └── logs\
 │       ├── stdout.log
 │       └── stderr.log
@@ -281,7 +285,16 @@ NSSM 2.24-101-...</pre>
 
 <h3 class="section"><span class="num">2.4</span>ディレクトリ作成</h3>
 <pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Apps\WbsWeb | Out-Null
-<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\logs | Out-Null</pre>
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\logs | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\templates | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\addins | Out-Null</pre>
+<div class="note">
+  <strong>📌 templates と addins ディレクトリ</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li><code>templates\</code> ← Excel 出力／取込で使う旧テンプレ (<code>テンプレートファイル.xls</code>) を置く（4.3 で配置）</li>
+    <li><code>addins\</code> ← <code>km_module.xla</code>（ガント描画用 Excel アドイン）を置く。<code>/api/downloads/km_module.xla</code> エンドポイントから利用者に配布される（4.4 で配置）</li>
+  </ul>
+</div>
 
 <!-- ================================================ -->
 <h2 class="chapter" id="ch3"><span class="role-tag role-dev">DEV</span>3. 開発機側でビルド</h2>
@@ -314,7 +327,7 @@ NSSM 2.24-101-...</pre>
 <pre><span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
 
 <!-- ================================================ -->
-<h2 class="chapter" id="ch4"><span class="role-tag role-common">共通</span>4. ファイル転送と既存 DB の持ち込み</h2>
+<h2 class="chapter" id="ch4"><span class="role-tag role-common">共通</span>4. ファイル転送（アプリ / DB / テンプレ / アドイン）</h2>
 
 <h3 class="section"><span class="num">4.1</span>アプリを本番マシンへ転送</h3>
 <p>下記いずれかの方法で <code>C:\tmp\WbsWeb-deploy</code> の中身を本番マシンの <code>C:\Apps\WbsWeb\</code> に配置します。</p>
@@ -348,7 +361,28 @@ NSSM 2.24-101-...</pre>
   SQLite を停止せずに一貫性のあるコピーを取る公式の方法です。<code>copy</code> でファイル直コピーすると WAL ファイルとズレが生じて壊れる場合があるため、必ずこちらを使ってください。
 </div>
 
-<h3 class="section"><span class="num">4.3</span>マイグレーションを本番 DB に適用</h3>
+<h3 class="section"><span class="num">4.3</span>Excel テンプレートを配置</h3>
+<p>Excel 出力／取込で使うレガシーテンプレートを本番側に配置します。</p>
+<pre><span class="comment"># 開発機から本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\テンプレートファイル.xls C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</pre>
+<div class="note">
+  <strong>📌 テンプレートのソース</strong>
+  開発機側では <code>c:\Git\WBS\テンプレートファイル.xls</code> が原本です。
+  WbsWeb リポジトリ <strong>の外</strong> にあるため、本番転送時はリポジトリと別途コピーが必要です。
+</div>
+
+<h3 class="section"><span class="num">4.4</span>Excel アドイン (km_module.xla) を配置</h3>
+<p>WBS Web の <code>/downloads</code> ページから利用者にアドインを配布するため、ファイルを置きます。</p>
+<pre><span class="comment"># 開発機から本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\km_module.xla C:\AppsData\WbsWeb\addins\km_module.xla</pre>
+<div class="note">
+  <strong>📌 km_module.xla のソース</strong>
+  開発機側では <code>c:\Git\WBS\AddIns\km_module.xla</code>（約 1.77 MB）が原本です。
+  本番化後、利用者は <code>http://&lt;サーバ&gt;:5000/downloads</code> からダウンロード → 自分の Excel に登録します。
+  登録手順はそのページに記載済。
+</div>
+
+<h3 class="section"><span class="num">4.5</span>マイグレーションを本番 DB に適用</h3>
 <p>もしマイグレーションが追加されていた場合に備えて、本番側でも一度実行します（重複適用は安全）：</p>
 <pre><span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
 <span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
@@ -380,6 +414,8 @@ NSSM 2.24-101-...</pre>
         "HOST=0.0.0.0" `
         "NODE_ENV=production" `
         "DB_PATH=C:\AppsData\WbsWeb\wbs.db" `
+        "XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls" `
+        "XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla" `
         "MCP_TOKEN=$token"
 <span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStdout "C:\AppsData\WbsWeb\logs\stdout.log"
 <span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppStderr "C:\AppsData\WbsWeb\logs\stderr.log"
@@ -398,9 +434,18 @@ NSSM 2.24-101-...</pre>
     <tr><td><code>HOST</code></td><td>バインドアドレス（必ず <code>0.0.0.0</code>、これがないと別 PC からつながらない）</td><td>0.0.0.0</td></tr>
     <tr><td><code>NODE_ENV</code></td><td>NestJS の本番モード切替</td><td>production</td></tr>
     <tr><td><code>DB_PATH</code></td><td>SQLite ファイルの絶対パス</td><td>C:\AppsData\WbsWeb\wbs.db</td></tr>
+    <tr><td><code>XLS_TEMPLATE_PATH</code></td><td>Excel 出力／取込で使う旧テンプレ <code>テンプレートファイル.xls</code> の絶対パス</td><td>C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</td></tr>
+    <tr><td><code>XLA_ADDIN_PATH</code></td><td><code>/api/downloads/km_module.xla</code> エンドポイントで配信する Excel アドインの絶対パス</td><td>C:\AppsData\WbsWeb\addins\km_module.xla</td></tr>
     <tr><td><code>MCP_TOKEN</code></td><td>MCP Bearer 認証用シークレット（16 文字以上）</td><td>5.1 で生成した値</td></tr>
   </tbody>
 </table>
+
+<div class="note">
+  <strong>📌 パスの考え方</strong>
+  <code>XLS_TEMPLATE_PATH</code> / <code>XLA_ADDIN_PATH</code> を明示することで、アプリ更新時に
+  <code>C:\Apps\WbsWeb\</code> 配下を <code>robocopy /MIR</code> で全削除しても、
+  永続データ側 (<code>C:\AppsData\WbsWeb\</code>) に置いたテンプレ／アドインは無傷で残ります。
+</div>
 
 <!-- ================================================ -->
 <h2 class="chapter" id="ch6"><span class="role-tag role-prod">PROD</span>6. ファイアウォール開放と動作確認</h2>
@@ -419,6 +464,10 @@ NSSM 2.24-101-...</pre>
   <li>本番マシン自身で <code>http://localhost:5000/</code> を開く → プロジェクト一覧が表示される</li>
   <li>同一 LAN の別 PC のブラウザで <code>http://&lt;本番マシンの IP&gt;:5000/</code> を開く → 同じ画面</li>
   <li>持ち込んだ既存データ（プロジェクト・顧客・社員）が表示されていることを確認</li>
+  <li>適当なプロジェクトを開き「Excel 出力」をクリック → <code>.xls</code> がダウンロードできる
+    （4.3 で配置したテンプレートが見つからないと 500 エラーになる）</li>
+  <li><code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> を開き <code>km_module.xla</code> をダウンロード
+    （4.4 で配置したアドインが見つからないと 404 エラーになる）</li>
   <li>マシンを再起動して、再度ブラウザでアクセス → サービスが自動起動して開く</li>
 </ol>
 
@@ -442,6 +491,7 @@ NSSM 2.24-101-...</pre>
     <tr><td>「保護されていない通信」表示</td><td>HTTP なので警告が出るが、社内 LAN なので利用 OK と案内</td></tr>
     <tr><td>同時編集</td><td>本バージョンは同時編集非対応。同一プロジェクトを 2 人以上で開いて編集しないこと</td></tr>
     <tr><td>使い方</td><td><a href="manual.html">manual.html</a> を参照</td></tr>
+    <tr><td>Excel アドイン</td><td>Excel 出力したファイルでガント描画を見るには <code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> から <code>km_module.xla</code> をダウンロードして Excel に登録（初回 1 回のみ）。登録手順はダウンロードページに記載済</td></tr>
   </tbody>
 </table>
 
@@ -462,6 +512,7 @@ NSSM 2.24-101-...</pre>
 <pre><span class="prompt">PS&gt;</span> C:\Tools\nssm.exe stop WbsWeb
 
 <span class="comment"># アプリ部分のみ差し替え（C:\AppsData\ は触らない）</span>
+<span class="comment"># テンプレ／アドイン (C:\AppsData\WbsWeb\templates / addins) もそのまま温存</span>
 <span class="prompt">PS&gt;</span> robocopy \\&lt;DEV-IP&gt;\C$\tmp\WbsWeb-deploy C:\Apps\WbsWeb /MIR /XD logs
 
 <span class="comment"># マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
@@ -472,6 +523,13 @@ NSSM 2.24-101-...</pre>
 
 <span class="prompt">PS&gt;</span> C:\Tools\nssm.exe start WbsWeb
 <span class="prompt">PS&gt;</span> C:\Tools\nssm.exe status WbsWeb</pre>
+
+<div class="note">
+  <strong>📌 テンプレ／アドインを更新したい場合</strong>
+  <code>テンプレートファイル.xls</code> や <code>km_module.xla</code> を新しい版に差し替えたいときは、
+  サービスを止めずに <code>C:\AppsData\WbsWeb\templates\</code> / <code>C:\AppsData\WbsWeb\addins\</code>
+  のファイルを上書きするだけで OK（読み込み時にディスクから都度参照しているため再起動不要）。
+</div>
 
 <div class="tip">
   <strong>💡 ダウンタイム目安</strong>
@@ -537,6 +595,31 @@ NSSM 2.24-101-...</pre>
       <td>サービス削除して再登録したい</td>
       <td><code>C:\Tools\nssm.exe remove WbsWeb confirm</code> で登録解除 → 5.2 をやり直し</td>
     </tr>
+    <tr>
+      <td>Excel 出力で 500 エラー</td>
+      <td>
+        <code>XLS_TEMPLATE_PATH</code> が指すファイルが存在しているか確認:<br>
+        <code>Test-Path "C:\AppsData\WbsWeb\templates\テンプレートファイル.xls"</code><br>
+        false なら 4.3 でテンプレを再配置。NSSM 環境変数も <code>C:\Tools\nssm.exe get WbsWeb AppEnvironmentExtra</code> で確認
+      </td>
+    </tr>
+    <tr>
+      <td><code>/downloads</code> から <code>km_module.xla</code> がダウンロードできない (404)</td>
+      <td>
+        <code>XLA_ADDIN_PATH</code> が指すファイルが存在しているか確認:<br>
+        <code>Test-Path "C:\AppsData\WbsWeb\addins\km_module.xla"</code><br>
+        false なら 4.4 でアドインを再配置
+      </td>
+    </tr>
+    <tr>
+      <td>Excel で <code>.xls</code> を開いてもガントが描画されない</td>
+      <td>
+        利用者側でアドイン未登録の可能性大。<br>
+        ① <code>/downloads</code> から <code>km_module.xla</code> をダウンロード<br>
+        ② Excel → ファイル → オプション → アドイン → 設定 → 参照 で <code>km_module.xla</code> を追加<br>
+        ③ Excel を再起動して、ファイル開き直し
+      </td>
+    </tr>
   </tbody>
 </table>
 
@@ -544,7 +627,8 @@ NSSM 2.24-101-...</pre>
   <strong>🚫 やってはいけないこと</strong>
   <ul class="bullets" style="margin-top:0.4rem;color:var(--danger);">
     <li>サービス起動中に <code>C:\AppsData\WbsWeb\wbs.db</code> を直接コピー／編集（壊れる）</li>
-    <li>更新リリース時の <code>robocopy /MIR</code> でうっかり <code>C:\AppsData\</code> を含める（永続データが消える）</li>
+    <li>更新リリース時の <code>robocopy /MIR</code> でうっかり <code>C:\AppsData\</code> を含める（永続データ・テンプレ・アドインが消える）</li>
+    <li><code>C:\Apps\WbsWeb\</code> 配下にテンプレ／アドインを置く（更新時に消える）。必ず <code>C:\AppsData\WbsWeb\</code> 側に置く</li>
     <li><code>HOST</code> 未設定で 0.0.0.0 にバインドされない状態で「動かない」と騒ぐ</li>
   </ul>
 </div>
