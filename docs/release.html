@@ -202,6 +202,7 @@
     <li><a href="#ch8">更新リリース手順（2 回目以降）</a></li>
     <li><a href="#ch9">バックアップ</a></li>
     <li><a href="#ch10">トラブルシューティング</a></li>
+    <li><a href="#ch11">セキュリティ方針（現状と将来）</a></li>
     <li><a href="#chA">付録: 凡例</a></li>
   </ol>
 </nav>
@@ -545,6 +546,75 @@ NSSM 2.24-101-...</pre>
     <li>サービス起動中に <code>C:\AppsData\WbsWeb\wbs.db</code> を直接コピー／編集（壊れる）</li>
     <li>更新リリース時の <code>robocopy /MIR</code> でうっかり <code>C:\AppsData\</code> を含める（永続データが消える）</li>
     <li><code>HOST</code> 未設定で 0.0.0.0 にバインドされない状態で「動かない」と騒ぐ</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch11">11. セキュリティ方針（現状と将来）</h2>
+
+<h3 class="section"><span class="num">11.1</span>現状（v0.1）</h3>
+<p>本バージョンは <strong>同一 LAN 内のクローズドネットワーク利用</strong>を前提に、<strong>認証なし</strong>で動作します。</p>
+<table class="cmd">
+  <thead><tr><th>エンドポイント</th><th>認証</th><th>到達範囲</th></tr></thead>
+  <tbody>
+    <tr><td><code>/api/*</code>（Web API: プロジェクト・タスク・社員・顧客・休日）</td><td><strong>なし</strong></td><td>サーバに到達できる全ホスト</td></tr>
+    <tr><td><code>/mcp</code>（MCP: AI ツール連携用）</td><td><strong>なし</strong></td><td>同上</td></tr>
+    <tr><td>静的ファイル（Vue SPA）</td><td>なし</td><td>同上</td></tr>
+  </tbody>
+</table>
+
+<div class="warn">
+  <strong>⚠ 同一 LAN 上であれば誰でも操作可能</strong>
+  この前提が崩れる場面（VPN 越し他拠点接続、無線 LAN ゲスト相乗り、共有 PC 利用、リモートワーク経由のトンネリング等）では <strong>第三者がデータの読み書きを行えてしまいます</strong>。本番マシンに到達できるネットワーク範囲は、運用責任者が把握・管理してください。
+</div>
+
+<h3 class="section"><span class="num">11.2</span>現在の防御線</h3>
+<ul class="bullets">
+  <li><strong>HOST=0.0.0.0</strong> によりサーバ自身は LAN に開いているが、<strong>ファイアウォール（6.1）</strong>で TCP 5000 を社内 LAN セグメントのみに絞ることで、不要なネットワークからの到達を遮断する</li>
+  <li><strong>HTTP</strong>（平文）。社内ネットワーク内の盗聴・改ざんは想定外</li>
+  <li><strong>同時編集なし</strong>。複数人が同じプロジェクトを同時に書き換えると最後勝ち＝データ競合のリスクあり（仕様）</li>
+</ul>
+
+<h3 class="section"><span class="num">11.3</span>将来の認証導入計画（TODO）</h3>
+<p>下記の要件が発生した時点で、認証層を導入します。<strong>Web API と MCP は同じ仕組み</strong>で守る方針です（個別に部分認証はしない）。</p>
+<table class="cmd">
+  <thead><tr><th>トリガー</th><th>必要対応</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>VPN や別拠点からの利用が始まる</td>
+      <td>少なくとも Basic 認証 / IP 制限 / リバースプロキシ前段で守る</td>
+    </tr>
+    <tr>
+      <td>社外公開 / クラウド配置</td>
+      <td>HTTPS 化 + 本格的なログイン認証（NestJS Passport で JWT or セッション）<br>
+      MCP 側は <code>McpAuthGuard</code>（コード上に保持済、現在コメントアウト）を再有効化し、<code>MCP_TOKEN</code> 環境変数を必須に戻す</td>
+    </tr>
+    <tr>
+      <td>ユーザ別の操作ログ（誰がいつ何を変えたか）が必要</td>
+      <td>認証導入と同時に、変更履歴テーブルへ <code>user_id</code> 列を追加して記録</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">11.4</span>コード上の状態</h3>
+<p>MCP 認証ガード（<code>McpAuthGuard</code>）の実装は残っており、必要なら最短 5 分で復活できます。<br>
+場所: <code>packages/api/src/mcp/auth/mcp-auth.guard.ts</code><br>
+コメントアウト位置: <code>packages/api/src/mcp/mcp.module.ts</code>（3 か所、<code>// TODO(auth):</code> マーク付き）</p>
+
+<p>復活手順（必要になったとき）:</p>
+<pre><span class="comment"># 1) mcp.module.ts の 3 か所のコメントアウトを外す</span>
+<span class="comment">#    - import { McpAuthGuard } ...</span>
+<span class="comment">#    - guards: [McpAuthGuard]</span>
+<span class="comment">#    - providers 配列内の McpAuthGuard</span>
+<span class="comment"># 2) NSSM 環境変数 MCP_TOKEN に 16 文字以上のランダム値を設定</span>
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe set WbsWeb AppEnvironmentExtra ... "MCP_TOKEN=$token"
+<span class="prompt">PS&gt;</span> C:\Tools\nssm.exe restart WbsWeb</pre>
+
+<div class="note">
+  <strong>📌 関連 TODO の位置</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>コード: <code>packages/api/src/mcp/mcp.module.ts</code> の <code>// TODO(auth):</code> コメント</li>
+    <li>運用: 本セクション（このリリース手順書 11 章）</li>
   </ul>
 </div>
 
