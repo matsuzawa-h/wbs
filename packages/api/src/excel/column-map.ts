@@ -17,10 +17,36 @@
 //   this template.
 
 export const SCHEDULE_SHEET_NAME = 'スケジュール';
+export const EMPLOYEES_SHEET_NAME = '担当者一覧';
 
 export const TEMPLATE_DATA_START_ROW = 5;
 export const TEMPLATE_DATA_END_ROW = 45;
 export const TEMPLATE_FORMATTED_BLANK_ROW = 46;
+
+// 担当者一覧 sheet (0-indexed) — row 2 is the header, data starts at row 3.
+// Capacity confirmed up to row 45 (43 data rows) after the user expanded the
+// template. col 8 ("サンプル") is intentionally left blank by the exporter.
+export const EMPLOYEES_DATA_START_ROW = 3;
+export const EMPLOYEES_DATA_END_ROW = 45;
+export const EMPLOYEES_COLUMNS = {
+  // The legacy template separates "担当" (the identifier used in
+  // スケジュール col Q) from "メンバ" (the person's display name). The Web
+  // app writes the same employee name in both places to keep
+  // スケジュール sheet's existing 担当 value matched without changing it.
+  role: 2,
+  name: 3,
+  employmentStart: 4,
+  employmentEnd: 5,
+  worksOnHolidays: 6,
+} as const;
+
+export const EMPLOYEES_COLUMNS_TO_CLEAR = [
+  EMPLOYEES_COLUMNS.role,
+  EMPLOYEES_COLUMNS.name,
+  EMPLOYEES_COLUMNS.employmentStart,
+  EMPLOYEES_COLUMNS.employmentEnd,
+  EMPLOYEES_COLUMNS.worksOnHolidays,
+] as const;
 
 export const WBS_COLUMNS = {
   majorItem: 1,

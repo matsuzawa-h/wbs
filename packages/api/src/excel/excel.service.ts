@@ -10,6 +10,8 @@ import { resolve } from 'path';
 import { AppDb, assignees, projects, wbsTasks } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { applyCellUpdates } from './biff-writer';
+import { EMPLOYEES_SHEET_NAME } from './column-map';
+import { buildEmployeeCellUpdates, EmployeeExportRow } from './employees-mapper';
 import { buildWbsCellUpdates, WbsExportTask } from './wbs-mapper';
 
 @Injectable()
@@ -27,15 +29,38 @@ export class ExcelService {
     }
 
     const tasks = this.loadTasks(projectId);
-    let updates;
+    const employees = this.loadEmployees();
+    let scheduleUpdates;
+    let employeeUpdates;
     try {
-      updates = buildWbsCellUpdates(tasks);
+      scheduleUpdates = buildWbsCellUpdates(tasks);
+      employeeUpdates = buildEmployeeCellUpdates(employees);
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
 
+    // Pipeline the surgical edits: schedule first, then employees on the
+    // already-modified buffer so the second pass sees and reuses any strings
+    // added to the SST by the first pass.
     const template = readFileSync(this.templatePath());
-    return applyCellUpdates(template, updates);
+    const afterSchedule = applyCellUpdates(template, scheduleUpdates);
+    return applyCellUpdates(afterSchedule, employeeUpdates, EMPLOYEES_SHEET_NAME);
+  }
+
+  private loadEmployees(): EmployeeExportRow[] {
+    return this.db
+      .select({
+        id: assignees.id,
+        code: assignees.code,
+        name: assignees.name,
+        employmentStart: assignees.employmentStart,
+        employmentEnd: assignees.employmentEnd,
+        worksOnHolidays: assignees.worksOnHolidays,
+        isActive: assignees.isActive,
+      })
+      .from(assignees)
+      .orderBy(asc(assignees.sortOrder), asc(assignees.code), asc(assignees.id))
+      .all();
   }
 
   private loadTasks(projectId: number): WbsExportTask[] {
