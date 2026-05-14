@@ -217,7 +217,7 @@
     <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で問題なし）</td></tr>
     <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code> （HTTP / 平文）</td></tr>
     <tr><td>常駐方式</td><td>Windows タスクスケジューラ（追加インストール不要）、OS 再起動で自動起動</td></tr>
-    <tr><td>MCP モジュール</td><td>同梱（同一マシンからのみアクセス可、Bearer トークン必須）</td></tr>
+    <tr><td>MCP モジュール</td><td>同梱。v0.1 では認証ガードがコメントアウトされており <code>MCP_TOKEN</code> 不要（詳細は 11 章）</td></tr>
     <tr><td>既存データ</td><td>開発機の SQLite を丸ごと持ち込み</td></tr>
   </tbody>
 </table>
@@ -289,7 +289,7 @@ v20.x.x
   <tbody>
     <tr><td>起動トリガ</td><td>システム起動時（At startup）</td></tr>
     <tr><td>実行アカウント</td><td>SYSTEM（ユーザがログオンしていなくても動く）</td></tr>
-    <tr><td>環境変数 / ログリダイレクト</td><td>ラッパー <code>start.cmd</code> 経由（5.2 で作成）</td></tr>
+    <tr><td>環境変数 / ログリダイレクト</td><td>ラッパー <code>start.cmd</code> 経由（5.1 で作成）</td></tr>
     <tr><td>自動再起動</td><td>タスクの「失敗時に再起動」設定で 1 分後にリトライ × 999 回</td></tr>
     <tr><td>停止 / 起動</td><td><code>Stop-ScheduledTask / Start-ScheduledTask</code>（プロセスを確実に止めるには <code>Stop-Process</code> も併用）</td></tr>
   </tbody>
@@ -409,23 +409,8 @@ v20.x.x
 <!-- ================================================ -->
 <h2 class="chapter" id="ch5"><span class="role-tag role-prod">PROD</span>5. 初回サービス登録</h2>
 
-<h3 class="section"><span class="num">5.1</span>MCP トークンを生成（16 文字以上のランダム）</h3>
-<p>本番運用では <code>MCP_TOKEN</code> 環境変数の設定が必須です。下記で 32 文字のトークンを生成します：</p>
-<pre><span class="prompt">PS&gt;</span> $token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
-<span class="prompt">PS&gt;</span> $token
-<span class="comment"># 例: aB3xK9mP2qR7nW4yL8tZ5jH6cV1fD0sE</span>
-
-<span class="comment"># この値をメモしてください（5.2 の start.cmd に埋め込みます）</span></pre>
-
-<div class="warn">
-  <strong>⚠ MCP_TOKEN の扱い</strong>
-  このトークンは MCP エンドポイント（<code>/mcp</code>）の Bearer 認証に使われます。<strong>同一マシンからしかアクセスできない</strong>仕組み（Origin が localhost / 127.0.0.1 限定）なので外部漏れリスクは小さいですが、平文ログに残さないよう注意してください。
-</div>
-
-<h3 class="section"><span class="num">5.2</span>起動スクリプト <code>start.cmd</code> を作成</h3>
-<p>環境変数の設定とログリダイレクトをまとめたラッパースクリプトを <code>C:\AppsData\WbsWeb\start.cmd</code> として保存します。
-  <strong>5.1 で生成したトークンを <code>MCP_TOKEN=</code> 行に貼り付けてください。</strong>
-</p>
+<h3 class="section"><span class="num">5.1</span>起動スクリプト <code>start.cmd</code> を作成</h3>
+<p>環境変数の設定とログリダイレクトをまとめたラッパースクリプトを <code>C:\AppsData\WbsWeb\start.cmd</code> として保存します。</p>
 <pre><span class="comment">@echo off
 REM WBS Web 起動スクリプト (タスクスケジューラから呼ばれる)</span>
 set PORT=5000
@@ -434,11 +419,19 @@ set NODE_ENV=production
 set DB_PATH=C:\AppsData\WbsWeb\wbs.db
 set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
 set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
-set MCP_TOKEN=<span class="comment">&lt;5.1 で生成した 32 文字を貼る&gt;</span>
+<span class="comment">REM MCP 認証を再有効化する場合のみ MCP_TOKEN を設定 (11 章参照)。</span>
+<span class="comment">REM set MCP_TOKEN=&lt;16 文字以上のランダム値&gt;</span>
 cd /d C:\Apps\WbsWeb
 "C:\Program Files\nodejs\node.exe" dist\main.js ^
   &gt;&gt; C:\AppsData\WbsWeb\logs\stdout.log ^
   2&gt;&gt; C:\AppsData\WbsWeb\logs\stderr.log</pre>
+
+<div class="note">
+  <strong>📌 <code>MCP_TOKEN</code> について</strong>
+  v0.1 では MCP 認証ガード (<code>McpAuthGuard</code>) がコメントアウトされており、
+  <code>MCP_TOKEN</code> 環境変数は <strong>設定不要</strong>です。
+  将来認証を再有効化する場合の手順は <a href="#ch11">11 章 セキュリティ方針</a> に記載。
+</div>
 
 <div class="note">
   <strong>📌 保存方法</strong>
@@ -448,7 +441,7 @@ cd /d C:\Apps\WbsWeb
   文字コードは <strong>ANSI / Shift_JIS</strong> を選択（UTF-8 だと set 文字列が化ける可能性あり）。
 </div>
 
-<h3 class="section"><span class="num">5.3</span>タスクスケジューラに登録</h3>
+<h3 class="section"><span class="num">5.2</span>タスクスケジューラに登録</h3>
 <p>PowerShell（<strong>管理者</strong>）で実行：</p>
 <pre><span class="prompt">PS&gt;</span> $action = New-ScheduledTaskAction -Execute "C:\AppsData\WbsWeb\start.cmd"
 <span class="prompt">PS&gt;</span> $trigger = New-ScheduledTaskTrigger -AtStartup
@@ -475,24 +468,24 @@ cd /d C:\Apps\WbsWeb
   </ul>
 </div>
 
-<h3 class="section"><span class="num">5.4</span>動作確認（起動直後）</h3>
+<h3 class="section"><span class="num">5.3</span>動作確認（起動直後）</h3>
 <pre><span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo
 <span class="comment"># LastTaskResult が 267009 (= currently running) であれば OK</span>
 <span class="prompt">PS&gt;</span> Get-Process node -ErrorAction SilentlyContinue
 <span class="comment"># node.exe プロセスが見える</span>
 <span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30</pre>
 
-<h3 class="section"><span class="num">5.5</span>環境変数の意味</h3>
+<h3 class="section"><span class="num">5.4</span>環境変数の意味</h3>
 <table class="cmd">
-  <thead><tr><th>変数</th><th>意味</th><th>本番値</th></tr></thead>
+  <thead><tr><th>変数</th><th>必須</th><th>意味</th><th>本番値</th></tr></thead>
   <tbody>
-    <tr><td><code>PORT</code></td><td>HTTP リッスンポート</td><td>5000</td></tr>
-    <tr><td><code>HOST</code></td><td>バインドアドレス（必ず <code>0.0.0.0</code>、これがないと別 PC からつながらない）</td><td>0.0.0.0</td></tr>
-    <tr><td><code>NODE_ENV</code></td><td>NestJS の本番モード切替</td><td>production</td></tr>
-    <tr><td><code>DB_PATH</code></td><td>SQLite ファイルの絶対パス</td><td>C:\AppsData\WbsWeb\wbs.db</td></tr>
-    <tr><td><code>XLS_TEMPLATE_PATH</code></td><td>Excel 出力／取込で使う旧テンプレ <code>テンプレートファイル.xls</code> の絶対パス</td><td>C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</td></tr>
-    <tr><td><code>XLA_ADDIN_PATH</code></td><td><code>/api/downloads/km_module.xla</code> エンドポイントで配信する Excel アドインの絶対パス</td><td>C:\AppsData\WbsWeb\addins\km_module.xla</td></tr>
-    <tr><td><code>MCP_TOKEN</code></td><td>MCP Bearer 認証用シークレット（16 文字以上）</td><td>5.1 で生成した値</td></tr>
+    <tr><td><code>PORT</code></td><td>○</td><td>HTTP リッスンポート</td><td>5000</td></tr>
+    <tr><td><code>HOST</code></td><td>○</td><td>バインドアドレス（必ず <code>0.0.0.0</code>、これがないと別 PC からつながらない）</td><td>0.0.0.0</td></tr>
+    <tr><td><code>NODE_ENV</code></td><td>○</td><td>NestJS の本番モード切替</td><td>production</td></tr>
+    <tr><td><code>DB_PATH</code></td><td>○</td><td>SQLite ファイルの絶対パス</td><td>C:\AppsData\WbsWeb\wbs.db</td></tr>
+    <tr><td><code>XLS_TEMPLATE_PATH</code></td><td>○</td><td>Excel 出力／取込で使う旧テンプレ <code>テンプレートファイル.xls</code> の絶対パス</td><td>C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</td></tr>
+    <tr><td><code>XLA_ADDIN_PATH</code></td><td>○</td><td><code>/api/downloads/km_module.xla</code> エンドポイントで配信する Excel アドインの絶対パス</td><td>C:\AppsData\WbsWeb\addins\km_module.xla</td></tr>
+    <tr><td><code>MCP_TOKEN</code></td><td>—</td><td>MCP Bearer 認証用シークレット（16 文字以上）。<strong>v0.1 では MCP 認証が無効化されているため設定不要</strong>。11 章で再有効化する場合のみ設定</td><td>未設定</td></tr>
   </tbody>
 </table>
 
@@ -645,8 +638,8 @@ cd /d C:\Apps\WbsWeb
       <td>node.exe が起動しない / すぐ落ちる</td>
       <td>
         <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
-        ・<code>MCP_TOKEN environment variable must be set</code> → 5.2 の <code>start.cmd</code> に <code>set MCP_TOKEN=...</code> が無い、または 16 文字未満<br>
-        ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足
+        ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足<br>
+        ・<code>MCP_TOKEN environment variable must be set</code> → 11 章 (MCP 認証) を有効化した状態で <code>MCP_TOKEN</code> 未設定／16 文字未満。<strong>v0.1 既定では発生しない</strong>
       </td>
     </tr>
     <tr>
@@ -661,7 +654,7 @@ cd /d C:\Apps\WbsWeb
       <td>タスクスケジューラで「タスクは終了しました (0x41306)」</td>
       <td>
         子プロセス (node.exe) が異常終了したサイン。<code>stderr.log</code> を確認。<br>
-        多くは <code>MCP_TOKEN</code> 未設定 or <code>start.cmd</code> 内のパス誤り。
+        多くは <code>start.cmd</code> 内のパス誤り（<code>DB_PATH</code> / <code>XLS_TEMPLATE_PATH</code> / <code>XLA_ADDIN_PATH</code> のいずれか）。
       </td>
     </tr>
     <tr>
