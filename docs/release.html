@@ -203,6 +203,7 @@
     <li><a href="#ch9">バックアップ</a></li>
     <li><a href="#ch10">トラブルシューティング</a></li>
     <li><a href="#ch11">セキュリティ方針</a>（現状と将来）</li>
+    <li><a href="#ch12">MCP 接続手順</a>（開発者・運用者向け）</li>
     <li><a href="#chA">付録: 凡例</a></li>
   </ol>
 </nav>
@@ -876,6 +877,84 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
     <li>コード: <code>packages/api/src/mcp/mcp.module.ts</code> の <code>// TODO(auth):</code> コメント</li>
     <li>運用: 本セクション（このリリース手順書 11 章）</li>
   </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch12">12. MCP 接続手順（開発者・運用者向け）</h2>
+
+<p>
+  Claude Code などの MCP 対応クライアントから、本番 WBS Web の DB を
+  直接読み書きするための接続手順です。利用者画面とは別経路で、
+  CRUD 系の操作を AI に任せたい / 一括登録を自動化したいといった場面で使います。
+</p>
+
+<h3 class="section"><span class="num">12.1</span>エンドポイント情報</h3>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>値</th></tr></thead>
+  <tbody>
+    <tr><td>URL</td><td><code>http://&lt;本番マシン IP&gt;:5000/mcp</code> または <code>http://TG120286:5000/mcp</code></td></tr>
+    <tr><td>Transport</td><td>Streamable HTTP（POST / GET / DELETE）</td></tr>
+    <tr><td>認証</td><td><strong>なし</strong>（v0.1 では認証ガード無効化中、11 章 参照）</td></tr>
+    <tr><td>ツール数</td><td>約 30（Customers / Projects / Tasks / Employees / Holidays の各 CRUD）</td></tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">12.2</span>クライアント側 <code>.mcp.json</code> の例</h3>
+<p>このリポジトリには既に <code>c:\Git\WBS\WbsWeb\.mcp.json</code> として下記が配置済みです：</p>
+<pre>{
+  "mcpServers": {
+    "wbs-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:5000/mcp"
+    },
+    "wbs-prod": {
+      "type": "http",
+      "url": "http://TG120286:5000/mcp"
+    }
+  }
+}</pre>
+<div class="tip">
+  <strong>💡 ホスト名で繋がらない場合は IP 直打ちに切替</strong>
+  <code>TG120286</code> で名前解決できない環境では、<code>http://192.168.x.x:5000/mcp</code> のように
+  IP を直接書いてください。本番マシンの IP は 6.2 章のコマンドで確認できます。
+</div>
+
+<h3 class="section"><span class="num">12.3</span>接続前の疎通確認</h3>
+<pre><span class="prompt">PS&gt;</span> Invoke-WebRequest -Uri "http://TG120286:5000/api/health" -UseBasicParsing
+<span class="comment"># StatusCode 200 が返れば Web API は到達可能</span>
+
+<span class="prompt">PS&gt;</span> Invoke-WebRequest -Uri "http://TG120286:5000/mcp" -UseBasicParsing -Method GET
+<span class="comment"># 405 Method Not Allowed が返れば MCP endpoint まで到達できている</span>
+<span class="comment"># (MCP は POST 中心、GET 単独は受け付けないので 405 が正解)</span></pre>
+
+<h3 class="section"><span class="num">12.4</span>Claude Code から接続</h3>
+<ol class="steps">
+  <li>クライアント PC で <code>cd</code> でプロジェクトディレクトリ（<code>.mcp.json</code> がある場所）へ</li>
+  <li><code>claude</code> を起動</li>
+  <li>セッション内で <code>/mcp</code> を叩いて、登録済 MCP サーバの一覧と接続状態を確認</li>
+  <li>「<code>wbs-prod</code> のプロジェクト一覧を取得して」のような自然言語で依頼</li>
+</ol>
+
+<h3 class="section"><span class="num">12.5</span>利用可能ツール（30 種）</h3>
+<table class="cmd">
+  <thead><tr><th>領域</th><th>操作</th></tr></thead>
+  <tbody>
+    <tr><td>Customers（顧客マスタ）</td><td>list / get / create / update / remove</td></tr>
+    <tr><td>Projects（プロジェクト）</td><td>list / get / create / update / remove / listMembers / setMembers</td></tr>
+    <tr><td>Tasks（タスク）</td><td>list / get / create / update / remove / reorder</td></tr>
+    <tr><td>Employees（社員マスタ）</td><td>list / get / create / update / remove / listAssignments</td></tr>
+    <tr><td>Holidays（休日マスタ）</td><td>list / create / bulkCreate / update / remove</td></tr>
+  </tbody>
+</table>
+
+<div class="danger">
+  <strong>🚫 取り扱い注意</strong>
+  <ul class="bullets" style="margin-top:0.4rem;color:var(--danger);">
+    <li><strong>無認証</strong>：同一 LAN から誰でも叩ける。本番データを破壊する操作（<code>remove</code> 系）も呼べる</li>
+    <li><strong>同時編集</strong>：Web UI で誰かが編集中に MCP から書き込むと整合性が崩れる可能性</li>
+    <li><strong>読み取り専用モードは未実装</strong>：必要な場合は別途実装検討（11 章の認証導入と合わせて）</li>
+  </ul>
+  AI に依頼する際は読み取り操作を先に試し、変更を伴う操作は内容を確認してから実行する運用を推奨。
 </div>
 
 <!-- ================================================ -->
