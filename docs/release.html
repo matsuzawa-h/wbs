@@ -186,7 +186,7 @@
 <header class="title">
   <h1>WBS Web リリース手順書</h1>
   <p class="lead">同一 LAN 内 Windows 11 マシンへ本番デプロイする手順（10 ユーザ想定）</p>
-  <p class="meta">対象構成: Windows 11 / Node.js 20 / タスクスケジューラ常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
+  <p class="meta">対象構成: Windows 11 / Node.js 22 LTS / タスクスケジューラ常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
 </header>
 
 <nav class="toc">
@@ -251,18 +251,31 @@
 
 <p>初回のみ、本番マシン上で以下を実施します。<strong>すべて管理者として PowerShell を開いて実行</strong>してください。</p>
 
-<h3 class="section"><span class="num">2.1</span>Node.js 20 LTS のインストール</h3>
+<h3 class="section"><span class="num">2.1</span>Node.js 22 LTS のインストール</h3>
+<div class="warn">
+  <strong>⚠ 開発機と本番マシンで Node.js のメジャーバージョンを必ず一致させる</strong>
+  <code>better-sqlite3</code> はネイティブモジュール (C++) で、Node のメジャーバージョンごとに
+  別の <code>.node</code> バイナリが必要です。バージョンがズレると起動時に
+  <code>NODE_MODULE_VERSION 127 vs 137</code> のような不一致エラーが出て起動できません。<br>
+  本書は開発機が <strong>Node.js 22 LTS</strong> を使用している前提で書かれています。
+  本番側も <strong>22 LTS</strong> に揃えてください。
+</div>
 <ol class="steps">
-  <li>ブラウザで <code>https://nodejs.org/</code> を開く</li>
-  <li>「LTS」（推奨版）の Windows Installer（<code>.msi</code>）をダウンロード</li>
+  <li>ブラウザで <code>https://nodejs.org/dist/latest-v22.x/</code> を開く<br>
+      （または <code>https://nodejs.org/dist/v22.20.0/node-v22.20.0-x64.msi</code> を直接 DL）</li>
+  <li><strong>22 系の最新</strong> Windows Installer（<code>.msi</code>）をダウンロード</li>
   <li>インストーラーを起動 → 既定設定で完了（PATH 追加にチェックが入っていることを確認）</li>
   <li>PowerShell を一度閉じて開き直し、確認:
   <pre><span class="prompt">PS&gt;</span> node --version
-v20.x.x
+v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
 <span class="prompt">PS&gt;</span> npm --version
 10.x.x</pre>
   </li>
 </ol>
+<div class="note">
+  <strong>📌 Node 24 など別バージョンを入れてしまった場合</strong>
+  「設定 → アプリ → インストールされているアプリ → Node.js」からアンインストール後、22 LTS の MSI をインストールし直してください。
+</div>
 
 <h3 class="section"><span class="num">2.2</span>pnpm を有効化</h3>
 <pre><span class="prompt">PS&gt;</span> corepack enable
@@ -682,6 +695,7 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
       <td>
         <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
         ・<code>Cannot find module 'tslib'</code> 等のモジュール未検出 → 開発機の <code>.npmrc</code> に <code>node-linker=hoisted</code> が入っていないか、変更後に <code>pnpm install</code> を再実行していない可能性。開発機で <code>pnpm install</code> → <code>pnpm --filter api --prod deploy</code> をやり直して再転送<br>
+        ・<code>NODE_MODULE_VERSION 127 vs 137</code> 等のネイティブモジュール不整合 → 開発機と本番マシンの Node.js メジャーバージョンが違う。両方 <strong>22 LTS</strong> に揃える（2.1 参照）<br>
         ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足<br>
         ・<code>MCP_TOKEN environment variable must be set</code> → 11 章 (MCP 認証) を有効化した状態で <code>MCP_TOKEN</code> 未設定／16 文字未満。<strong>v0.1 既定では発生しない</strong>
       </td>
