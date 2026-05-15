@@ -434,11 +434,41 @@ cd /d C:\Apps\WbsWeb
 </div>
 
 <div class="note">
-  <strong>📌 保存方法</strong>
-  メモ帳で作る場合は「ファイル → 名前を付けて保存」で
-  <strong>「ファイルの種類」を「すべてのファイル (*.*)」</strong>に切替えて
-  <code>start.cmd</code> として保存（拡張子が <code>.txt</code> にならないように注意）。
-  文字コードは <strong>ANSI / Shift_JIS</strong> を選択（UTF-8 だと set 文字列が化ける可能性あり）。
+  <strong>📌 保存方法（文字コードと改行コードに注意）</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>メモ帳で作る場合は「ファイル → 名前を付けて保存」で
+        <strong>「ファイルの種類」を「すべてのファイル (*.*)」</strong>に切替え、
+        <code>start.cmd</code> として保存（拡張子が <code>.txt</code> にならないように注意）</li>
+    <li>文字コード：<strong>ANSI / Shift_JIS</strong>（UTF-8 だと set 文字列が化ける可能性）</li>
+    <li>改行コード：<strong>CRLF</strong> 必須。Windows 11 のメモ帳は LF のみで保存することがあり、
+        その場合 cmd.exe が <code>'000'</code> など意味不明な文字列で
+        「内部コマンドまたは外部コマンドとして認識されていません」エラーを出す。</li>
+  </ul>
+  <strong>確認方法</strong>：
+  <pre style="margin:0.3rem 0;"><span class="prompt">PS&gt;</span> Format-Hex -Path C:\AppsData\WbsWeb\start.cmd | Select-Object -First 3
+<span class="comment"># 各行末が "0D 0A" になっていれば OK。"0A" だけ なら下記で変換:</span>
+<span class="prompt">PS&gt;</span> (Get-Content C:\AppsData\WbsWeb\start.cmd) |
+        Set-Content C:\AppsData\WbsWeb\start.cmd -Encoding OEM -Force</pre>
+</div>
+
+<div class="tip">
+  <strong>💡 cmd.exe から書く方法（CRLF と ANSI が確実）</strong>
+  メモ帳で文字コード／改行コードの罠を避けたい場合、cmd.exe を起動して直接生成：
+  <pre style="margin:0.3rem 0;">cd C:\AppsData\WbsWeb
+del start.cmd
+
+(
+echo @echo off
+echo set PORT=5000
+echo set HOST=0.0.0.0
+echo set NODE_ENV=production
+echo set DB_PATH=C:\AppsData\WbsWeb\wbs.db
+echo set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
+echo set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+echo cd /d C:\Apps\WbsWeb
+echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb\logs\stdout.log 2^^^>^^^> C:\AppsData\WbsWeb\logs\stderr.log
+) &gt; start.cmd</pre>
+  cmd.exe からの <code>echo &gt;</code> は確実に CRLF + ANSI で書き込まれます。
 </div>
 
 <h3 class="section"><span class="num">5.2</span>タスクスケジューラに登録</h3>
@@ -674,7 +704,16 @@ cd /d C:\Apps\WbsWeb
     </tr>
     <tr>
       <td>タスクを削除して再登録したい</td>
-      <td><code>Unregister-ScheduledTask -TaskName "WbsWeb" -Confirm:$false</code> で登録解除 → 5.3 をやり直し</td>
+      <td><code>Unregister-ScheduledTask -TaskName "WbsWeb" -Confirm:$false</code> で登録解除 → 5.2 をやり直し</td>
+    </tr>
+    <tr>
+      <td><code>'000'</code> や <code>'NV'</code> など意味不明な文字列で「内部コマンドまたは外部コマンドとして認識されていません」</td>
+      <td>
+        <code>start.cmd</code> の改行コードが <strong>LF だけ</strong>（CR が無い）になっている。
+        Windows 11 のメモ帳は LF を保持することあり。下記で修正：<br>
+        <code>(Get-Content C:\AppsData\WbsWeb\start.cmd) | Set-Content C:\AppsData\WbsWeb\start.cmd -Encoding OEM -Force</code><br>
+        確認: <code>Format-Hex</code> で行末が <code>0D 0A</code> になっていれば OK。
+      </td>
     </tr>
     <tr>
       <td>Excel 出力で 500 エラー</td>
