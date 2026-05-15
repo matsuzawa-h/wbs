@@ -192,35 +192,69 @@
 <nav class="toc">
   <h2>目次</h2>
   <ol>
-    <li><a href="#ch1">前提・構成図</a></li>
-    <li><a href="#ch2">本番マシン側 ワンタイム準備（Node.js / pnpm / 常駐方式選定 / ディレクトリ）</a></li>
-    <li><a href="#ch3">開発機側でビルド</a></li>
-    <li><a href="#ch4">ファイル転送（アプリ / DB / テンプレ / アドイン）</a></li>
-    <li><a href="#ch5">本番マシン側 初回サービス登録</a></li>
+    <li><a href="#ch1">前提・構成・全体フロー</a></li>
+    <li><a href="#ch2">本番マシン ワンタイム準備</a>（Node 22 LTS / pnpm / ディレクトリ）</li>
+    <li><a href="#ch3">開発機でビルド</a></li>
+    <li><a href="#ch4">ファイル転送</a>（アプリ / DB / テンプレ / アドイン）</li>
+    <li><a href="#ch5">本番マシン 初回サービス登録</a>（start.cmd + タスクスケジューラ）</li>
     <li><a href="#ch6">ファイアウォール開放と動作確認</a></li>
     <li><a href="#ch7">利用者への案内</a></li>
-    <li><a href="#ch8">更新リリース手順（2 回目以降）</a></li>
+    <li><a href="#ch8">更新リリース手順</a>（2 回目以降）</li>
     <li><a href="#ch9">バックアップ</a></li>
     <li><a href="#ch10">トラブルシューティング</a></li>
-    <li><a href="#ch11">セキュリティ方針（現状と将来）</a></li>
+    <li><a href="#ch11">セキュリティ方針</a>（現状と将来）</li>
     <li><a href="#chA">付録: 凡例</a></li>
   </ol>
 </nav>
 
 <!-- ================================================ -->
-<h2 class="chapter" id="ch1">1. 前提・構成図</h2>
+<h2 class="chapter" id="ch1">1. 前提・構成・全体フロー</h2>
 
+<h3 class="section">対象構成</h3>
 <table class="cmd">
   <thead><tr><th>項目</th><th>内容</th></tr></thead>
   <tbody>
     <tr><td>本番マシン</td><td>Windows 11 PC 1 台（社内 LAN）</td></tr>
-    <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で問題なし）</td></tr>
-    <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code> （HTTP / 平文）</td></tr>
-    <tr><td>常駐方式</td><td>Windows タスクスケジューラ（追加インストール不要）、OS 再起動で自動起動</td></tr>
-    <tr><td>MCP モジュール</td><td>同梱。v0.1 では認証ガードがコメントアウトされており <code>MCP_TOKEN</code> 不要（詳細は 11 章）</td></tr>
+    <tr><td>Node.js</td><td><strong>22 LTS</strong> 必須（開発機と一致させる、native module 互換のため）</td></tr>
+    <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で十分）</td></tr>
+    <tr><td>URL</td><td><code>http://&lt;本番マシン IP&gt;:5000/</code>（HTTP / 平文 / 社内 LAN クローズド）</td></tr>
+    <tr><td>常駐方式</td><td>Windows タスクスケジューラ（追加インストール不要、OS 再起動で自動起動）</td></tr>
+    <tr><td>MCP モジュール</td><td>同梱。v0.1 は認証ガード無効化中で <code>MCP_TOKEN</code> 不要（11 章）</td></tr>
     <tr><td>既存データ</td><td>開発機の SQLite を丸ごと持ち込み</td></tr>
   </tbody>
 </table>
+
+<h3 class="section">全体フロー</h3>
+<pre class="diagram">[開発機]                              [本番マシン (TG120286)]
+ c:\Git\WBS\                          C:\Apps\WbsWeb\              ← 共有 \\TG120286\WbsWeb
+ ├ WbsWeb\          ──── ① build ──→ ├ dist\main.js               (= アプリ本体、更新で全置換)
+ │  └ packages\                       ├ node_modules\
+ ├ テンプレートファイル.xls           └ public\
+ └ AddIns\
+    └ km_module.xla                  C:\AppsData\WbsWeb\           ← 永続データ（更新で触らない）
+                       ──── ② DB ──→ ├ wbs.db                     (= SQLite)
+                       ──── ③ tpl ─→ ├ templates\テンプレートファイル.xls
+                       ──── ④ xla ─→ ├ addins\km_module.xla
+                                     ├ start.cmd                  (= 環境変数 + 起動ラッパ)
+                                     └ logs\stdout.log / stderr.log
+
+                                     [Windows タスクスケジューラ]
+                                     └ WbsWeb タスク (At startup, SYSTEM)
+                                        └ start.cmd → node.exe dist\main.js
+                                                       ↓
+                                     [HTTP 5000] ← 利用者 PC (Chrome/Edge)
+                                                ← km_module.xla を /downloads から取得</pre>
+
+<h3 class="section">大まかな手順（初回）</h3>
+<ol class="steps">
+  <li><strong>2 章 (本番)</strong>: Node 22 LTS インストール、pnpm 有効化、ディレクトリ作成、共有設定</li>
+  <li><strong>3 章 (開発機)</strong>: <code>pnpm install</code> → ビルド → 配布ディレクトリ生成</li>
+  <li><strong>4 章 (転送)</strong>: アプリ / DB / テンプレ / アドインを本番側にコピー</li>
+  <li><strong>5 章 (本番)</strong>: <code>start.cmd</code> 作成 → タスクスケジューラ登録 → 起動</li>
+  <li><strong>6 章 (本番)</strong>: ファイアウォール開放 → 動作確認</li>
+  <li><strong>7 章</strong>: 利用者に URL とアドイン取得方法を周知</li>
+</ol>
+<p>2 回目以降の更新リリースは <a href="#ch8">8 章</a>（3〜5 分のダウンタイム）。</p>
 
 <h3 class="section">配置イメージ</h3>
 <pre class="diagram">本番マシン（Windows 11）
@@ -292,26 +326,18 @@ v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
   確認プロンプトには <code>Y</code> で答えます。<code>-Scope CurrentUser</code> なので、サービスを実行する SYSTEM アカウントには影響しません（タスクスケジューラから直接 <code>node.exe</code> を呼ぶため ExecutionPolicy 非依存）。
 </div>
 
-<h3 class="section"><span class="num">2.3</span>常駐方式：Windows タスクスケジューラを使う</h3>
-<p>
-  本構成では <strong>追加ソフトを入れず、Windows 標準のタスクスケジューラ</strong>で
-  Node.js プロセスを常駐させます。NSSM などの 3rd party サービスマネージャは不要です。
-</p>
+<h3 class="section"><span class="num">2.3</span>常駐方式：Windows タスクスケジューラ</h3>
+<p>追加インストールなしで Node.js プロセスを常駐させるため、Windows 標準のタスクスケジューラを使います。具体的な設定は <a href="#ch5">5 章</a>で実施。</p>
 <table class="cmd">
   <thead><tr><th>項目</th><th>方式</th></tr></thead>
   <tbody>
-    <tr><td>起動トリガ</td><td>システム起動時（At startup）</td></tr>
-    <tr><td>実行アカウント</td><td>SYSTEM（ユーザがログオンしていなくても動く）</td></tr>
+    <tr><td>起動トリガ</td><td>システム起動時（At startup、ユーザログオン不要）</td></tr>
+    <tr><td>実行アカウント</td><td>SYSTEM</td></tr>
     <tr><td>環境変数 / ログリダイレクト</td><td>ラッパー <code>start.cmd</code> 経由（5.1 で作成）</td></tr>
-    <tr><td>自動再起動</td><td>タスクの「失敗時に再起動」設定で 1 分後にリトライ × 999 回</td></tr>
-    <tr><td>停止 / 起動</td><td><code>Stop-ScheduledTask / Start-ScheduledTask</code>（プロセスを確実に止めるには <code>Stop-Process</code> も併用）</td></tr>
+    <tr><td>自動再起動</td><td>失敗時に 1 分後にリトライ × 999 回</td></tr>
+    <tr><td>停止 / 起動</td><td><code>Stop-ScheduledTask</code> + <code>Stop-Process</code> / <code>Start-ScheduledTask</code></td></tr>
   </tbody>
 </table>
-<div class="tip">
-  <strong>💡 NSSM 等を使いたい場合</strong>
-  より高機能なサービス管理（services.msc 連携、組込みログローテーション等）が必要な場合は
-  NSSM や WinSW を導入する余地もありますが、本手順では <strong>追加インストール 0</strong> を優先。
-</div>
 
 <h3 class="section"><span class="num">2.4</span>ディレクトリ作成</h3>
 <pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Apps\WbsWeb | Out-Null
@@ -331,43 +357,42 @@ v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
 
 <p>このマシン（<code>c:\Git\WBS\WbsWeb\</code>）で本番用成果物を作成します。</p>
 
-<div class="note">
-  <strong>📌 初回のみ: <code>.npmrc</code> の <code>node-linker=hoisted</code> を反映</strong>
-  リポジトリのルート <code>.npmrc</code> で <code>node-linker=hoisted</code> を指定しているため、
-  <strong>初回または <code>.npmrc</code> 更新後は <code>pnpm install</code> を 1 回実行</strong>して
-  <code>node_modules</code> をフラット構造に作り直してください。これにより
-  <code>pnpm --prod deploy</code> がシンボリックリンクを使わない配布物を出力するようになり、
-  <code>robocopy</code> で本番マシンへ転送しても <code>tslib</code> 等の依存解決が壊れません。
-  <pre style="margin:0.3rem 0;"><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+<h3 class="section"><span class="num">3.1</span>初回のみ: <code>pnpm install</code></h3>
+<p>
+  リポジトリの <code>.npmrc</code> で <code>node-linker=hoisted</code> を指定しているため、
+  初回または <code>.npmrc</code> 更新後は 1 回 <code>pnpm install</code> を実行して
+  <code>node_modules</code> をフラット構造に作り直します。これによりシンボリックリンクが使われず、
+  本番マシンへ <code>robocopy</code> で転送しても依存解決が壊れません。
+</p>
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
 <span class="prompt">PS&gt;</span> pnpm install</pre>
-</div>
 
+<h3 class="section"><span class="num">3.2</span>Web / API ビルドと配布ディレクトリ生成</h3>
 <pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
 
-<span class="comment"># 1) Vue 本番ビルド</span>
+<span class="comment"># 1) Vue 本番ビルド → packages\web\dist\</span>
 <span class="prompt">PS&gt;</span> pnpm --filter web build
-<span class="comment">→ packages\web\dist\ が生成される</span>
 
 <span class="comment"># 2) Vue 成果物を API の public へ同期</span>
 <span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
 
-<span class="comment"># 3) NestJS 本番ビルド</span>
+<span class="comment"># 3) NestJS 本番ビルド → packages\api\dist\</span>
 <span class="prompt">PS&gt;</span> pnpm --filter api build
-<span class="comment">→ packages\api\dist\ が生成される</span>
 
 <span class="comment"># 4) 配布ディレクトリ（前回ぶんがあれば削除してから生成）</span>
 <span class="prompt">PS&gt;</span> Remove-Item C:\tmp\WbsWeb-deploy -Recurse -Force -ErrorAction SilentlyContinue
-<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy</pre>
+<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy
+
+<span class="comment"># 5) public のコピー漏れ補正（pnpm deploy は src/public を拾わないことがある）</span>
+<span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
 
 <div class="tip">
-  <strong>💡 pnpm deploy</strong>
-  pnpm の本番デプロイ専用コマンド。<code>node_modules</code> と <code>dist</code> と <code>public</code> を含む完結した配布ディレクトリを <code>C:\tmp\WbsWeb-deploy</code> に作ります。lockfile を尊重するので開発機と同じ依存バージョンになります。<br>
-  <strong>配布先が空でないと <code>ERR_PNPM_DEPLOY_DIR_NOT_EMPTY</code> エラーになる</strong>ので、上記のように事前削除するか <code>--force</code> オプションを付ける。
+  <strong>💡 ポイント</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>配布先が空でないと <code>ERR_PNPM_DEPLOY_DIR_NOT_EMPTY</code> エラー → 事前削除 or <code>--force</code></li>
+    <li>完了時点で <code>C:\tmp\WbsWeb-deploy\node_modules\tslib</code> が <strong>トップレベルに実体として</strong>存在するはず（hoisted が効いている証拠）</li>
+  </ul>
 </div>
-
-<h3 class="section"><span class="num">3.5</span>public のコピー漏れを補正</h3>
-<p><code>pnpm deploy</code> は <code>src</code> の <code>public/</code> を拾わないことがあります。確認＆補正：</p>
-<pre><span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
 
 <!-- ================================================ -->
 <h2 class="chapter" id="ch4"><span class="role-tag role-common">共通</span>4. ファイル転送（アプリ / DB / テンプレ / アドイン）</h2>
