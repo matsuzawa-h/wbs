@@ -342,12 +342,14 @@ v20.x.x
 <span class="prompt">PS&gt;</span> pnpm --filter api build
 <span class="comment">→ packages\api\dist\ が生成される</span>
 
-<span class="comment"># 4) 本番依存だけまとめた配布ディレクトリを生成</span>
+<span class="comment"># 4) 配布ディレクトリ（前回ぶんがあれば削除してから生成）</span>
+<span class="prompt">PS&gt;</span> Remove-Item C:\tmp\WbsWeb-deploy -Recurse -Force -ErrorAction SilentlyContinue
 <span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy</pre>
 
 <div class="tip">
   <strong>💡 pnpm deploy</strong>
-  pnpm の本番デプロイ専用コマンド。<code>node_modules</code> と <code>dist</code> と <code>public</code> を含む完結した配布ディレクトリを <code>C:\tmp\WbsWeb-deploy</code> に作ります。lockfile を尊重するので開発機と同じ依存バージョンになります。
+  pnpm の本番デプロイ専用コマンド。<code>node_modules</code> と <code>dist</code> と <code>public</code> を含む完結した配布ディレクトリを <code>C:\tmp\WbsWeb-deploy</code> に作ります。lockfile を尊重するので開発機と同じ依存バージョンになります。<br>
+  <strong>配布先が空でないと <code>ERR_PNPM_DEPLOY_DIR_NOT_EMPTY</code> エラーになる</strong>ので、上記のように事前削除するか <code>--force</code> オプションを付ける。
 </div>
 
 <h3 class="section"><span class="num">3.5</span>public のコピー漏れを補正</h3>
