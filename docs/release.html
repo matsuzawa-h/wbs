@@ -318,6 +318,17 @@ v20.x.x
 
 <p>このマシン（<code>c:\Git\WBS\WbsWeb\</code>）で本番用成果物を作成します。</p>
 
+<div class="note">
+  <strong>📌 初回のみ: <code>.npmrc</code> の <code>node-linker=hoisted</code> を反映</strong>
+  リポジトリのルート <code>.npmrc</code> で <code>node-linker=hoisted</code> を指定しているため、
+  <strong>初回または <code>.npmrc</code> 更新後は <code>pnpm install</code> を 1 回実行</strong>して
+  <code>node_modules</code> をフラット構造に作り直してください。これにより
+  <code>pnpm --prod deploy</code> がシンボリックリンクを使わない配布物を出力するようになり、
+  <code>robocopy</code> で本番マシンへ転送しても <code>tslib</code> 等の依存解決が壊れません。
+  <pre style="margin:0.3rem 0;"><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+<span class="prompt">PS&gt;</span> pnpm install</pre>
+</div>
+
 <pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
 
 <span class="comment"># 1) Vue 本番ビルド</span>
@@ -399,28 +410,7 @@ v20.x.x
   登録手順はそのページに記載済。
 </div>
 
-<h3 class="section"><span class="num">4.5</span>本番マシン側で <code>npm install</code> を実行（pnpm symlink 対策）</h3>
-<p>
-  <code>pnpm deploy</code> は本番用に <code>node_modules</code> を作りますが、
-  pnpm 標準の <strong>シンボリックリンク構造</strong>（<code>node_modules/.pnpm/&lt;pkg&gt;/node_modules/&lt;pkg&gt;</code> ← <code>node_modules/&lt;pkg&gt;</code>）が
-  <code>robocopy</code> 経由のコピーで失われ、本番側で
-  <code>Cannot find module 'tslib'</code> 等のエラーになります。
-  本番マシン上で <code>npm install</code> をかけて、シンボリックリンクではないフラットな
-  <code>node_modules</code> に作り直します。
-</p>
-<pre><span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
-<span class="prompt">PS&gt;</span> Remove-Item node_modules -Recurse -Force
-<span class="prompt">PS&gt;</span> npm install --omit=dev --no-package-lock</pre>
-<div class="note">
-  <strong>📌 オプションの意味</strong>
-  <ul class="bullets" style="margin-top:0.4rem;">
-    <li><code>--omit=dev</code>: 本番依存のみ（devDependencies は除外）</li>
-    <li><code>--no-package-lock</code>: <code>package-lock.json</code> を生成しない（リポジトリの真実は pnpm-lock.yaml に置く方針）</li>
-  </ul>
-  この処理は 2〜3 分かかります。インターネット接続が必要です（npm レジストリから取得するため）。
-</div>
-
-<h3 class="section"><span class="num">4.6</span>マイグレーションを本番 DB に適用</h3>
+<h3 class="section"><span class="num">4.5</span>マイグレーションを本番 DB に適用</h3>
 <p>もしマイグレーションが追加されていた場合に備えて、本番側でも一度実行します（重複適用は安全）：</p>
 <pre><span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
 <span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
@@ -625,19 +615,13 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
 <span class="comment">#    テンプレ／アドイン (C:\AppsData\WbsWeb\templates / addins) もそのまま温存</span>
 <span class="prompt">PS&gt;</span> robocopy \\&lt;DEV-IP&gt;\C$\tmp\WbsWeb-deploy C:\Apps\WbsWeb /MIR /XD logs
 
-<span class="comment"># 3) node_modules を npm でフラット再構築（pnpm symlink 対策、4.5 と同じ）</span>
-<span class="comment">#    package.json が変わっていなくても、コピーで symlink が壊れているので毎回必要</span>
-<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
-<span class="prompt">PS&gt;</span> Remove-Item node_modules -Recurse -Force
-<span class="prompt">PS&gt;</span> npm install --omit=dev --no-package-lock
-
-<span class="comment"># 4) マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
+<span class="comment"># 3) マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
 <span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
 <span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
 <span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
 <span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH
 
-<span class="comment"># 5) タスクを起動</span>
+<span class="comment"># 4) タスクを起動</span>
 <span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"
 <span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo</pre>
 
@@ -650,7 +634,7 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
 
 <div class="tip">
   <strong>💡 ダウンタイム目安</strong>
-  停止 → 差し替え → <code>npm install</code> → マイグレーション → 起動で <strong>3〜5 分</strong>（<code>npm install</code> がほとんどの時間を占める）。
+  停止 → 差し替え → マイグレーション → 起動で <strong>1〜2 分</strong>。
 </div>
 
 <!-- ================================================ -->
@@ -695,7 +679,7 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
       <td>node.exe が起動しない / すぐ落ちる</td>
       <td>
         <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
-        ・<code>Cannot find module 'tslib'</code> 等のモジュール未検出 → 4.5 の <code>npm install --omit=dev --no-package-lock</code> を実行（pnpm symlink がコピーで失われた）<br>
+        ・<code>Cannot find module 'tslib'</code> 等のモジュール未検出 → 開発機の <code>.npmrc</code> に <code>node-linker=hoisted</code> が入っていないか、変更後に <code>pnpm install</code> を再実行していない可能性。開発機で <code>pnpm install</code> → <code>pnpm --filter api --prod deploy</code> をやり直して再転送<br>
         ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足<br>
         ・<code>MCP_TOKEN environment variable must be set</code> → 11 章 (MCP 認証) を有効化した状態で <code>MCP_TOKEN</code> 未設定／16 文字未満。<strong>v0.1 既定では発生しない</strong>
       </td>
