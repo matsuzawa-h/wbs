@@ -82,4 +82,15 @@ export class TasksTool {
     this.logger.log(`task_reorder count=${input.items.length}`);
     return asJson(this.tasks.reorder(input));
   }
+
+  @Tool({
+    name: 'task_duplicate',
+    description:
+      '指定タスクとその配下（子孫）をまるごと複製する。複製は元の直後に同じ親・同じ階層で挿入され、進捗・実績も含めて全フィールドをコピーする。新しいルートタスクを返す。',
+    parameters: IdParam,
+  })
+  duplicate(input: z.infer<typeof IdParam>) {
+    this.logger.log(`task_duplicate id=${input.id}`);
+    return asJson(this.tasks.duplicate(input.id));
+  }
 }

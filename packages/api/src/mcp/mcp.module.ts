@@ -3,6 +3,7 @@ import { McpModule as RekogMcpModule, McpTransportType } from '@rekog/mcp-nest';
 import { CustomersModule } from '../customers/customers.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { PersonalTasksModule } from '../personal-tasks/personal-tasks.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { HolidaysModule } from '../holidays/holidays.module';
 // TODO(auth): MCP は現状無認証で動作させる方針（社内 LAN 前提、Web API も同様に
@@ -13,6 +14,7 @@ import { HolidaysModule } from '../holidays/holidays.module';
 import { CustomersTool } from './tools/customers.tool';
 import { ProjectsTool } from './tools/projects.tool';
 import { TasksTool } from './tools/tasks.tool';
+import { PersonalTasksTool } from './tools/personal-tasks.tool';
 import { EmployeesTool } from './tools/employees.tool';
 import { HolidaysTool } from './tools/holidays.tool';
 
@@ -21,6 +23,7 @@ import { HolidaysTool } from './tools/holidays.tool';
     CustomersModule,
     ProjectsModule,
     TasksModule,
+    PersonalTasksModule,
     EmployeesModule,
     HolidaysModule,
     RekogMcpModule.forRoot({
@@ -41,6 +44,7 @@ import { HolidaysTool } from './tools/holidays.tool';
     CustomersTool,
     ProjectsTool,
     TasksTool,
+    PersonalTasksTool,
     EmployeesTool,
     HolidaysTool,
   ],

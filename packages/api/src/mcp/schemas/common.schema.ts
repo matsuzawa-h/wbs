@@ -11,3 +11,7 @@ export const IdParam = z.object({
 export const ProjectIdParam = z.object({
   projectId: z.number().int().positive(),
 });
+
+export const EmployeeIdParam = z.object({
+  employeeId: z.number().int().positive(),
+});

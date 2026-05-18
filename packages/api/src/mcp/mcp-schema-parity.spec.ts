@@ -10,6 +10,8 @@ import { SetMembersDto } from '../projects/dto/set-members.dto';
 import { CreateTaskDto } from '../tasks/dto/create-task.dto';
 import { UpdateTaskDto } from '../tasks/dto/update-task.dto';
 import { ReorderTasksDto } from '../tasks/dto/reorder-tasks.dto';
+import { CreatePersonalTaskDto } from '../personal-tasks/dto/create-personal-task.dto';
+import { UpdatePersonalTaskDto } from '../personal-tasks/dto/update-personal-task.dto';
 import { CreateEmployeeDto } from '../employees/dto/create-employee.dto';
 import { UpdateEmployeeDto } from '../employees/dto/update-employee.dto';
 import { ListAssignmentsDto } from '../employees/dto/list-assignments.dto';
@@ -31,6 +33,10 @@ import {
   ReorderTasksSchema,
   UpdateTaskSchema,
 } from './schemas/task.schema';
+import {
+  CreatePersonalTaskSchema,
+  UpdatePersonalTaskSchema,
+} from './schemas/personal-task.schema';
 import {
   CreateEmployeeSchema,
   ListAssignmentsSchema,
@@ -91,6 +97,21 @@ describe('MCP Zod / class-validator DTO parity', () => {
     assertParity('CreateTask', CreateTaskSchema, CreateTaskDto, ['projectId']);
     assertParity('UpdateTask', UpdateTaskSchema, UpdateTaskDto, ['id']);
     assertParity('ReorderTasks', ReorderTasksSchema, ReorderTasksDto);
+  });
+
+  it('personal-tasks', () => {
+    assertParity(
+      'CreatePersonalTask',
+      CreatePersonalTaskSchema,
+      CreatePersonalTaskDto,
+      ['employeeId'],
+    );
+    assertParity(
+      'UpdatePersonalTask',
+      UpdatePersonalTaskSchema,
+      UpdatePersonalTaskDto,
+      ['id'],
+    );
   });
 
   it('employees', () => {
