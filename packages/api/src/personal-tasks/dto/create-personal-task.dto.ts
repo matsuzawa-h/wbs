@@ -1,5 +1,4 @@
 import {
-  IsBoolean,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,7 +10,14 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class UpdateTaskDto {
+export class CreatePersonalTaskDto {
+  // Optional project link (個人タスクは PJ 紐づけ任意).
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  projectId?: number | null;
+
+  // Name may be empty: the UI inserts a blank row and lets the user type.
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -55,27 +61,8 @@ export class UpdateTaskDto {
   progress?: number;
 
   @IsOptional()
-  @IsInt()
-  assigneeId?: number | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  status?: string;
-
-  // Free-text remarks (備考). null clears it.
-  @IsOptional()
   @ValidateIf((_o, v) => v !== null)
   @IsString()
   @MaxLength(2000)
   note?: string | null;
-
-  /**
-   * When false, an end-date change on a level-3 task only writes that single
-   * row (and recomputes its ancestors) — sibling tasks under the same 中項目
-   * are NOT shifted. Defaults to true (preserve historical cascade behavior).
-   */
-  @IsOptional()
-  @IsBoolean()
-  cascade?: boolean;
 }

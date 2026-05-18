@@ -3,27 +3,114 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import { useEmployeesStore } from '@/stores/employees';
+import { useProjectsStore } from '@/stores/projects';
 import { computeStatus, STATUS_BUCKETS, type StatusBucket, todayUtc } from '@/utils/status';
-import type { AssignmentRow } from '@/types';
+import ColumnFilter, { type FilterOption } from '@/components/ColumnFilter.vue';
+import TaskNoteDialog from '@/components/TaskNoteDialog.vue';
+import type { AssignmentRow, PersonalTask } from '@/types';
+
+type FilterValue = string | number | null;
+// Unified row for the table: a WBS assignment or a personal task. Personal
+// tasks are mapped onto the AssignmentRow shape so the existing table /
+// filters / inline-edit work unchanged; `kind` routes saves & actions.
+type Row = AssignmentRow & { kind: 'wbs' | 'personal' };
+const PERSONAL_LABEL = '（個人タスク）';
 
 const router = useRouter();
 const employees = useEmployeesStore();
+const projects = useProjectsStore();
 
 const selectedId = ref<number | null>(null);
 const periodFilter = ref<'all' | 'in-progress' | 'this-month' | 'future'>('all');
-const statusFilter = ref<Set<StatusBucket> | null>(null);
-const rows = ref<AssignmentRow[]>([]);
+// Default: show everything EXCEPT 完了 (the 'completed' bucket also covers
+// 完了遅れ). Users usually want to see outstanding work first.
+const statusFilter = ref<Set<StatusBucket> | null>(
+  new Set(
+    STATUS_BUCKETS.map((b) => b.bucket).filter((b) => b !== 'completed'),
+  ),
+);
+const rows = ref<Row[]>([]);
 const loading = ref(false);
 const errorMessage = ref<string | null>(null);
 
+// --- Excel-style column filters (header ▾ popovers) ---
+const nameFilter = ref('');
+const breadcrumbFilter = ref('');
+const projectFilter = ref<Set<FilterValue> | null>(null);
+type FilterKey = 'project' | 'name' | 'breadcrumb' | 'status';
+const openFilter = ref<FilterKey | null>(null);
+
+function toggleFilter(key: FilterKey): void {
+  openFilter.value = openFilter.value === key ? null : key;
+}
+function closeFilter(): void {
+  openFilter.value = null;
+}
+function isFilterActive(key: FilterKey): boolean {
+  if (key === 'name') return nameFilter.value !== '';
+  if (key === 'breadcrumb') return breadcrumbFilter.value !== '';
+  if (key === 'project') return projectFilter.value !== null;
+  return statusFilter.value !== null;
+}
+
+const projectOptions = computed<FilterOption[]>(() => {
+  const names = [...new Set(rows.value.map((r) => r.projectName))].sort((a, b) =>
+    a.localeCompare(b, 'ja'),
+  );
+  return names.map((n) => ({ value: n, label: n }));
+});
+const statusOptions = computed<FilterOption[]>(() =>
+  STATUS_BUCKETS.map((b) => ({ value: b.bucket, label: b.label })),
+);
+
+function setProjectFilter(v: Set<FilterValue> | null): void {
+  projectFilter.value = v;
+}
+function setStatusColFilter(v: Set<FilterValue> | null): void {
+  statusFilter.value = v as Set<StatusBucket> | null;
+}
+
 onMounted(async () => {
-  await employees.fetchAll();
+  await Promise.all([employees.fetchAll(), projects.fetchAll()]);
   if (selectedId.value === null && employees.activeItems.length > 0) {
     selectedId.value = employees.activeItems[0].id;
   }
 });
 
-watch(selectedId, async (id) => {
+function onProjectChange(r: Row, e: Event): void {
+  const raw = (e.target as HTMLSelectElement).value;
+  const v = raw === '' ? null : Number(raw);
+  if (v !== (r.projectId || null)) patchTask(r, { projectId: v });
+}
+
+const saving = ref(false);
+
+function personalToRow(p: PersonalTask): Row {
+  return {
+    id: p.id,
+    projectId: p.projectId ?? 0,
+    projectName: p.projectName ?? PERSONAL_LABEL,
+    level: 3,
+    parentId: null,
+    name: p.name,
+    startDate: p.startDate,
+    duration: p.duration,
+    endDate: p.endDate,
+    actualStartDate: p.actualStartDate,
+    actualEndDate: p.actualEndDate,
+    plannedHours: p.plannedHours,
+    actualHours: p.actualHours,
+    progress: p.progress,
+    assigneeId: p.employeeId,
+    status: '',
+    note: p.note,
+    parentName: null,
+    grandparentName: null,
+    kind: 'personal',
+  };
+}
+
+async function loadRows(id: number | null): Promise<void> {
   if (id === null) {
     rows.value = [];
     return;
@@ -31,15 +118,153 @@ watch(selectedId, async (id) => {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const res = await api.get<AssignmentRow[]>(`/employees/${id}/tasks`);
-    rows.value = res.data;
+    const [wbs, personal] = await Promise.all([
+      api.get<AssignmentRow[]>(`/employees/${id}/tasks`),
+      api.get<PersonalTask[]>(`/employees/${id}/personal-tasks`),
+    ]);
+    const merged: Row[] = [
+      ...wbs.data.map((r) => ({ ...r, kind: 'wbs' as const })),
+      ...personal.data.map(personalToRow),
+    ];
+    merged.sort((a, b) => {
+      const as = a.startDate ?? '9999-99-99';
+      const bs = b.startDate ?? '9999-99-99';
+      return as < bs ? -1 : as > bs ? 1 : a.id - b.id;
+    });
+    rows.value = merged;
   } catch (e: unknown) {
     errorMessage.value = extractMessage(e) ?? '読み込みに失敗しました';
     rows.value = [];
   } finally {
     loading.value = false;
   }
-});
+}
+
+watch(selectedId, (id) => loadRows(id));
+
+// Inline edit → PATCH the right endpoint by row kind, then reload so
+// cascaded dates / filtered visibility stay correct. WBS edits use the
+// server cascade default (ON), matching the gantt.
+async function patchTask(
+  r: Row,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  if (saving.value) return;
+  saving.value = true;
+  errorMessage.value = null;
+  try {
+    const url =
+      r.kind === 'personal' ? `/personal-tasks/${r.id}` : `/tasks/${r.id}`;
+    await api.patch(url, patch);
+    await loadRows(selectedId.value);
+  } catch (e: unknown) {
+    errorMessage.value = extractMessage(e) ?? '更新に失敗しました';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function addPersonalTask(): Promise<void> {
+  if (selectedId.value === null || saving.value) return;
+  saving.value = true;
+  errorMessage.value = null;
+  try {
+    await api.post(`/employees/${selectedId.value}/personal-tasks`, {
+      name: '',
+    });
+    await loadRows(selectedId.value);
+  } catch (e: unknown) {
+    errorMessage.value = extractMessage(e) ?? '個人タスクの追加に失敗しました';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function removePersonalTask(r: Row): Promise<void> {
+  if (saving.value) return;
+  if (!window.confirm(`個人タスク「${r.name || '（名称未入力）'}」を削除します。よろしいですか？`)) {
+    return;
+  }
+  saving.value = true;
+  errorMessage.value = null;
+  try {
+    await api.delete(`/personal-tasks/${r.id}`);
+    await loadRows(selectedId.value);
+  } catch (e: unknown) {
+    errorMessage.value = extractMessage(e) ?? '削除に失敗しました';
+  } finally {
+    saving.value = false;
+  }
+}
+
+// 備考 popup (shared TaskNoteDialog component).
+const noteRow = ref<Row | null>(null);
+function openNote(r: Row): void {
+  noteRow.value = r;
+}
+async function onSaveNote(note: string | null): Promise<void> {
+  const r = noteRow.value;
+  if (!r) return;
+  await patchTask(r, { note });
+  noteRow.value = null;
+}
+
+function inputValue(e: Event): string {
+  return (e.target as HTMLInputElement).value;
+}
+
+function onName(r: Row, e: Event): void {
+  const v = inputValue(e);
+  if (v !== r.name) patchTask(r, { name: v });
+}
+function onStart(r: Row, e: Event): void {
+  const v = inputValue(e);
+  if (v && v !== r.startDate) patchTask(r, { startDate: v });
+}
+function onDuration(r: Row, e: Event): void {
+  const n = Number(inputValue(e));
+  if (Number.isFinite(n) && n > 0 && n !== r.duration) {
+    patchTask(r, { duration: n });
+  }
+}
+function onProgress(r: Row, e: Event): void {
+  const n = Number(inputValue(e));
+  if (Number.isFinite(n) && n >= 0 && n <= 100 && n !== r.progress) {
+    patchTask(r, { progress: n });
+  }
+}
+function onActualStart(r: Row, e: Event): void {
+  const raw = inputValue(e);
+  const v = raw === '' ? null : raw;
+  if (v !== r.actualStartDate) patchTask(r, { actualStartDate: v });
+}
+function onActualEnd(r: Row, e: Event): void {
+  const raw = inputValue(e);
+  const v = raw === '' ? null : raw;
+  if (v !== r.actualEndDate) patchTask(r, { actualEndDate: v });
+}
+function onPlannedHours(r: Row, e: Event): void {
+  const raw = inputValue(e);
+  if (raw === '') {
+    if (r.plannedHours !== null) patchTask(r, { plannedHours: null });
+    return;
+  }
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0 && n !== r.plannedHours) {
+    patchTask(r, { plannedHours: n });
+  }
+}
+function onActualHours(r: Row, e: Event): void {
+  const raw = inputValue(e);
+  if (raw === '') {
+    if (r.actualHours !== null) patchTask(r, { actualHours: null });
+    return;
+  }
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0 && n !== r.actualHours) {
+    patchTask(r, { actualHours: n });
+  }
+}
 
 const today = todayUtc();
 const thisMonthStart = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-01`;
@@ -67,6 +292,16 @@ const visible = computed<AssignmentRow[]>(() => {
       const s = computeStatus(r, today).bucket;
       if (!statusFilter.value.has(s)) return false;
     }
+    if (projectFilter.value !== null && !projectFilter.value.has(r.projectName)) {
+      return false;
+    }
+    const nq = nameFilter.value.trim().toLowerCase();
+    if (nq && !(r.name ?? '').toLowerCase().includes(nq)) return false;
+    const bq = breadcrumbFilter.value.trim().toLowerCase();
+    if (bq) {
+      const crumb = `${r.grandparentName ?? ''} ${r.parentName ?? ''}`.toLowerCase();
+      if (!crumb.includes(bq)) return false;
+    }
     return true;
   });
 });
@@ -76,7 +311,7 @@ const counts = computed(() => {
   return c;
 });
 
-function statusOf(r: AssignmentRow) {
+function statusOf(r: Row) {
   return computeStatus(r, today);
 }
 
@@ -97,7 +332,7 @@ function clearStatusFilter(): void {
   statusFilter.value = null;
 }
 
-function openTaskInGantt(r: AssignmentRow): void {
+function openTaskInGantt(r: Row): void {
   router.push({ path: `/projects/${r.projectId}/gantt`, query: { focus: String(r.id) } });
 }
 
@@ -155,6 +390,13 @@ function fmtFullDate(d: string | null): string {
             {{ opt.l }}
           </button>
         </div>
+        <button
+          class="btn add-personal"
+          type="button"
+          :disabled="selectedId === null || saving"
+          title="この社員の個人タスクを追加（プロジェクトのガントには表示されません）"
+          @click="addPersonalTask"
+        >＋ 個人タスク</button>
       </div>
     </header>
 
@@ -186,41 +428,222 @@ function fmtFullDate(d: string | null): string {
     <p v-else-if="rows.length === 0" class="muted">割当タスクはありません。</p>
     <p v-else-if="visible.length === 0" class="muted">条件に一致するタスクがありません。</p>
 
-    <table v-else class="assign-table">
+    <div v-else class="table-scroll">
+    <table class="assign-table">
       <thead>
         <tr>
+          <th class="col-project">
+            <div class="th-filter">
+              <span>プロジェクト</span>
+              <button
+                class="filter-trigger"
+                :class="{ active: isFilterActive('project') }"
+                type="button"
+                :title="isFilterActive('project') ? 'プロジェクト（絞込中）' : 'プロジェクトで絞込'"
+                @click.stop="toggleFilter('project')"
+              >▾</button>
+              <ColumnFilter
+                :open="openFilter === 'project'"
+                type="enum"
+                title="プロジェクトで絞込"
+                :options="projectOptions"
+                :selected="projectFilter"
+                @close="closeFilter"
+                @update-enum="setProjectFilter"
+              />
+            </div>
+          </th>
+          <th class="col-breadcrumb">
+            <div class="th-filter">
+              <span>大項目 ＞ 中項目</span>
+              <button
+                class="filter-trigger"
+                :class="{ active: isFilterActive('breadcrumb') }"
+                type="button"
+                :title="isFilterActive('breadcrumb') ? '大中項目（絞込中）' : '大中項目で検索'"
+                @click.stop="toggleFilter('breadcrumb')"
+              >▾</button>
+              <ColumnFilter
+                :open="openFilter === 'breadcrumb'"
+                type="text"
+                title="大項目・中項目で検索"
+                :text="breadcrumbFilter"
+                text-placeholder="部分一致で検索"
+                @close="closeFilter"
+                @update-text="(v) => (breadcrumbFilter = v)"
+              />
+            </div>
+          </th>
+          <th class="col-name">
+            <div class="th-filter">
+              <span>項目名</span>
+              <button
+                class="filter-trigger"
+                :class="{ active: isFilterActive('name') }"
+                type="button"
+                :title="isFilterActive('name') ? '項目名（絞込中）' : '項目名で検索'"
+                @click.stop="toggleFilter('name')"
+              >▾</button>
+              <ColumnFilter
+                :open="openFilter === 'name'"
+                type="text"
+                title="項目名で検索"
+                :text="nameFilter"
+                text-placeholder="部分一致で検索"
+                @close="closeFilter"
+                @update-text="(v) => (nameFilter = v)"
+              />
+            </div>
+          </th>
           <th class="col-date">開始日</th>
-          <th class="col-date">終了日</th>
+          <th class="col-end">終了日</th>
           <th class="col-num">日数</th>
-          <th class="col-project">プロジェクト</th>
-          <th class="col-breadcrumb">大項目 ＞ 中項目</th>
-          <th class="col-name">項目名</th>
+          <th class="col-hrs">予定工数</th>
+          <th class="col-date">実績開始</th>
+          <th class="col-date">実績終了</th>
+          <th class="col-hrs">実績工数</th>
           <th class="col-progress">進捗</th>
-          <th class="col-status">状態</th>
+          <th class="col-status">
+            <div class="th-filter">
+              <span>状態</span>
+              <button
+                class="filter-trigger"
+                :class="{ active: isFilterActive('status') }"
+                type="button"
+                :title="isFilterActive('status') ? '状態（絞込中）' : '状態で絞込'"
+                @click.stop="toggleFilter('status')"
+              >▾</button>
+              <ColumnFilter
+                :open="openFilter === 'status'"
+                type="enum"
+                title="状態で絞込"
+                :options="statusOptions"
+                :selected="statusFilter as Set<FilterValue> | null"
+                @close="closeFilter"
+                @update-enum="setStatusColFilter"
+              />
+            </div>
+          </th>
+          <th class="col-ops"></th>
         </tr>
       </thead>
       <tbody>
         <tr
           v-for="r in visible"
-          :key="r.id"
-          class="row-clickable"
-          :title="`${r.projectName} の ${r.name} を開く`"
-          @click="openTaskInGantt(r)"
+          :key="r.kind + '-' + r.id"
+          :class="{ 'personal-row': r.kind === 'personal' }"
         >
-          <td class="col-date" :title="fmtFullDate(r.startDate)">{{ fmtDate(r.startDate) }}</td>
-          <td class="col-date" :title="fmtFullDate(r.endDate)">{{ fmtDate(r.endDate) }}</td>
-          <td class="col-num">{{ r.duration ?? '' }}</td>
           <td class="col-project">
-            <span class="project-pill">{{ r.projectName }}</span>
+            <select
+              v-if="r.kind === 'personal'"
+              class="proj-select"
+              :value="r.projectId || ''"
+              :disabled="saving"
+              title="個人タスクの紐づけプロジェクト（任意）"
+              @change="onProjectChange(r, $event)"
+            >
+              <option value="">（個人・PJなし）</option>
+              <option v-for="p in projects.items" :key="p.id" :value="p.id">
+                {{ p.name }}
+              </option>
+            </select>
+            <span v-else class="project-pill">{{ r.projectName }}</span>
           </td>
           <td class="col-breadcrumb">
             <span v-if="r.grandparentName" class="breadcrumb-seg">{{ r.grandparentName }}</span>
             <span v-if="r.grandparentName && r.parentName" class="breadcrumb-sep">＞</span>
             <span v-if="r.parentName" class="breadcrumb-seg muted-seg">{{ r.parentName }}</span>
           </td>
-          <td class="col-name">{{ r.name || '（名称未入力）' }}</td>
+          <td class="col-name">
+            <input
+              v-if="r.level === 3"
+              type="text"
+              :value="r.name"
+              :disabled="saving"
+              placeholder="（名称未入力）"
+              @change="onName(r, $event)"
+            />
+            <span v-else>{{ r.name || '（名称未入力）' }}</span>
+          </td>
+          <td class="col-date">
+            <input
+              v-if="r.level === 3"
+              type="date"
+              :value="r.startDate ?? ''"
+              :disabled="saving"
+              @change="onStart(r, $event)"
+            />
+            <span v-else :title="fmtFullDate(r.startDate)">{{ fmtDate(r.startDate) }}</span>
+          </td>
+          <td class="col-end readonly-cell" :title="fmtFullDate(r.endDate)">
+            {{ fmtDate(r.endDate) }}
+          </td>
+          <td class="col-num">
+            <input
+              v-if="r.level === 3"
+              type="number"
+              min="1"
+              :value="r.duration ?? ''"
+              :disabled="saving"
+              @change="onDuration(r, $event)"
+            />
+            <span v-else>{{ r.duration ?? '' }}</span>
+          </td>
+          <td class="col-hrs">
+            <input
+              v-if="r.level === 3"
+              type="number"
+              min="0"
+              step="0.5"
+              :value="r.plannedHours ?? ''"
+              :disabled="saving"
+              @change="onPlannedHours(r, $event)"
+            />
+            <span v-else>{{ r.plannedHours ?? '' }}</span>
+          </td>
+          <td class="col-date">
+            <input
+              v-if="r.level === 3"
+              type="date"
+              :value="r.actualStartDate ?? ''"
+              :disabled="saving"
+              @change="onActualStart(r, $event)"
+            />
+            <span v-else :title="fmtFullDate(r.actualStartDate)">{{ fmtDate(r.actualStartDate) }}</span>
+          </td>
+          <td class="col-date">
+            <input
+              v-if="r.level === 3"
+              type="date"
+              :value="r.actualEndDate ?? ''"
+              :disabled="saving"
+              @change="onActualEnd(r, $event)"
+            />
+            <span v-else :title="fmtFullDate(r.actualEndDate)">{{ fmtDate(r.actualEndDate) }}</span>
+          </td>
+          <td class="col-hrs">
+            <input
+              v-if="r.level === 3"
+              type="number"
+              min="0"
+              step="0.5"
+              :value="r.actualHours ?? ''"
+              :disabled="saving"
+              @change="onActualHours(r, $event)"
+            />
+            <span v-else>{{ r.actualHours ?? '' }}</span>
+          </td>
           <td class="col-progress">
-            <div class="progress-bar">
+            <input
+              v-if="r.level === 3"
+              type="number"
+              min="0"
+              max="100"
+              :value="r.progress"
+              :disabled="saving"
+              @change="onProgress(r, $event)"
+            />
+            <div v-else class="progress-bar">
               <div class="progress-fill" :style="{ width: r.progress + '%' }"></div>
               <span class="progress-text">{{ r.progress }}%</span>
             </div>
@@ -234,15 +657,56 @@ function fmtFullDate(d: string | null): string {
               <span v-if="statusOf(r).extended" class="status-ext">{{ statusOf(r).extended }}</span>
             </span>
           </td>
+          <td class="col-ops">
+            <div class="ops-wrap">
+              <button
+                v-if="r.level === 3"
+                class="btn small note-btn"
+                :class="{ 'has-note': !!(r.note && r.note.trim()) }"
+                type="button"
+                :title="r.note && r.note.trim() ? '備考を編集（登録済み）' : '備考を追加'"
+                @click="openNote(r)"
+              >
+                備考<span
+                  v-if="r.note && r.note.trim()"
+                  class="note-dot"
+                  aria-hidden="true"
+                ></span>
+              </button>
+              <button
+                v-if="r.kind === 'wbs'"
+                class="btn small"
+                type="button"
+                :title="`${r.projectName} の ${r.name} をガントで開く`"
+                @click="openTaskInGantt(r)"
+              >開く</button>
+              <button
+                v-else
+                class="btn small danger"
+                type="button"
+                title="この個人タスクを削除"
+                @click="removePersonalTask(r)"
+              >削除</button>
+            </div>
+          </td>
         </tr>
       </tbody>
     </table>
+    </div>
+
+    <TaskNoteDialog
+      :open="noteRow !== null"
+      :task-name="noteRow?.name ?? ''"
+      :note="noteRow?.note ?? null"
+      @close="noteRow = null"
+      @save="onSaveNote"
+    />
   </div>
 </template>
 
 <style scoped>
 .page {
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 .page-header {
@@ -295,6 +759,26 @@ function fmtFullDate(d: string | null): string {
   padding: 0.18rem 0.5rem;
   font-size: 0.78rem;
 }
+.btn.danger {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.btn.danger:hover {
+  background: #fef2f2;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.add-personal {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eef4ff;
+  font-weight: 600;
+}
+.add-personal:hover {
+  background: #e0eaff;
+}
 .btn.pill {
   border-radius: 12px;
 }
@@ -346,18 +830,23 @@ function fmtFullDate(d: string | null): string {
   color: #6b7280;
   font-size: 0.85rem;
 }
-.assign-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
+.table-scroll {
+  overflow-x: auto;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  overflow: hidden;
+}
+.assign-table {
+  width: 100%;
+  /* No min-width: fixed layout fits all columns into the page width so no
+     horizontal scrollbar appears. */
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: #fff;
   font-size: 0.88rem;
 }
 .assign-table th,
 .assign-table td {
-  padding: 0.45rem 0.6rem;
+  padding: 0.35rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
@@ -367,26 +856,116 @@ function fmtFullDate(d: string | null): string {
   font-weight: 600;
   color: #475569;
   font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: visible;
 }
-.assign-table .row-clickable {
+.th-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.filter-trigger {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.7rem;
   cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
 }
-.assign-table .row-clickable:hover td {
+.filter-trigger:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+.filter-trigger.active {
+  background: #2563eb;
+  color: #fff;
+}
+.assign-table tbody tr:hover td {
   background: #f8fafc;
 }
+.assign-table input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+}
+.assign-table input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+.assign-table input[type='number'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.assign-table input:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+.readonly-cell {
+  color: #6b7280;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .col-date {
-  width: 64px;
+  width: 122px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #1f2937;
+}
+/* 終了日 is read-only M/D text — no need for the wide date-input width. */
+.col-end {
+  width: 58px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: #1f2937;
 }
 .col-num {
-  width: 44px;
+  width: 56px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.col-hrs {
+  width: 66px;
+}
+.col-ops {
+  width: 116px;
+  white-space: nowrap;
+}
+.ops-wrap {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+}
+.col-ops button {
+  white-space: nowrap;
+}
+.note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.note-btn.has-note {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eef4ff;
+}
+.note-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #2563eb;
+}
 .col-project {
-  width: 180px;
+  width: 140px;
 }
 .project-pill {
   display: inline-block;
@@ -401,8 +980,20 @@ function fmtFullDate(d: string | null): string {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.proj-select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.18rem 0.3rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fffdf5;
+}
+.personal-row td {
+  background: #fffdf5;
+}
 .col-breadcrumb {
-  width: 220px;
+  width: 150px;
   color: #6b7280;
   font-size: 0.82rem;
 }
@@ -417,11 +1008,12 @@ function fmtFullDate(d: string | null): string {
   color: #9ca3af;
 }
 .col-name {
+  width: 200px;
   font-weight: 600;
   color: #1f2937;
 }
 .col-progress {
-  width: 110px;
+  width: 64px;
 }
 .progress-bar {
   position: relative;
@@ -445,7 +1037,8 @@ function fmtFullDate(d: string | null): string {
   font-variant-numeric: tabular-nums;
 }
 .col-status {
-  width: 150px;
+  width: 128px;
+  white-space: nowrap;
 }
 .status-badge {
   display: inline-flex;
@@ -455,6 +1048,7 @@ function fmtFullDate(d: string | null): string {
   border-radius: 3px;
   font-size: 0.75rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 .status-badge.st-completed { background:#ecfdf5; color:#047857; }
 .status-badge.st-in-progress { background:#dbeafe; color:#1e40af; }
@@ -469,6 +1063,7 @@ function fmtFullDate(d: string | null): string {
   opacity: 0.75;
   font-weight: 500;
   font-size: 0.72rem;
+  white-space: nowrap;
 }
 .muted {
   color: #94a3b8;

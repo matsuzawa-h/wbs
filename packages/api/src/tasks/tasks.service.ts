@@ -136,6 +136,7 @@ export class TasksService {
           assigneeId:
             dto.assigneeId === undefined ? current.assigneeId : dto.assigneeId,
           status: dto.status ?? current.status,
+          note: dto.note === undefined ? current.note : dto.note,
         })
         .where(eq(wbsTasks.id, id))
         .returning()
@@ -167,6 +168,119 @@ export class TasksService {
     this.db.transaction((tx) => {
       tx.delete(wbsTasks).where(eq(wbsTasks.id, id)).run();
       this.cascade.recomputeAllAncestors(task.projectId);
+    });
+  }
+
+  /**
+   * Deep-duplicate a task and its whole subtree within the same project.
+   * The copy is inserted right after the original's subtree as a sibling
+   * (same parent / level). All fields — including progress and actuals —
+   * are carried over verbatim. sortOrder is renumbered project-wide in the
+   * resulting pre-order so the new block sits immediately after the source.
+   */
+  duplicate(id: number): WbsTask {
+    const original = this.findById(id);
+    const projectId = original.projectId;
+
+    return this.db.transaction((tx) => {
+      const all = tx
+        .select()
+        .from(wbsTasks)
+        .where(eq(wbsTasks.projectId, projectId))
+        .all();
+
+      // children keyed by parentId (0 = roots), each sorted like the UI.
+      const byParent = new Map<number, WbsTask[]>();
+      for (const t of all) {
+        const key = t.parentId ?? 0;
+        const arr = byParent.get(key) ?? [];
+        arr.push(t);
+        byParent.set(key, arr);
+      }
+      for (const arr of byParent.values()) {
+        arr.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+      }
+
+      const preorder = (rootId: number): WbsTask[] => {
+        const out: WbsTask[] = [];
+        const walk = (pid: number): void => {
+          for (const t of byParent.get(pid) ?? []) {
+            out.push(t);
+            walk(t.id);
+          }
+        };
+        walk(rootId);
+        return out;
+      };
+
+      // Whole project flatten + the original's subtree (contiguous in it).
+      const flat = preorder(0);
+      const subtree = [original, ...preorder(original.id)];
+      const subIds = new Set(subtree.map((t) => t.id));
+
+      // Copy each subtree node; remap parentId via old→new id map.
+      const idMap = new Map<number, number>();
+      const newRows: WbsTask[] = [];
+      for (const node of subtree) {
+        const newParent =
+          node.id === original.id
+            ? original.parentId
+            : (idMap.get(node.parentId as number) ?? null);
+        const endDate =
+          node.level === 3 && node.startDate && node.duration
+            ? computeEndDate(node.startDate, node.duration, this.holidays())
+            : node.endDate;
+        const row = tx
+          .insert(wbsTasks)
+          .values({
+            projectId,
+            level: node.level,
+            parentId: newParent,
+            name: node.name,
+            startDate: node.startDate,
+            duration: node.duration,
+            endDate,
+            actualStartDate: node.actualStartDate,
+            actualEndDate: node.actualEndDate,
+            plannedHours: node.plannedHours,
+            actualHours: node.actualHours,
+            progress: node.progress,
+            assigneeId: node.assigneeId,
+            status: node.status,
+            sortOrder: node.sortOrder,
+          })
+          .returning()
+          .get();
+        idMap.set(node.id, row.id);
+        newRows.push(row);
+      }
+
+      // New flat order: original block, then the copies, then the rest.
+      let lastIdx = -1;
+      flat.forEach((t, i) => {
+        if (subIds.has(t.id)) lastIdx = i;
+      });
+      const ordered: WbsTask[] = [
+        ...flat.slice(0, lastIdx + 1),
+        ...newRows,
+        ...flat.slice(lastIdx + 1),
+      ];
+      ordered.forEach((t, i) => {
+        if (t.sortOrder !== i) {
+          tx.update(wbsTasks)
+            .set({ sortOrder: i })
+            .where(eq(wbsTasks.id, t.id))
+            .run();
+        }
+      });
+
+      this.cascade.recomputeAllAncestors(projectId);
+      const newRootId = idMap.get(original.id) as number;
+      return tx
+        .select()
+        .from(wbsTasks)
+        .where(eq(wbsTasks.id, newRootId))
+        .get() as WbsTask;
     });
   }
 

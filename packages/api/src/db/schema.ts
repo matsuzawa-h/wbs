@@ -87,6 +87,7 @@ export const wbsTasks = sqliteTable(
       onDelete: 'set null',
     }),
     status: text('status').notNull().default(''),
+    note: text('note'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (table) => ({
@@ -150,3 +151,41 @@ export const projectMembers = sqliteTable(
 
 export type ProjectMember = typeof projectMembers.$inferSelect;
 export type NewProjectMember = typeof projectMembers.$inferInsert;
+
+// Personal (individual) tasks. Owned by an employee, optionally linked to a
+// project for reporting context, but intentionally NOT part of the WBS tree
+// — they never appear in the project gantt or the Excel export. Only the
+// "担当別予定" view lists them alongside the employee's WBS assignments.
+export const personalTasks = sqliteTable(
+  'personal_tasks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => assignees.id, { onDelete: 'cascade' }),
+    projectId: integer('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull().default(''),
+    startDate: text('start_date'),
+    duration: integer('duration'),
+    endDate: text('end_date'),
+    actualStartDate: text('actual_start_date'),
+    actualEndDate: text('actual_end_date'),
+    plannedHours: real('planned_hours'),
+    actualHours: real('actual_hours'),
+    progress: integer('progress').notNull().default(0),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    employeeIdx: index('idx_personal_tasks_employee').on(table.employeeId),
+    projectIdx: index('idx_personal_tasks_project').on(table.projectId),
+  }),
+);
+
+export type PersonalTask = typeof personalTasks.$inferSelect;
+export type NewPersonalTask = typeof personalTasks.$inferInsert;

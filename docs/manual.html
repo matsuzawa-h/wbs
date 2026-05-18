@@ -204,7 +204,7 @@
 <div class="wrap">
 <header class="title">
   <h1>WBS Web 操作マニュアル</h1>
-  <p class="lead">プロジェクト工程表（ガントチャート）の作成・更新手順</p>
+  <p class="lead">プロジェクト工程表（ガントチャート）と担当別予定の作成・更新手順</p>
 </header>
 
 <nav class="toc">
@@ -213,24 +213,35 @@
     <li><a href="#ch1">はじめに</a></li>
     <li><a href="#ch2">画面の基本構成</a></li>
     <li>
-      <a href="#ch3">操作手順</a>
+      <a href="#ch3">操作手順（プロジェクト／ガント）</a>
       <ol>
         <li><a href="#s3-1">社員マスタを登録する</a></li>
         <li><a href="#s3-2">休日を登録する</a></li>
         <li><a href="#s3-3">プロジェクトを作成する</a></li>
         <li><a href="#s3-4">プロジェクトに表示するメンバーを選ぶ</a></li>
         <li><a href="#s3-5">タスクを登録する（3 階層）</a></li>
-        <li><a href="#s3-6">日付・期間を変更する</a></li>
+        <li><a href="#s3-6">日付・期間を変更する／日付のコピー＆ペースト</a></li>
         <li><a href="#s3-7">行を並び替える</a></li>
-        <li><a href="#s3-8">後続タスクの自動シフト（連動）</a></li>
-        <li><a href="#s3-9">進捗と実績を入力する</a></li>
-        <li><a href="#s3-10">状態（自動算出）の見方</a></li>
-        <li><a href="#s3-11">表示する列を切り替える</a></li>
-        <li><a href="#s3-12">フィルタで絞り込む</a></li>
-        <li><a href="#s3-13">折りたたみ・展開と「今日」表示</a></li>
+        <li><a href="#s3-8">行を複製する</a></li>
+        <li><a href="#s3-9">後続タスクの自動シフト（連動）</a></li>
+        <li><a href="#s3-10">進捗と実績を入力する</a></li>
+        <li><a href="#s3-11">タスクに備考を登録する</a></li>
+        <li><a href="#s3-12">状態（自動算出）の見方</a></li>
+        <li><a href="#s3-13">表示する列を切り替える</a></li>
+        <li><a href="#s3-14">フィルタで絞り込む</a></li>
+        <li><a href="#s3-15">折りたたみ・展開と「今日」表示</a></li>
       </ol>
     </li>
-    <li><a href="#ch4">よくある質問</a></li>
+    <li>
+      <a href="#ch4">担当別予定（社員ごとの予定）</a>
+      <ol>
+        <li><a href="#s4-1">社員を選んで予定を見る・絞り込む</a></li>
+        <li><a href="#s4-2">セルを直接編集する</a></li>
+        <li><a href="#s4-3">ガントへジャンプする</a></li>
+        <li><a href="#s4-4">個人タスクを登録する</a></li>
+      </ol>
+    </li>
+    <li><a href="#ch5">よくある質問</a></li>
   </ol>
 </nav>
 
@@ -251,7 +262,8 @@
 <div class="note">
   <strong>💡 はじめての方は</strong>
   下記の順に登録すると、すぐに工程表を作成できます。<br>
-  ① 社員マスタ → ② プロジェクト作成 → ③ メンバー設定 → ④ タスク登録
+  ① 社員マスタ → ② プロジェクト作成 → ③ メンバー設定 → ④ タスク登録<br>
+  社員個人の予定（プロジェクトに紐づかないものを含む）は「<strong>担当別予定</strong>」画面（第 4 章）で管理します。
 </div>
 
 <!-- ================================================ -->
@@ -263,8 +275,11 @@
   <thead><tr><th>メニュー</th><th>役割</th></tr></thead>
   <tbody>
     <tr><td><span class="pill">プロジェクト</span></td><td>プロジェクトの一覧・作成・各プロジェクトのガントへの入口。</td></tr>
+    <tr><td><span class="pill">担当別予定</span></td><td>社員ごとに、割り当てられたタスクと個人タスクを一覧・直接編集する画面（第 4 章）。</td></tr>
+    <tr><td><span class="pill">顧客マスタ</span></td><td>プロジェクトに紐づける顧客の一覧・追加・編集。</td></tr>
     <tr><td><span class="pill">社員マスタ</span></td><td>担当者として登録できる社員の一覧・追加・編集。</td></tr>
     <tr><td><span class="pill">休日設定</span></td><td>土日以外の休日（祝日・特別休暇など）の登録。</td></tr>
+    <tr><td><span class="pill">ダウンロード</span></td><td>配布物・出力ファイルの取得。</td></tr>
   </tbody>
 </table>
 <figure>
@@ -273,7 +288,7 @@
 </figure>
 
 <!-- ================================================ -->
-<h2 class="chapter" id="ch3">3. 操作手順</h2>
+<h2 class="chapter" id="ch3">3. 操作手順（プロジェクト／ガント）</h2>
 
 <!-- ===== 3.1 ===== -->
 <h3 class="section" id="s3-1"><span class="num">3.1</span>社員マスタを登録する</h3>
@@ -346,7 +361,7 @@
 <!-- ===== 3.3 ===== -->
 <h3 class="section" id="s3-3"><span class="num">3.3</span>プロジェクトを作成する</h3>
 <ol class="steps">
-  <li>「プロジェクト」ページの上部「<strong>新規プロジェクト</strong>」セクションで、プロジェクト名を入力。</li>
+  <li>「プロジェクト」ページの上部「<strong>新規プロジェクト</strong>」セクションで、必要に応じて顧客を選び、プロジェクト名を入力。</li>
   <li>「<strong>作成して開く</strong>」を押すと、そのプロジェクトのガント画面に遷移します。</li>
 </ol>
 <figure>
@@ -359,7 +374,7 @@
 </figure>
 <div class="tip">
   <strong>💡 ヒント</strong>
-  プロジェクト名は後からも「名前変更」ボタンで変更できます。<br>
+  プロジェクト名・顧客は後からも「名前変更」「顧客変更」ボタンで変更できます。<br>
   「削除」を押すと、配下のタスクと、プロジェクトメンバー設定も一緒に削除されます。
 </div>
 
@@ -376,16 +391,12 @@
   <li>「<strong>保存</strong>」を押す。</li>
 </ol>
 <figure>
-  <img src="screenshots/06_gantt_empty.png" alt="メンバー未設定のガント画面">
-  <figcaption>図 3-4-a: メンバー未設定の状態（ボタンから設定開始）</figcaption>
-</figure>
-<figure>
   <img src="screenshots/07_members_dialog.png" alt="メンバー管理ダイアログ">
-  <figcaption>図 3-4-b: メンバー管理ダイアログ</figcaption>
+  <figcaption>図 3-4-a: メンバー管理ダイアログ</figcaption>
 </figure>
 <figure>
   <img src="screenshots/09_gantt_with_members.png" alt="メンバー設定後">
-  <figcaption>図 3-4-c: メンバーを設定後（上部に名前が並ぶ）</figcaption>
+  <figcaption>図 3-4-b: メンバーを設定後（上部に名前が並ぶ）</figcaption>
 </figure>
 <div class="warn">
   <strong>⚠ メンバーを外したとき</strong>
@@ -399,45 +410,69 @@
 タスクは <strong>大項目 → 中項目 → 項目</strong> の 3 階層で登録します。<br>
 日付・日数・担当を入力できるのは一番下の「<strong>項目</strong>」だけで、大項目・中項目は配下の集計（開始＝最小、終了＝最大、工数＝合計など）が自動で表示されます。
 </p>
+<p>
+各行の操作ボタンは「<strong>階層</strong>」列と「<strong>項目名</strong>」列の間にまとまっています（「削除」だけは行の右端）。
+</p>
+<table class="cmd">
+  <thead><tr><th>ボタン</th><th>位置</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td><span class="key">＋中</span> / <span class="key">＋項</span></td><td>階層と項目名の間</td><td>その行の下に中項目／項目を追加（大項目→＋中、中項目→＋項）。</td></tr>
+    <tr><td><span class="key">備考</span></td><td>階層と項目名の間（項目のみ）</td><td>備考ポップアップを開く（3.11）。</td></tr>
+    <tr><td><span class="key">複製</span></td><td>階層と項目名の間</td><td>その行を配下ごと複製（3.8）。</td></tr>
+    <tr><td><span class="key">削除</span></td><td>行の右端</td><td>その行を削除。</td></tr>
+  </tbody>
+</table>
 <ol class="steps">
-  <li>画面右上の「<strong>+ 大項目</strong>」を押すと、新規行が直接追加され、<strong>名前欄に自動でフォーカス</strong>されます。そのまま名称を打ち込んでください（Tab か別セルクリックで確定）。</li>
-  <li>大項目の行頭の小さな「<strong>＋中</strong>」ボタンで「中項目」を追加。</li>
-  <li>中項目の行頭の「<strong>＋項</strong>」ボタンで「項目」を追加。</li>
+  <li>画面右上の「<strong>＋ 大項目</strong>」を押すと、新規行が直接追加され、<strong>名前欄に自動でフォーカス</strong>されます。そのまま名称を打ち込んでください（Tab か別セルクリックで確定）。</li>
+  <li>大項目の「<strong>＋中</strong>」ボタンで「中項目」を追加。</li>
+  <li>中項目の「<strong>＋項</strong>」ボタンで「項目」を追加。</li>
   <li>項目では <strong>開始日 / 日数</strong> を入力します（終了日は土日・休日をスキップして自動算出されます）。
     必要に応じて担当者・進捗・工数を入力します。
   </li>
 </ol>
-<div class="tip">
-  <strong>💡 連続して追加できます</strong>
-  名称未入力でもレコードは作成されます。複数人で会議をしながら「とりあえず行だけ足しておく」運用にも対応しています。
-  名称欄には <code>（名称未入力）</code> とプレースホルダ表示され、後からまとめて記入できます。
-</div>
+<figure>
+  <img src="screenshots/63_gantt_rowops.png" alt="操作ボタンが階層と項目名の間にある一覧">
+  <figcaption>図 3-5-a: 操作ボタン（＋中／＋項・備考・複製）は階層と項目名の間。削除は右端</figcaption>
+</figure>
 <figure>
   <img src="screenshots/10_gantt_populated.png" alt="3階層タスクを登録した状態">
-  <figcaption>図 3-5: 3 階層タスクを登録した状態（左に一覧、右にガントバー）</figcaption>
+  <figcaption>図 3-5-b: 3 階層タスクを登録した状態（左に一覧、右にガントバー）</figcaption>
 </figure>
 <div class="tip">
-  <strong>💡 入力のコツ</strong>
-  <ul class="bullets">
-    <li>「<strong>日数</strong>」は土日と休日を除いた営業日換算です（5 営業日なら 1 週間ぶん）。</li>
-    <li>大項目・中項目の日付は <strong>編集不可</strong>（配下から自動集計）。</li>
-    <li>行末の <span class="key">🗑</span> ボタンで削除。配下も一緒に消えるので注意。</li>
-  </ul>
+  <strong>💡 連続して追加できます</strong>
+  名称未入力でもレコードは作成されます。会議をしながら「とりあえず行だけ足す」運用にも対応しています。
+  名称欄には <code>（名称未入力）</code> とプレースホルダ表示され、後からまとめて記入できます。
+</div>
+<div class="warn">
+  <strong>⚠ 削除の確認メッセージ</strong>
+  「削除」を押すと確認ダイアログが出ます。配下を持つ大項目・中項目では「<strong>○○ とその配下のタスクをすべて削除します</strong>」、子のない項目では「<strong>○○ を削除します</strong>」と、対象に応じた文言が表示されます。
 </div>
 
 <!-- ===== 3.6 ===== -->
-<h3 class="section" id="s3-6"><span class="num">3.6</span>日付・期間を変更する</h3>
+<h3 class="section" id="s3-6"><span class="num">3.6</span>日付・期間を変更する／日付のコピー＆ペースト</h3>
 <p>変更方法は 2 通りあります。</p>
 <table class="cmd">
   <thead><tr><th>方法</th><th>操作</th></tr></thead>
   <tbody>
-    <tr><td>① 直接入力</td><td>一覧の「開始日」「日数」セルに数値を直接入力する。</td></tr>
-    <tr><td>② バーをドラッグ</td><td>ガント右側のバーを、左右にドラッグして開始日や期間を変更する。バーの右端をつかむと長さだけ変更できる。</td></tr>
+    <tr><td>① 直接入力</td><td>一覧の「開始日」「日数」セルに直接入力する。</td></tr>
+    <tr><td>② バーをドラッグ</td><td>ガント右側のバーを左右にドラッグして開始日や期間を変更する。バーの右端をつかむと長さだけ変更できる。</td></tr>
   </tbody>
 </table>
 <div class="note">
   <strong>📌 終了日は自動</strong>
   終了日は「開始日 + 日数」を土日・休日スキップで計算した結果が表示されます。直接編集はできません。
+</div>
+<div class="tip">
+  <strong>💡 日付のコピー＆ペースト</strong>
+  日付セルは Excel と相互にコピペできます。
+  <ul class="bullets">
+    <li><strong>コピー</strong>: 日付セルにフォーカスして <span class="key">Ctrl</span>+<span class="key">C</span>。<code>2026/05/18</code> 形式でコピーされます（自動計算の終了日セルはクリックで選択 → <span class="key">Ctrl</span>+<span class="key">C</span>）。</li>
+    <li><strong>貼り付け</strong>: 日付セルで <span class="key">Ctrl</span>+<span class="key">V</span>。<code>2026-05-18</code> / <code>2026/5/18</code> / <code>20260518</code> など各種形式や、Excel セルからの貼り付けに対応します。</li>
+  </ul>
+</div>
+<div class="note">
+  <strong>📌 変更した日付に表示が合います</strong>
+  項目の予定開始日を入力する、またはガントのバーをドラッグして日付を変えると、ガントが自動で横スクロールし、その日付の少し手前（約 2 日前）が左端に来るようにスクロール位置を合わせます。
 </div>
 
 <!-- ===== 3.7 ===== -->
@@ -448,9 +483,32 @@
 </p>
 
 <!-- ===== 3.8 ===== -->
-<h3 class="section" id="s3-8"><span class="num">3.8</span>後続タスクの自動シフト（連動）</h3>
+<h3 class="section" id="s3-8"><span class="num">3.8</span>行を複製する</h3>
+<p>
+似たタスクを作るときは「<strong>複製</strong>」が便利です。各行の「複製」ボタン（階層と項目名の間）を押すと、その行を<strong>配下ごとまるごとコピー</strong>し、元の行のすぐ後ろに同じ親・同じ階層で挿入します。
+</p>
+<table class="cmd">
+  <thead><tr><th>複製対象</th><th>結果</th></tr></thead>
+  <tbody>
+    <tr><td>大項目</td><td>配下の中項目・項目もすべてコピーされる。</td></tr>
+    <tr><td>中項目</td><td>配下の項目もコピーされる。</td></tr>
+    <tr><td>項目</td><td>その 1 行をコピー。</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <strong>📌 コピーされる内容</strong>
+  名称・開始日・日数・担当・予定/実績工数のほか、<strong>進捗・実績（実績開始/終了）もそのまま引き継ぎ</strong>ます。複製後に必要な箇所を書き換えてください。複製直後は新しい行の名称欄にフォーカスが移ります。
+</div>
+
+<!-- ===== 3.9 ===== -->
+<h3 class="section" id="s3-9"><span class="num">3.9</span>後続タスクの自動シフト（連動）</h3>
 <p>
 あるタスクの開始・期間を後ろにずらすと、<strong>同じ中項目内で、すぐ後ろにくっついている後続タスク</strong>が自動で同じ日数だけ後ろにずれます（カスケード）。
+</p>
+<p>
+連動する後続タスクは <strong>変更したタスクと同じ日数だけ平行移動</strong> します（直列に並べ替えるのではありません）。
+たとえば 3 つの項目がいずれも 5/15・1 日で並んでいるとき、先頭を 5/16 に変更すると、
+残り 2 つも同じ +1 日ずれて <strong>3 つとも 5/16</strong> になります（5/16・5/17・5/18 のように 1 日ずつ後ろには並びません）。
 </p>
 <table class="cmd">
   <thead><tr><th>動く条件</th><th>動かない条件</th></tr></thead>
@@ -463,23 +521,42 @@
   ガント画面右上の「<strong>連動</strong>」トグルを OFF にすると、その操作だけは連動なしで動かせます。
 </div>
 
-<!-- ===== 3.9 ===== -->
-<h3 class="section" id="s3-9"><span class="num">3.9</span>進捗と実績を入力する</h3>
+<!-- ===== 3.10 ===== -->
+<h3 class="section" id="s3-10"><span class="num">3.10</span>進捗と実績を入力する</h3>
 <p>
 「<strong>実績</strong>」列を表示にすると、項目に実績開始日・実績終了日を入力できます。
 進捗 % は一覧上の進捗セルにも、ガントバーをドラッグでも変更できます。
 </p>
 <figure>
   <img src="screenshots/14_actual_visible.png" alt="実績列を表示した状態">
-  <figcaption>図 3-9: 「実績」表示ボタンを押すと、実績開始・実績終了の列が現れる</figcaption>
+  <figcaption>図 3-10: 「実績」表示ボタンを押すと、実績開始・実績終了の列が現れる</figcaption>
 </figure>
 <div class="note">
   <strong>📌 入力ガイドライン</strong>
   作業開始時に <strong>実績開始日</strong>、完了時に <strong>実績終了日</strong> を入力すれば、次の「状態」欄に自動で反映されます。
 </div>
 
-<!-- ===== 3.10 ===== -->
-<h3 class="section" id="s3-10"><span class="num">3.10</span>状態（自動算出）の見方</h3>
+<!-- ===== 3.11 ===== -->
+<h3 class="section" id="s3-11"><span class="num">3.11</span>タスクに備考を登録する</h3>
+<p>
+項目（一番下の階層）には自由記述の<strong>備考</strong>を登録できます。
+</p>
+<ol class="steps">
+  <li>項目行の「<strong>備考</strong>」ボタン（階層と項目名の間）をクリック。</li>
+  <li>開いたポップアップに本文を入力（複数行可）。<span class="key">Ctrl</span>+<span class="key">Enter</span> で保存、<span class="key">Esc</span> で閉じる。</li>
+  <li>「<strong>保存</strong>」を押す。備考が登録された行は「備考」ボタンが青く強調され、青いドットが付きます。</li>
+</ol>
+<figure>
+  <img src="screenshots/62_task_note_dialog.png" alt="備考ポップアップ">
+  <figcaption>図 3-11: 備考ポップアップ（タスク名がタイトルに表示される）</figcaption>
+</figure>
+<div class="tip">
+  <strong>💡 ガントでも確認できます</strong>
+  ガントのバーにマウスを乗せると表示されるツールチップの末尾に「<strong>備考:</strong>」として内容が表示されます。空にして保存すると備考は解除されます。
+</div>
+
+<!-- ===== 3.12 ===== -->
+<h3 class="section" id="s3-12"><span class="num">3.12</span>状態（自動算出）の見方</h3>
 <p>
 「<strong>状態</strong>」列は実績日と予定日から自動で 5 段階のいずれかに分類されます。
 </p>
@@ -495,11 +572,11 @@
 </table>
 <figure>
   <img src="screenshots/16_gantt_status.png" alt="状態列を表示した状態">
-  <figcaption>図 3-10: 状態バッジが自動付与される</figcaption>
+  <figcaption>図 3-12: 状態バッジが自動付与される</figcaption>
 </figure>
 
-<!-- ===== 3.11 ===== -->
-<h3 class="section" id="s3-11"><span class="num">3.11</span>表示する列を切り替える</h3>
+<!-- ===== 3.13 ===== -->
+<h3 class="section" id="s3-13"><span class="num">3.13</span>表示する列を切り替える</h3>
 <p>
 画面右上のピル型ボタンで列の表示・非表示を切り替えできます。チームの好みや画面サイズに合わせて使い分けてください。
 </p>
@@ -513,11 +590,11 @@
 </table>
 <figure>
   <img src="screenshots/13_hours_visible.png" alt="工数列を表示した状態">
-  <figcaption>図 3-11: 工数列を表示した例</figcaption>
+  <figcaption>図 3-13: 工数列を表示した例</figcaption>
 </figure>
 
-<!-- ===== 3.12 ===== -->
-<h3 class="section" id="s3-12"><span class="num">3.12</span>フィルタで絞り込む</h3>
+<!-- ===== 3.14 ===== -->
+<h3 class="section" id="s3-14"><span class="num">3.14</span>フィルタで絞り込む</h3>
 <p>
 列ヘッダの <span class="key">▾</span> ボタンを押すと、Excel のオートフィルタのようなポップオーバーが開きます。
 </p>
@@ -529,7 +606,7 @@
 </ul>
 <figure>
   <img src="screenshots/17_filter_popover.png" alt="担当フィルタのポップオーバー">
-  <figcaption>図 3-12: 担当フィルタのポップオーバー（チェックで選択 / 解除）</figcaption>
+  <figcaption>図 3-14: 担当フィルタのポップオーバー（チェックで選択 / 解除）</figcaption>
 </figure>
 <div class="tip">
   <strong>💡 ヒント</strong>
@@ -537,19 +614,96 @@
   ヘッダ右上に表示される「<strong>フィルタ解除</strong>」ボタンで一括解除できます。
 </div>
 
-<!-- ===== 3.13 ===== -->
-<h3 class="section" id="s3-13"><span class="num">3.13</span>折りたたみ・展開と「今日」表示</h3>
+<!-- ===== 3.15 ===== -->
+<h3 class="section" id="s3-15"><span class="num">3.15</span>折りたたみ・展開と「今日」表示</h3>
 <table class="cmd">
   <thead><tr><th>操作</th><th>結果</th></tr></thead>
   <tbody>
     <tr><td>大項目・中項目の行頭 <span class="key">▾</span> をクリック</td><td>その配下を折りたたみ / 展開</td></tr>
-    <tr><td>ヘッダ右上の「<strong>展開</strong>」 / 「<strong>折畳</strong>」</td><td>全項目を一括展開 / 折りたたみ</td></tr>
+    <tr><td>ヘッダ右上の「<strong>展開</strong>」</td><td>全項目を一括展開（項目まで表示）</td></tr>
+    <tr><td>ヘッダ右上の「<strong>中まで</strong>」</td><td>中項目まで表示し、項目（最下層）を折りたたむ</td></tr>
+    <tr><td>ヘッダ右上の「<strong>折畳</strong>」</td><td>大項目だけ表示（中項目以下を折りたたむ）</td></tr>
     <tr><td>ページを開いた直後</td><td>ガントは <strong>今日の日付が中央</strong>に来るよう自動スクロール。今日の列には縦の琥珀色マーカーと「今日」バッジが表示されます。</td></tr>
   </tbody>
 </table>
+<figure>
+  <img src="screenshots/64_collapse_mid.png" alt="操作バー（展開・中まで・折畳など）">
+  <figcaption>図 3-15: 画面上部の操作バー（連動 / 列 / 展開・中まで・折畳 / Excel 出力 / ＋大項目）</figcaption>
+</figure>
 
 <!-- ================================================ -->
-<h2 class="chapter" id="ch4">4. よくある質問</h2>
+<h2 class="chapter" id="ch4">4. 担当別予定（社員ごとの予定）</h2>
+<p>
+「<strong>担当別予定</strong>」画面では、選択した社員に割り当てられた全プロジェクトのタスクを横断で一覧し、
+<strong>そのまま編集</strong>できます。プロジェクトに紐づかない「個人タスク」もここで管理します。
+</p>
+<figure>
+  <img src="screenshots/60_assignments_editable.png" alt="担当別予定（編集可能な一覧）">
+  <figcaption>図 4-1: 担当別予定（列フィルタ・インライン編集・個人タスク行を含む）</figcaption>
+</figure>
+
+<!-- ===== 4.1 ===== -->
+<h3 class="section" id="s4-1"><span class="num">4.1</span>社員を選んで予定を見る・絞り込む</h3>
+<ol class="steps">
+  <li>上部ナビの「<strong>担当別予定</strong>」をクリック。</li>
+  <li>右上の「<strong>社員</strong>」プルダウンで対象社員を選ぶ。</li>
+</ol>
+<p>絞り込みは併用できます。</p>
+<table class="cmd">
+  <thead><tr><th>絞り込み</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>期間タブ（全件 / 進行中のみ / 今月開始 / 今日以降）</td><td>開始日・状態でざっくり絞り込み。</td></tr>
+    <tr><td>状態チップ</td><td>完了 / 実行中 / 遅延中 / 着手遅れ / 未着手 のオン・オフ。<strong>初期状態は「完了」以外</strong>（未完了の作業を優先表示）。完了も見たいときは「完了」チップを押します。</td></tr>
+    <tr><td>列ヘッダの <span class="key">▾</span> フィルタ</td><td><strong>プロジェクト</strong>（複数選択）・<strong>項目名</strong>（テキスト）・<strong>大項目＞中項目</strong>（テキスト）・<strong>状態</strong>（複数選択）。状態はチップと連動します。</td></tr>
+  </tbody>
+</table>
+<p>
+列の並びは <strong>プロジェクト → 大項目＞中項目 → 項目名 → 開始日 → 終了日 → 日数 → 予定工数 → 実績開始 → 実績終了 → 実績工数 → 進捗 → 状態 → 操作</strong> です。
+</p>
+
+<!-- ===== 4.2 ===== -->
+<h3 class="section" id="s4-2"><span class="num">4.2</span>セルを直接編集する</h3>
+<p>
+一覧のセルをそのまま編集できます。編集できるのは <strong>項目名・開始日・日数・予定工数・実績開始・実績終了・実績工数・進捗</strong>。
+終了日は自動計算（編集不可）、状態は自動算出です。
+</p>
+<div class="note">
+  <strong>📌 保存とガント連動</strong>
+  セルを変更すると即時に保存され、一覧が再読込されます。WBS タスクの日付を変えた場合、対象プロジェクト側の連動（カスケード）はガントと同じ既定（ON）で動作します。
+</div>
+<div class="tip">
+  <strong>💡 日付のコピペ</strong>
+  3.6 と同様、日付セルは Excel と相互にコピー＆ペーストできます。
+</div>
+
+<!-- ===== 4.3 ===== -->
+<h3 class="section" id="s4-3"><span class="num">4.3</span>ガントへジャンプする</h3>
+<p>
+WBS タスクの行末「<strong>開く</strong>」ボタンを押すと、そのタスクを含むプロジェクトのガント画面へ移動し、対象行が画面内に表示されます。
+</p>
+
+<!-- ===== 4.4 ===== -->
+<h3 class="section" id="s4-4"><span class="num">4.4</span>個人タスクを登録する</h3>
+<p>
+プロジェクトのガントには出さない、社員個人のタスク（社内研修・資格勉強・庶務など）を登録できます。
+</p>
+<ol class="steps">
+  <li>対象社員を選んだ状態で、右上の「<strong>＋ 個人タスク</strong>」を押す。空の個人タスク行が追加されます（行はうす黄色）。</li>
+  <li>項目名・開始日・日数・進捗などをセルに直接入力。</li>
+  <li>必要なら「プロジェクト」列のプルダウンで紐づけ先プロジェクトを選ぶ（<strong>任意</strong>。未選択は「（個人・PJなし）」）。</li>
+  <li>備考は行末の「<strong>備考</strong>」ボタンから登録できます。不要になったら「<strong>削除</strong>」ボタンで削除。</li>
+</ol>
+<figure>
+  <img src="screenshots/61_personal_task.png" alt="個人タスク行">
+  <figcaption>図 4-4: 個人タスク行（プロジェクトはプルダウンで任意選択、行末は備考・削除）</figcaption>
+</figure>
+<div class="warn">
+  <strong>⚠ 個人タスクの扱い</strong>
+  個人タスクは <strong>担当別予定にのみ表示</strong>されます。プロジェクトのガント・WBS・Excel 出力には一切出ません（プロジェクトに紐づけても同様）。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch5">5. よくある質問</h2>
 
 <h3 class="section">Q1: タスクを間違えて削除しました。元に戻せますか？</h3>
 <p>
@@ -560,6 +714,7 @@
 <h3 class="section">Q2: 同じ社員が複数プロジェクトを掛け持ちできますか？</h3>
 <p>
 できます。プロジェクトごとにメンバー設定で参加させてください。社員マスタには 1 件登録するだけで OK です。
+「担当別予定」で社員を選べば、全プロジェクト横断で予定を確認・編集できます。
 </p>
 
 <h3 class="section">Q3: 退職した社員のデータは消すべきですか？</h3>
@@ -579,13 +734,23 @@
 これは「<strong>連動</strong>」機能による意図的な動作です。動かしたくない場合は、ヘッダ右上の「連動」トグルを OFF にしてからドラッグしてください（その操作だけ連動しません）。
 </p>
 
-<h3 class="section">Q6: 一覧の右半分にあるガントが、左の一覧と高さがずれます。</h3>
+<h3 class="section">Q6: 似たタスク群をまとめて作りたいです。</h3>
 <p>
-一覧とガントは <strong>同じスクロールバー</strong>で同期しています。ずれがある場合は、ブラウザの拡大率（Ctrl + 0 でリセット）か、ウィンドウ幅を変えてみてください。
+「<strong>複製</strong>」ボタン（行の階層と項目名の間）を使ってください。大項目・中項目を複製すると配下ごとコピーされ、進捗・実績も引き継がれます（3.8）。
+</p>
+
+<h3 class="section">Q7: プロジェクトに属さない個人の予定はどこで管理しますか？</h3>
+<p>
+「担当別予定」画面の「<strong>＋ 個人タスク</strong>」で登録します。プロジェクト紐づけは任意で、ガント・Excel 出力には表示されません（4.4）。
+</p>
+
+<h3 class="section">Q8: 一覧の右半分にあるガントが、左の一覧と高さがずれます。</h3>
+<p>
+一覧とガントは <strong>同じ縦スクロール</strong>で同期し、左右の見出しは固定表示されます。ずれを感じる場合は、ブラウザの拡大率（<span class="key">Ctrl</span> + <span class="key">0</span> でリセット）か、ウィンドウ幅を変えてみてください。
 </p>
 
 <footer class="foot">
-  WBS Web 操作マニュアル ／ 2026 年 5 月版
+  WBS Web 操作マニュアル ／ 2026 年 5 月版（担当別予定・個人タスク・備考・複製・日付コピペ対応）
 </footer>
 </div>
 </body>

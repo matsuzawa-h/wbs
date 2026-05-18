@@ -1,5 +1,4 @@
 import {
-  IsBoolean,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,20 +10,27 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class UpdateTaskDto {
+export class UpdatePersonalTaskDto {
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  projectId?: number | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)
   name?: string;
 
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'startDate must be YYYY-MM-DD' })
-  startDate?: string;
+  startDate?: string | null;
 
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
   @IsInt()
   @Min(1)
-  duration?: number;
+  duration?: number | null;
 
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)
@@ -55,27 +61,8 @@ export class UpdateTaskDto {
   progress?: number;
 
   @IsOptional()
-  @IsInt()
-  assigneeId?: number | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  status?: string;
-
-  // Free-text remarks (備考). null clears it.
-  @IsOptional()
   @ValidateIf((_o, v) => v !== null)
   @IsString()
   @MaxLength(2000)
   note?: string | null;
-
-  /**
-   * When false, an end-date change on a level-3 task only writes that single
-   * row (and recomputes its ancestors) — sibling tasks under the same 中項目
-   * are NOT shifted. Defaults to true (preserve historical cascade behavior).
-   */
-  @IsOptional()
-  @IsBoolean()
-  cascade?: boolean;
 }

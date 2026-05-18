@@ -43,6 +43,11 @@ export class TasksController {
     return this.tasks.update(id, dto);
   }
 
+  @Post('tasks/:id/duplicate')
+  duplicate(@Param('id', ParseIntPipe) id: number) {
+    return this.tasks.duplicate(id);
+  }
+
   @Delete('tasks/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseIntPipe) id: number): void {

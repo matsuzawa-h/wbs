@@ -1,9 +1,69 @@
+/* =========================================================================
+   WBS Web — design tokens (落ち着いた業務系 / calm professional)
+   グレー基調 + 抑えめのアクセント青1色。長時間見ても疲れない実務トーン。
+   ========================================================================= */
 :root {
-  font-family: system-ui, 'Yu Gothic UI', 'Meiryo', sans-serif;
+  /* --- neutrals (slate) --- */
+  --c-bg: #eef1f5;
+  --c-surface: #ffffff;
+  --c-surface-2: #f7f9fc; /* zebra / subtle header fill */
+  --c-surface-3: #eef2f7; /* section band (大項目) */
+  --c-border: #e3e8ef;
+  --c-border-strong: #cbd5e1;
+  --c-text: #1f2a37;
+  --c-text-muted: #64748b;
+  --c-text-faint: #94a3b8;
+
+  /* --- accent (single calm blue) --- */
+  --c-accent: #2563eb;
+  --c-accent-strong: #1d4ed8;
+  --c-accent-weak: #eef4ff;
+  --c-accent-ring: rgba(37, 99, 235, 0.28);
+
+  /* --- hierarchy bands --- */
+  --c-lvl1-bar: #2563eb;
+  --c-lvl2-bar: #93a5be;
+
+  /* --- semantic --- */
+  --c-ok-bg: #dcfce7;
+  --c-ok-fg: #166534;
+  --c-info-bg: #dbeafe;
+  --c-info-fg: #1e40af;
+  --c-warn-bg: #ffedd5;
+  --c-warn-fg: #9a3412;
+  --c-late-bg: #fef9c3;
+  --c-late-fg: #854d0e;
+  --c-danger-bg: #fee2e2;
+  --c-danger-fg: #991b1b;
+  --c-neutral-bg: #eef1f5;
+  --c-neutral-fg: #475569;
+
+  /* --- radius / shadow / spacing --- */
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-pop: 0 8px 28px rgba(15, 23, 42, 0.16);
+
+  /* Shared Gantt/table vertical metrics. Keep these in px: GanttChart reads
+     them at runtime to match frappe-gantt's row math to TaskTable's CSS. */
+  --wbs-gantt-row-height: 40px;
+  --wbs-gantt-table-header-height: 58px;
+  --wbs-gantt-group-header-height: 26px;
+  --wbs-gantt-column-header-height: 32px;
+  --wbs-gantt-bar-height: 24px;
+
+  font-family: 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', 'Meiryo',
+    system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #1f2937;
-  background: #f3f4f6;
+  color: var(--c-text);
+  background: var(--c-bg);
+  font-variant-numeric: tabular-nums;
 }
 
 * {
@@ -15,7 +75,15 @@ body {
 }
 
 a {
-  color: #2563eb;
+  color: var(--c-accent);
+}
+
+/* Numeric / date / duration fields keep figures aligned across rows. */
+input[type='number'],
+input[type='date'],
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 button {
@@ -24,30 +92,50 @@ button {
 }
 
 button.btn {
-  border: 1px solid #d1d5db;
-  background: #fff;
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  color: var(--c-text);
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--r);
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
+    color 0.15s;
 }
 button.btn:hover {
-  background: #f3f4f6;
+  background: var(--c-surface-2);
+  border-color: var(--c-border-strong);
+}
+button.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--c-accent-ring);
+}
+button.btn:active {
+  transform: translateY(0.5px);
 }
 button.btn.primary {
-  background: #2563eb;
+  background: var(--c-accent);
   color: #fff;
-  border-color: #2563eb;
+  border-color: var(--c-accent);
 }
 button.btn.primary:hover {
-  background: #1d4ed8;
+  background: var(--c-accent-strong);
+  border-color: var(--c-accent-strong);
 }
 button.btn.danger {
-  background: #fff;
-  color: #b91c1c;
-  border-color: #fca5a5;
+  background: var(--c-surface);
+  color: var(--c-danger-fg);
+  border-color: #f3b4b4;
 }
 button.btn.danger:hover {
   background: #fef2f2;
+  border-color: #ef9a9a;
+}
+button.btn.small {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
 }
 
 input[type='text'],
@@ -55,8 +143,50 @@ input[type='date'],
 input[type='number'],
 select {
   font: inherit;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  color: var(--c-text);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
   padding: 0.35rem 0.55rem;
-  background: #fff;
+  background: var(--c-surface);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+input[type='text']:focus,
+input[type='date']:focus,
+input[type='number']:focus,
+select:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-ring);
+}
+::placeholder {
+  color: var(--c-text-faint);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c4cdda;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #aab6c7;
+  background-clip: content-box;
+}
+
+/* Suppress an element's native scrollbar while keeping it scrollable.
+   Applied (from JS) to frappe's inner .gantt-container so only the
+   always-visible proxy horizontal scrollbar shows — without this, frappe's
+   own bar reappears at the very bottom and the content shifts. */
+.wbs-no-native-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.wbs-no-native-scrollbar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
 }

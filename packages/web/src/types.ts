@@ -94,8 +94,30 @@ export interface AssignmentRow {
   progress: number;
   assigneeId: number | null;
   status: string;
+  note: string | null;
   parentName: string | null;
   grandparentName: string | null;
+}
+
+// Individual (personal) task — owned by an employee, optional project link,
+// never shown in the project gantt / Excel export. Listed only in 担当別予定.
+export interface PersonalTask {
+  id: number;
+  employeeId: number;
+  projectId: number | null;
+  projectName: string | null;
+  name: string;
+  startDate: string | null;
+  duration: number | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  plannedHours: number | null;
+  actualHours: number | null;
+  progress: number;
+  note: string | null;
+  sortOrder: number;
+  createdAt: number;
 }
 
 export interface WbsTask {
@@ -114,5 +136,6 @@ export interface WbsTask {
   progress: number;
   assigneeId: number | null;
   status: string;
+  note: string | null;
   sortOrder: number;
 }
