@@ -4,6 +4,7 @@ import { AppDb, wbsTasks, WbsTask } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { HolidaysService } from '../holidays/holidays.service';
 import {
+  addBusinessDays,
   businessDaysBetween,
   computeEndDate,
   formatDate,
@@ -23,7 +24,7 @@ export class DateCascadeService {
   }
 
   /**
-   * Chain-style cascade for level-3 tasks under the SAME parent (中項目).
+   * Parallel-shift cascade for level-3 tasks under the SAME parent (中項目).
    * Walks siblings in sortOrder ASC and only shifts each one when it would
    * either overlap with the running chain end OR was originally contiguous
    * (連日) to the previous task in the chain. The walk stops as soon as a
@@ -33,9 +34,14 @@ export class DateCascadeService {
    *   B:           [---]      starts Fri → consecutive → shift with A
    *   C:                  [--] starts 1 week later → gap → STOP, C untouched
    *
-   * If the user really wants to drag every successor unconditionally, they
-   * can do per-task edits; if they want NO cascade at all, the 連動 toggle
-   * on the page passes cascade=false and we never get here.
+   * Each affected sibling is moved by the SAME number of business days the
+   * source moved (deltaBusinessDays), preserving its original relative
+   * position — it is NOT re-chained to start right after the previous task.
+   * So three parallel tasks all on 5/15 with the first moved to 5/16 all
+   * become 5/16 (not 5/16 / 5/17 / 5/18).
+   *
+   * If the user wants NO cascade at all, the 連動 toggle on the page passes
+   * cascade=false and we never get here.
    */
   cascadeAfterChange(
     projectId: number,
@@ -83,7 +89,10 @@ export class DateCascadeService {
         break;
       }
 
-      const newStart = nextBusinessDay(refEndNew, holidays);
+      // Parallel shift: move this task by the same business-day delta the
+      // source moved, keeping its original relative position (not re-chained
+      // to start right after the previous task's new end).
+      const newStart = addBusinessDays(bStart, deltaBusinessDays, holidays);
       const newStartStr = formatDate(newStart);
       const newEndStr = computeEndDate(newStartStr, b.duration, holidays);
 
