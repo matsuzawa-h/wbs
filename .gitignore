@@ -50,3 +50,6 @@ packages/api/scripts/*.xlsx
 *.tmp
 *.temp
 
+# Local AI agent state (Claude Code project/skills/memory — not for VCS)
+.claude/
+
