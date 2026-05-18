@@ -458,6 +458,29 @@ v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
 <span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
 <span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH</pre>
 
+<h3 class="section"><span class="num">4.6</span>操作手順書 (docs) を配置</h3>
+<p>
+アプリ内の「<strong>操作手順</strong>」ページ（<code>/manual</code>）は、サーバが
+<code>docs\manual.html</code> と <code>docs\screenshots\*</code> を実行時に配信します。
+これらは <code>pnpm deploy</code> の成果物（<code>C:\tmp\WbsWeb-deploy</code>）には<strong>含まれません</strong>
+（テンプレ／アドインと同様、リポジトリ同梱物を別途配置する必要があります）。
+未配置だと「操作手順」ページと <code>/api/help/*</code> が 404（<code>docs file not found</code>）になります。
+</p>
+<p>
+アプリ差し替え（<code>robocopy /MIR</code>）で消えない永続領域 <code>C:\AppsData\WbsWeb\docs</code> に置き、
+起動スクリプトの環境変数 <code>MANUAL_DOCS_DIR</code> でそこを指す方式にします
+（DB／テンプレ／アドインと同じ思想。<code>start.cmd</code> 側は 5.1 に記載済み）。
+</p>
+<pre><span class="comment"># 開発機から本番マシンへ docs を転送（共有経由の例）</span>
+<span class="prompt">PS&gt;</span> robocopy c:\Git\WBS\WbsWeb\docs \\&lt;本番IP&gt;\C$\AppsData\WbsWeb\docs /MIR</pre>
+<div class="note">
+  <strong>📌 ソースと反映</strong>
+  原本はリポジトリの <code>c:\Git\WBS\WbsWeb\docs\</code>（<code>manual.html</code> ＋ <code>screenshots\</code>）。
+  手順書を更新したら、この <code>docs</code> を本番の <code>C:\AppsData\WbsWeb\docs</code> へ
+  再 robocopy するだけで反映されます（サービス再起動不要・ディスク都度参照）。
+  <code>MANUAL_DOCS_DIR</code> は <code>HelpController</code> が<strong>最優先</strong>で参照します。
+</div>
+
 <!-- ================================================ -->
 <h2 class="chapter" id="ch5"><span class="role-tag role-prod">PROD</span>5. 初回サービス登録</h2>
 
@@ -471,6 +494,7 @@ set NODE_ENV=production
 set DB_PATH=C:\AppsData\WbsWeb\wbs.db
 set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
 set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+set MANUAL_DOCS_DIR=C:\AppsData\WbsWeb\docs
 <span class="comment">REM MCP 認証を再有効化する場合のみ MCP_TOKEN を設定 (11 章参照)。</span>
 <span class="comment">REM set MCP_TOKEN=&lt;16 文字以上のランダム値&gt;</span>
 cd /d C:\Apps\WbsWeb
@@ -517,6 +541,7 @@ echo set NODE_ENV=production
 echo set DB_PATH=C:\AppsData\WbsWeb\wbs.db
 echo set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
 echo set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+echo set MANUAL_DOCS_DIR=C:\AppsData\WbsWeb\docs
 echo cd /d C:\Apps\WbsWeb
 echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb\logs\stdout.log 2^^^>^^^> C:\AppsData\WbsWeb\logs\stderr.log
 ) &gt; start.cmd</pre>
@@ -599,6 +624,8 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
     （4.3 で配置したテンプレートが見つからないと 500 エラーになる）</li>
   <li><code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> を開き <code>km_module.xla</code> をダウンロード
     （4.4 で配置したアドインが見つからないと 404 エラーになる）</li>
+  <li><code>http://&lt;本番マシンの IP&gt;:5000/manual</code> を開き、操作手順書が表示される
+    （4.6 の <code>docs</code> 配置／<code>MANUAL_DOCS_DIR</code> 未設定だと 404 になる）</li>
   <li>マシンを再起動して、再度ブラウザでアクセス → サービスが自動起動して開く</li>
 </ol>
 
@@ -625,7 +652,7 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
     <tr><td>ブックマーク</td><td>↑ の URL をブックマークしてもらう</td></tr>
     <tr><td>「保護されていない通信」表示</td><td>HTTP なので警告が出るが、社内 LAN なので利用 OK と案内</td></tr>
     <tr><td>同時編集</td><td>本バージョンは同時編集非対応。同一プロジェクトを 2 人以上で開いて編集しないこと</td></tr>
-    <tr><td>使い方</td><td><a href="manual.html">manual.html</a> を参照</td></tr>
+    <tr><td>使い方</td><td>画面上部ナビの「<strong>操作手順</strong>」（<code>http://&lt;本番マシンの IP&gt;:5000/manual</code>）を参照</td></tr>
     <tr><td>Excel アドイン</td><td>Excel 出力したファイルでガント描画を見るには <code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> から <code>km_module.xla</code> をダウンロードして Excel に登録（初回 1 回のみ）。登録手順はダウンロードページに記載済</td></tr>
   </tbody>
 </table>
@@ -671,6 +698,20 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
   <code>テンプレートファイル.xls</code> や <code>km_module.xla</code> を新しい版に差し替えたいときは、
   サービスを止めずに <code>C:\AppsData\WbsWeb\templates\</code> / <code>C:\AppsData\WbsWeb\addins\</code>
   のファイルを上書きするだけで OK（読み込み時にディスクから都度参照しているため再起動不要）。
+</div>
+
+<div class="note">
+  <strong>📌 操作手順書 (docs) を更新／このバージョンで初めて入れる場合</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li><strong>手順書を更新したとき</strong>：開発機の <code>docs</code> を本番の
+        <code>C:\AppsData\WbsWeb\docs</code> へ再 robocopy（4.6 のコマンド）。サービス再起動不要。</li>
+    <li><strong>既存環境を本バージョンへ初回更新するとき（重要）</strong>：
+        ① 4.6 に従い <code>docs</code> を <code>C:\AppsData\WbsWeb\docs</code> へ配置、
+        ② <code>start.cmd</code> に <code>set MANUAL_DOCS_DIR=C:\AppsData\WbsWeb\docs</code> を追記（5.1 参照）→
+        タスク再起動。未対応だと「操作手順」ページが 404 になります。</li>
+    <li>このリリースは <strong>マイグレーションあり</strong>（<code>0006_add_task_note</code> /
+        <code>0007_add_personal_tasks</code>）。8.2 手順 3) の <code>migrate</code> を必ず実行。</li>
+  </ul>
 </div>
 
 <div class="tip">
