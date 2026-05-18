@@ -22,6 +22,7 @@ export interface AssignmentRow {
   actualHours: number | null;
   progress: number;
   status: string;
+  note: string | null;
   parentName: string | null;
   grandparentName: string | null;
 }
@@ -133,6 +134,7 @@ export class EmployeesService {
         actualHours: wbsTasks.actualHours,
         progress: wbsTasks.progress,
         status: wbsTasks.status,
+        note: wbsTasks.note,
         parentName: parents.name,
         grandparentName: grandparents.name,
       })

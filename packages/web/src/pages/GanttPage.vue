@@ -10,6 +10,7 @@ import { useProjectMembersStore } from '@/stores/projectMembers';
 import TaskTable from '@/components/TaskTable.vue';
 import GanttChart from '@/components/GanttChart.vue';
 import ProjectMembersDialog from '@/components/ProjectMembersDialog.vue';
+import TaskNoteDialog from '@/components/TaskNoteDialog.vue';
 import type { Employee, WbsTask } from '@/types';
 
 const props = defineProps<{ projectId: number }>();
@@ -24,6 +25,21 @@ const route = useRoute();
 
 const collapsedIds = ref<Set<number>>(new Set());
 const membersDialogOpen = ref(false);
+// The level-3 task whose 備考 popup is open (null = closed).
+const noteTask = ref<WbsTask | null>(null);
+// Task to keep centered after a gantt-driven date change (one-shot;
+// GanttChart clears it via @focus-applied once it has scrolled there).
+const ganttFocusTaskId = ref<number | null>(null);
+
+function openNote(task: WbsTask): void {
+  noteTask.value = task;
+}
+async function onSaveNote(note: string | null): Promise<void> {
+  const t = noteTask.value;
+  if (!t) return;
+  await onUpdate(t.id, { note });
+  noteTask.value = null;
+}
 
 // Members live in projectMembersStore keyed by projectId; resolved per render.
 const projectMembers = computed<Employee[]>(() =>
@@ -239,21 +255,33 @@ function setupScrollSync(): void {
   if (scrollSyncDetach) scrollSyncDetach();
   const split = splitRef.value;
   if (!split) return;
+  // Mirror every scroll event immediately. `scrollSyncing` only guards
+  // re-entrancy within the *same* synchronous call; it is cleared before
+  // returning, so the asynchronous echo (from assigning scrollTop) is still
+  // processed — but becomes a no-op because the panes are already within
+  // 1px. Crucially no event is dropped, so the final position can never be
+  // left out of sync (the cause of the gradual scroll drift).
   const handler = (e: Event): void => {
     if (scrollSyncing) return;
     const target = e.target as HTMLElement | null;
     if (!target || typeof target.scrollTop !== 'number') return;
     if (!split.contains(target)) return;
+    // Only the two real panes may DRIVE the vertical sync. frappe's inner
+    // gantt scroller fires 'scroll' for horizontal movement too — notably
+    // the init scrollLeft on every rebuild and the focus scrollLeft after a
+    // date edit, both with scrollTop 0. If those were treated as a vertical
+    // source the 0 would be mirrored onto the panes, snapping them to the
+    // top. The panes are persistent elements; the gantt body still scrolls
+    // vertically *through* .pane.right, so wheel scrolling keeps working.
+    if (target !== leftPaneRef.value && target !== rightPaneRef.value) return;
     scrollSyncing = true;
-    const newTop = target.scrollTop;
+    const newTop = Math.round(target.scrollTop);
     for (const el of collectScrollables()) {
-      if (el !== target && Math.abs(el.scrollTop - newTop) > 0.5) {
+      if (el !== target && Math.abs(el.scrollTop - newTop) > 1) {
         el.scrollTop = newTop;
       }
     }
-    requestAnimationFrame(() => {
-      scrollSyncing = false;
-    });
+    scrollSyncing = false;
   };
   split.addEventListener('scroll', handler, { capture: true, passive: true });
   scrollSyncDetach = () => split.removeEventListener('scroll', handler, true as unknown as EventListenerOptions);
@@ -266,16 +294,17 @@ onBeforeUnmount(() => {
   if (scrollSyncDetach) scrollSyncDetach();
 });
 
-// Re-bind after the split mounts/un-mounts (e.g. when project has tasks/no tasks).
-watch(
-  () => tasks.items.length > 0,
-  () => nextTick(setupScrollSync),
-);
+// Bind when .split-viewport first mounts (and on the rare full remount, e.g.
+// initial load / first-ever task). It intentionally does NOT remount on
+// create/update/remove anymore — the loading placeholder is gated on
+// `items.length === 0`, so the element (and its scroll position) survives an
+// edit. The listener follows the *element*, so a one-time bind is enough.
+watch(splitRef, () => nextTick(setupScrollSync));
 
 const initialWidth = (() => {
   const stored = Number(window.localStorage.getItem(STORAGE_KEY_WIDTH));
   const needed = (() => {
-    let w = 20 + 22 + 46 + 160 + 115 + 42 + 115 + 72 + 84 + 108 + 28;
+    let w = 20 + 22 + 46 + 112 + 160 + 115 + 42 + 115 + 72 + 84 + 62 + 28;
     if (initialVisibility.hours) w += 56;
     if (initialVisibility.actual) {
       w += 115 + 115;
@@ -291,7 +320,7 @@ const leftWidth = ref<number>(initialWidth);
 
 function requiredTableWidth(v: ColumnVisibility): number {
   // Mirrors the column widths defined in TaskTable.gridTemplate, plus gaps + pane padding.
-  let w = 20 + 22 + 46 + 160; // meta block (name has minmax(150,1.4fr) - reserve 160)
+  let w = 20 + 22 + 46 + 112 + 160; // meta block: handle/toggle/階層/行操作/名称
   w += 115 + 42 + 115; // planned start / dur / end
   if (v.hours) w += 56;
   if (v.actual) {
@@ -300,7 +329,7 @@ function requiredTableWidth(v: ColumnVisibility): number {
   }
   w += 72 + 84; // progress / assignee
   if (v.status) w += 84; // min status width
-  w += 108; // actions
+  w += 62; // actions (削除 only)
   // Account for grid gaps (~0.2rem each) + pane padding / border.
   return w + 28;
 }
@@ -472,6 +501,18 @@ function collapseAll(): void {
   collapsedIds.value = next;
 }
 
+// Show down to 中項目: keep 大項目 expanded (so 中項目 is visible) but
+// collapse every 中項目 that has children (so 項目 is hidden).
+function collapseToMid(): void {
+  const next = new Set<number>();
+  for (const t of tasks.items) {
+    if (t.level === 2 && (childCountByParent.value.get(t.id) ?? 0) > 0) {
+      next.add(t.id);
+    }
+  }
+  collapsedIds.value = next;
+}
+
 async function addTopLevel(): Promise<void> {
   const created = await tasks.create({ level: 1, name: '' });
   focusNameAfterCreate(created?.id);
@@ -532,15 +573,33 @@ async function onUpdate(id: number, patch: Partial<WbsTask>): Promise<void> {
   if (patch.progress !== undefined) allowed.progress = patch.progress;
   if (patch.assigneeId !== undefined) allowed.assigneeId = patch.assigneeId;
   if (patch.status !== undefined) allowed.status = patch.status;
+  if (patch.note !== undefined) allowed.note = patch.note;
   if (!cascadeEnabled.value) allowed.cascade = false;
+  // Entering a planned start date (or duration, which moves the bar) should
+  // bring that task into view on the gantt — same focus as a bar drag.
+  if (patch.startDate !== undefined || patch.duration !== undefined) {
+    ganttFocusTaskId.value = id;
+  }
   await tasks.update(id, allowed);
 }
 
 async function onRemove(id: number): Promise<void> {
-  if (!window.confirm('このタスクを削除します。よろしいですか？（配下のタスクも削除されます）')) {
+  const task = tasks.items.find((t) => t.id === id);
+  const name = task?.name?.trim() ? task.name.trim() : '（名称未入力）';
+  const hasChildren = (childCountByParent.value.get(id) ?? 0) > 0;
+  const message = hasChildren
+    ? `「${name}」とその配下のタスクをすべて削除します。よろしいですか？`
+    : `「${name}」を削除します。よろしいですか？`;
+  if (!window.confirm(message)) {
     return;
   }
   await tasks.remove(id);
+}
+
+async function onDuplicate(id: number): Promise<void> {
+  const created = await tasks.duplicate(id);
+  // Jump focus to the duplicated row's name field for quick editing.
+  focusNameAfterCreate(created?.id);
 }
 
 /**
@@ -595,6 +654,10 @@ async function onChartDateChange(taskId: number, start: string, end: string): Pr
     duration,
   };
   if (!cascadeEnabled.value) patch.cascade = false;
+  // Keep the edited bar in view after the gantt re-renders. GanttChart
+  // remounts on every update, so this lives in the parent and is cleared
+  // by the chart's `focus-applied` event once consumed.
+  ganttFocusTaskId.value = taskId;
   await tasks.update(taskId, patch);
 }
 
@@ -625,6 +688,20 @@ function parseIso(value: string): Date {
 function back(): void {
   router.push({ name: 'projects' });
 }
+
+// Triggers a download of the project as the legacy .xls. The endpoint
+// surgically edits c:/Git/WBS/テンプレートファイル.xls so the file opens
+// in Excel with macros still rendering the gantt area. We don't set
+// `a.download` — the server returns Content-Disposition with the
+// customer_project_timestamp filename, which the browser uses.
+function exportXls(): void {
+  const url = `/api/projects/${props.projectId}/export.xls`;
+  const a = document.createElement('a');
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 </script>
 
 <template>
@@ -640,38 +717,49 @@ function back(): void {
       </h2>
       <div class="actions">
         <button
-          class="btn pill cascade"
+          class="toggle-pill cascade"
           :class="{ active: cascadeEnabled }"
           type="button"
           :title="cascadeEnabled
             ? '連動 ON: 予定日を変えると同じ中項目の後続タスクも自動でシフトします。クリックで OFF。'
             : '連動 OFF: 予定日を変えてもこのタスクだけ更新されます。クリックで ON。'"
           @click="toggleCascade"
-        >{{ cascadeEnabled ? '🔗 連動 ON' : '🔓 連動 OFF' }}</button>
-        <span class="action-sep" aria-hidden="true">│</span>
-        <span class="action-sep">列:</span>
-        <button
-          class="btn pill"
-          :class="{ active: visibility.hours }"
-          type="button"
-          :title="visibility.hours ? '工数列を隠す' : '工数列を表示'"
-          @click="toggleVisibility('hours')"
-        >工数</button>
-        <button
-          class="btn pill"
-          :class="{ active: visibility.actual }"
-          type="button"
-          :title="visibility.actual ? '実績日付列を隠す' : '実績日付列を表示'"
-          @click="toggleVisibility('actual')"
-        >実績</button>
-        <button
-          class="btn pill"
-          :class="{ active: visibility.status }"
-          type="button"
-          :title="visibility.status ? '状態列を隠す' : '状態列を表示'"
-          @click="toggleVisibility('status')"
-        >状態</button>
-        <span class="action-sep" aria-hidden="true">│</span>
+        >
+          <span class="dot" aria-hidden="true"></span>
+          連動 {{ cascadeEnabled ? 'ON' : 'OFF' }}
+        </button>
+
+        <div class="seg" role="group" aria-label="列表示">
+          <span class="seg-label">列</span>
+          <button
+            class="seg-btn"
+            :class="{ active: visibility.hours }"
+            type="button"
+            :title="visibility.hours ? '工数列を隠す' : '工数列を表示'"
+            @click="toggleVisibility('hours')"
+          >工数</button>
+          <button
+            class="seg-btn"
+            :class="{ active: visibility.actual }"
+            type="button"
+            :title="visibility.actual ? '実績日付列を隠す' : '実績日付列を表示'"
+            @click="toggleVisibility('actual')"
+          >実績</button>
+          <button
+            class="seg-btn"
+            :class="{ active: visibility.status }"
+            type="button"
+            :title="visibility.status ? '状態列を隠す' : '状態列を表示'"
+            @click="toggleVisibility('status')"
+          >状態</button>
+        </div>
+
+        <div class="seg" role="group" aria-label="階層の開閉">
+          <button class="seg-btn" type="button" @click="expandAll" title="すべて展開（項目まで表示）">展開</button>
+          <button class="seg-btn" type="button" @click="collapseToMid" title="中項目まで表示（項目を折りたたむ）">中まで</button>
+          <button class="seg-btn" type="button" @click="collapseAll" title="すべて折りたたみ（大項目のみ表示）">折畳</button>
+        </div>
+
         <button
           v-if="hasActiveFilters"
           class="btn"
@@ -679,9 +767,13 @@ function back(): void {
           title="すべてのフィルタを解除"
           @click="clearAllFilters"
         >フィルタ解除</button>
-        <button class="btn" type="button" @click="expandAll" title="すべて展開">展開</button>
-        <button class="btn" type="button" @click="collapseAll" title="すべて折りたたみ">折畳</button>
-        <button class="btn primary" type="button" @click="addTopLevel">+ 大項目</button>
+        <button
+          class="btn"
+          type="button"
+          title="このプロジェクトの工程表を、旧 Excel テンプレートに流し込んでダウンロードします"
+          @click="exportXls"
+        >Excel 出力</button>
+        <button class="btn primary" type="button" @click="addTopLevel">＋ 大項目</button>
       </div>
     </header>
 
@@ -707,7 +799,11 @@ function back(): void {
       </template>
     </section>
 
-    <p v-if="tasks.loading" class="muted">読込中…</p>
+    <!-- Show the loading placeholder ONLY on the genuine first load (no rows
+         yet). create/update/remove also flip tasks.loading, but items are not
+         cleared until the new GET resolves — so keeping the split mounted here
+         preserves both panes' scroll position instead of jumping to the top. -->
+    <p v-if="tasks.loading && tasks.items.length === 0" class="muted">読込中…</p>
     <p v-else-if="tasks.error" class="error">{{ tasks.error }}</p>
     <p v-else-if="tasks.items.length === 0" class="muted">
       まだタスクがありません。右上の「+ 大項目」から追加してください。
@@ -731,12 +827,18 @@ function back(): void {
             @update="onUpdate"
             @add-child="onAddChild"
             @remove="onRemove"
+            @duplicate="onDuplicate"
+            @open-note="openNote"
             @toggle-collapse="toggleCollapse"
             @filter-name="setNameFilter"
             @filter-levels="setLevelsFilter"
             @filter-assignees="setAssigneesFilter"
             @filter-statuses="setStatusesFilter"
           />
+          <!-- Sticky blank strip mirroring the gantt's always-visible
+               horizontal scrollbar strip, so both panes reserve the same
+               fixed bottom band and the last row never gets clipped. -->
+          <div class="pane-bottom-strip" aria-hidden="true"></div>
         </div>
         <div
           class="splitter"
@@ -751,8 +853,10 @@ function back(): void {
             :tasks="visibleTasks"
             :holiday-dates="holidays.dateSet"
             :holiday-names="holidays.dateNameMap"
+            :focus-task-id="ganttFocusTaskId"
             @date-change="onChartDateChange"
             @progress-change="onChartProgressChange"
+            @focus-applied="ganttFocusTaskId = null"
           />
         </div>
       </div>
@@ -767,105 +871,226 @@ function back(): void {
       @close="membersDialogOpen = false"
       @save="onSaveMembers"
     />
+
+    <TaskNoteDialog
+      :open="noteTask !== null"
+      :task-name="noteTask?.name ?? ''"
+      :note="noteTask?.note ?? null"
+      @close="noteTask = null"
+      @save="onSaveNote"
+    />
   </div>
 </template>
 
 <style scoped>
 .gantt-page {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 .page-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: 0.55rem 0.75rem;
+  box-shadow: var(--shadow-sm);
 }
 .title {
   margin: 0;
   flex: 1;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 .customer-tag {
   display: inline-block;
-  background: #eef2ff;
-  color: #3730a3;
-  padding: 0.1rem 0.5rem;
-  border-radius: 3px;
-  font-size: 0.78rem;
-  font-weight: 500;
+  background: var(--c-accent-weak);
+  color: var(--c-accent-strong);
+  padding: 0.12rem 0.55rem;
+  border-radius: var(--r-sm);
+  font-size: 0.76rem;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px #cdddf7;
 }
 .actions {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
 }
-.action-sep {
-  color: #9ca3af;
-  font-size: 0.78rem;
-  padding: 0 0.1rem;
+/* Segmented control group: one bordered pill holding related toggles. */
+.seg {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r);
+  background: var(--c-surface);
+  overflow: hidden;
 }
-.btn.pill {
-  padding: 0.2rem 0.55rem;
-  font-size: 0.78rem;
-  border-radius: 999px;
+.seg-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  border-right: 1px solid var(--c-border);
 }
-.btn.pill.active {
-  background: #1e3a8a;
+.seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--c-text);
+  padding: 0.34rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-left: 1px solid var(--c-border);
+  transition: background 0.13s, color 0.13s;
+}
+.seg-btn:first-of-type,
+.seg-label + .seg-btn {
+  border-left: none;
+}
+.seg-btn:hover {
+  background: var(--c-surface-2);
+}
+.seg-btn.active {
+  background: var(--c-accent);
   color: #fff;
-  border-color: #1e3a8a;
 }
-.btn.pill.cascade.active {
-  background: #166534;
-  border-color: #166534;
+.seg-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-accent-ring);
 }
-.btn.pill.cascade:not(.active) {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #991b1b;
+/* Cascade ON/OFF — a single status pill with a colour dot. */
+.toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  padding: 0.32rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+}
+.toggle-pill .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #cbd5e1;
+  box-shadow: 0 0 0 3px rgba(203, 213, 225, 0.35);
+}
+.toggle-pill.active {
+  background: #ecfdf5;
+  border-color: #a7d8c3;
+  color: #166534;
+}
+.toggle-pill.active .dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.22);
+}
+.toggle-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--c-accent-ring);
 }
 .assignee-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   padding: 0.5rem 0.75rem;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.86rem;
 }
 .chip {
-  display: inline-block;
-  padding: 0.15rem 0.6rem;
-  background: #eef2ff;
-  border: 1px solid #c7d2fe;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.65rem;
+  background: var(--c-accent-weak);
+  border: 1px solid #cdddf7;
+  color: var(--c-accent-strong);
+  border-radius: var(--r-pill);
   font-size: 0.8rem;
+  font-weight: 500;
 }
-/* Single viewport that owns vertical scroll for both panes. The .split
-   inside grows to whatever its tallest pane needs, so scrolling here
-   moves the table and the gantt together. */
+.chip.orphan {
+  background: var(--c-warn-bg);
+  border-color: #f0c89a;
+  color: var(--c-warn-fg);
+}
+.link {
+  font-weight: 600;
+}
+/* Fixed-height frame. Each pane scrolls internally so the sticky table
+   header (.thead) stays pinned; setupScrollSync keeps the panes in
+   lockstep vertically. */
 .split-viewport {
-  height: calc(100vh - 220px);
+  height: calc(100vh - 198px);
   min-height: 360px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 .split {
   display: grid;
   /* grid-template-columns is set inline by leftWidth ref */
   gap: 0;
-  /* stretch so the splitter (which has no own height) fills the row height
-     defined by the taller pane and stays grab-able along the full edge */
+  height: 100%;
   align-items: stretch;
 }
 .pane {
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: visible;
+  height: 100%;
+  overflow: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+}
+.pane.left {
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  /* One shared vertical scrollbar only (on the right pane, screen edge).
+     The left pane still scrolls via wheel and the JS scroll-sync, but its
+     own scrollbar is hidden so the two panes read as a single surface. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pane.left::-webkit-scrollbar {
+  display: none;
+}
+/* Always-present blank band pinned to the bottom of the left pane — the
+   counterpart of the gantt's sticky horizontal scrollbar strip. Being
+   sticky + in-flow it (a) reserves the same 14px so the two panes' scroll
+   ranges stay identical, and (b) always covers the bottom 14px of the
+   viewport just like the scrollbar does on the right, so the last row is
+   never half-clipped when scrolling. */
+.pane-bottom-strip {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  height: 14px;
+  background: var(--c-surface);
+  box-shadow: 0 -1px 0 var(--c-border);
+}
+.pane.right {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* The component cards inside each pane shouldn't double up the border. */
+.pane :deep(.task-table),
+.pane :deep(.gantt-wrapper) {
+  border: none;
+  border-radius: 0;
 }
 .splitter {
   width: 6px;
@@ -873,31 +1098,38 @@ function back(): void {
   cursor: col-resize;
   position: relative;
   user-select: none;
+  z-index: 40;
 }
 .splitter::before {
   content: '';
   position: absolute;
   inset: 0 2px;
-  background: #cbd5e1;
-  border-radius: 2px;
+  background: var(--c-border-strong);
+  border-radius: var(--r-pill);
   transition: background 0.15s;
 }
 .splitter:hover::before,
 .splitter:active::before {
-  background: #2563eb;
+  background: var(--c-accent);
 }
 @media (max-width: 1100px) {
   .split {
     display: block;
     height: auto;
   }
-  .pane { height: auto; max-height: 60vh; }
+  .pane {
+    height: auto;
+    max-height: 60vh;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--c-border);
+  }
   .splitter { display: none; }
 }
 .muted {
-  color: #6b7280;
+  color: var(--c-text-muted);
 }
 .error {
-  color: #b91c1c;
+  color: var(--c-danger-fg);
+  font-weight: 600;
 }
 </style>

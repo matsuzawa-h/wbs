@@ -5,6 +5,8 @@ import HolidayPage from './pages/HolidayPage.vue';
 import EmployeePage from './pages/EmployeePage.vue';
 import AssignmentsPage from './pages/AssignmentsPage.vue';
 import CustomerPage from './pages/CustomerPage.vue';
+import DownloadsPage from './pages/DownloadsPage.vue';
+import HelpPage from './pages/HelpPage.vue';
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'projects', component: ProjectListPage },
@@ -18,6 +20,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/employees', name: 'employees', component: EmployeePage },
   { path: '/assignments', name: 'assignments', component: AssignmentsPage },
   { path: '/customers', name: 'customers', component: CustomerPage },
+  { path: '/downloads', name: 'downloads', component: DownloadsPage },
+  { path: '/manual', name: 'manual', component: HelpPage },
 ];
 
 export const router = createRouter({

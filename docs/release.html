@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>WBS Web リリース手順書</title>
+<style>
+  :root {
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --warn: #92400e;
+    --warn-bg: #fef3c7;
+    --tip-bg: #ecfdf5;
+    --tip-border: #34d399;
+    --code-bg: #f1f5f9;
+    --danger: #b91c1c;
+    --danger-bg: #fef2f2;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  header.title {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  header.title h1 {
+    font-size: 1.8rem;
+    margin: 0 0 0.2rem;
+  }
+  header.title .lead {
+    color: var(--muted);
+    margin: 0;
+  }
+  header.title .meta {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 0.3rem;
+  }
+  nav.toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.4rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--muted);
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 1.3rem;
+  }
+  nav.toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  nav.toc a:hover { text-decoration: underline; }
+  h2.chapter {
+    font-size: 1.35rem;
+    margin: 2.5rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3.section {
+    font-size: 1.1rem;
+    margin: 1.8rem 0 0.6rem;
+  }
+  h3.section .num {
+    display: inline-block;
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 0.4rem;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 0.9rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    font-family: "Menlo", "Consolas", monospace;
+    line-height: 1.55;
+  }
+  pre .comment { color: #64748b; }
+  pre .prompt { color: #94a3b8; }
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05rem 0.35rem;
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 0.85em;
+  }
+  table.cmd {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.6rem 0 1rem;
+    font-size: 0.92rem;
+  }
+  table.cmd th, table.cmd td {
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.cmd th {
+    background: var(--code-bg);
+    font-weight: 600;
+  }
+  table.cmd td code { background: #fff; }
+  ol.steps, ul.bullets {
+    padding-left: 1.3rem;
+  }
+  ol.steps > li, ul.bullets > li {
+    margin-bottom: 0.4rem;
+  }
+  .tip, .warn, .note, .danger {
+    border-left: 4px solid;
+    padding: 0.7rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+  }
+  .tip { background: var(--tip-bg); border-color: var(--tip-border); }
+  .warn { background: var(--warn-bg); border-color: #f59e0b; color: var(--warn); }
+  .danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+  .note { background: #eff6ff; border-color: var(--accent); }
+  .tip strong, .warn strong, .note strong, .danger strong {
+    display: inline-block;
+    margin-right: 0.4rem;
+  }
+  .role-tag {
+    display: inline-block;
+    padding: 0.1rem 0.55rem;
+    border-radius: 3px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    margin-right: 0.3rem;
+    vertical-align: middle;
+  }
+  .role-dev { background: #dbeafe; color: #1e40af; }
+  .role-prod { background: #fef3c7; color: #92400e; }
+  .role-common { background: #f3f4f6; color: #4b5563; }
+  pre.diagram {
+    background: #f1f5f9;
+    color: #1f2937;
+    border: 1px solid var(--border);
+  }
+  footer.foot {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .wrap { max-width: 100%; padding: 0; }
+    pre { background: #fafafa; color: #1f2937; border: 1px solid var(--border); }
+    h2.chapter { page-break-before: always; }
+    h2.chapter:first-of-type { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <h1>WBS Web リリース手順書</h1>
+  <p class="lead">同一 LAN 内 Windows 11 マシンへ本番デプロイする手順（10 ユーザ想定）</p>
+  <p class="meta">対象構成: Windows 11 / Node.js 22 LTS / タスクスケジューラ常駐 / SQLite（better-sqlite3）/ HTTP（同一 LAN）</p>
+</header>
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#ch1">前提・構成・全体フロー</a></li>
+    <li><a href="#ch2">本番マシン ワンタイム準備</a>（Node 22 LTS / pnpm / ディレクトリ）</li>
+    <li><a href="#ch3">開発機でビルド</a></li>
+    <li><a href="#ch4">ファイル転送</a>（アプリ / DB / テンプレ / アドイン）</li>
+    <li><a href="#ch5">本番マシン 初回サービス登録</a>（start.cmd + タスクスケジューラ）</li>
+    <li><a href="#ch6">ファイアウォール開放と動作確認</a></li>
+    <li><a href="#ch7">利用者への案内</a></li>
+    <li><a href="#ch8">更新リリース手順</a>（2 回目以降）</li>
+    <li><a href="#ch9">バックアップ</a></li>
+    <li><a href="#ch10">トラブルシューティング</a></li>
+    <li><a href="#ch11">セキュリティ方針</a>（現状と将来）</li>
+    <li><a href="#ch12">MCP 接続手順</a>（開発者・運用者向け）</li>
+    <li><a href="#chA">付録: 凡例</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch1">1. 前提・構成・全体フロー</h2>
+
+<h3 class="section">対象構成</h3>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>本番マシン</td><td>Windows 11 PC 1 台（社内 LAN）</td></tr>
+    <tr><td>Node.js</td><td><strong>22 LTS</strong> 必須（開発機と一致させる、native module 互換のため）</td></tr>
+    <tr><td>同時利用</td><td>10 ユーザ想定（SQLite で十分）</td></tr>
+    <tr><td>URL</td><td><code>http://&lt;本番マシン IP&gt;:5000/</code>（HTTP / 平文 / 社内 LAN クローズド）</td></tr>
+    <tr><td>常駐方式</td><td>Windows タスクスケジューラ（追加インストール不要、OS 再起動で自動起動）</td></tr>
+    <tr><td>MCP モジュール</td><td>同梱。v0.1 は認証ガード無効化中で <code>MCP_TOKEN</code> 不要（11 章）</td></tr>
+    <tr><td>既存データ</td><td>開発機の SQLite を丸ごと持ち込み</td></tr>
+  </tbody>
+</table>
+
+<h3 class="section">全体フロー</h3>
+<pre class="diagram">[開発機]                              [本番マシン (TG120286)]
+ c:\Git\WBS\                          C:\Apps\WbsWeb\              ← 共有 \\TG120286\WbsWeb
+ ├ WbsWeb\          ──── ① build ──→ ├ dist\main.js               (= アプリ本体、更新で全置換)
+ │  └ packages\                       ├ node_modules\
+ ├ テンプレートファイル.xls           └ public\
+ └ AddIns\
+    └ km_module.xla                  C:\AppsData\WbsWeb\           ← 永続データ（更新で触らない）
+                       ──── ② DB ──→ ├ wbs.db                     (= SQLite)
+                       ──── ③ tpl ─→ ├ templates\テンプレートファイル.xls
+                       ──── ④ xla ─→ ├ addins\km_module.xla
+                                     ├ start.cmd                  (= 環境変数 + 起動ラッパ)
+                                     └ logs\stdout.log / stderr.log
+
+                                     [Windows タスクスケジューラ]
+                                     └ WbsWeb タスク (At startup, SYSTEM)
+                                        └ start.cmd → node.exe dist\main.js
+                                                       ↓
+                                     [HTTP 5000] ← 利用者 PC (Chrome/Edge)
+                                                ← km_module.xla を /downloads から取得</pre>
+
+<h3 class="section">大まかな手順（初回）</h3>
+<ol class="steps">
+  <li><strong>2 章 (本番)</strong>: Node 22 LTS インストール、pnpm 有効化、ディレクトリ作成、共有設定</li>
+  <li><strong>3 章 (開発機)</strong>: <code>pnpm install</code> → ビルド → 配布ディレクトリ生成</li>
+  <li><strong>4 章 (転送)</strong>: アプリ / DB / テンプレ / アドインを本番側にコピー</li>
+  <li><strong>5 章 (本番)</strong>: <code>start.cmd</code> 作成 → タスクスケジューラ登録 → 起動</li>
+  <li><strong>6 章 (本番)</strong>: ファイアウォール開放 → 動作確認</li>
+  <li><strong>7 章</strong>: 利用者に URL とアドイン取得方法を周知</li>
+</ol>
+<p>2 回目以降の更新リリースは <a href="#ch8">8 章</a>（3〜5 分のダウンタイム）。</p>
+
+<h3 class="section">配置イメージ</h3>
+<pre class="diagram">本番マシン（Windows 11）
+├── C:\Apps\WbsWeb\               ← アプリ本体（更新で書き換わる）
+│   ├── dist\main.js
+│   ├── node_modules\
+│   └── public\                   ← Vue ビルド成果物
+└── C:\AppsData\WbsWeb\           ← 永続データ（更新でも触らない）
+    ├── wbs.db                    ← SQLite データ
+    ├── wbs.db-wal / -shm         ← SQLite ジャーナル
+    ├── start.cmd                 ← タスクスケジューラから呼ばれる起動スクリプト
+    │                                (環境変数 + ログリダイレクト + node 起動)
+    ├── templates\
+    │   └── テンプレートファイル.xls   ← Excel 出力／取込で使う旧テンプレ
+    ├── addins\
+    │   └── km_module.xla         ← /downloads から利用者に配布する Excel アドイン
+    └── logs\
+        ├── stdout.log
+        └── stderr.log</pre>
+
+<div class="note">
+  <strong>📌 役割の表示</strong>
+  以降の手順では、操作するマシンを <span class="role-tag role-dev">DEV</span>（開発機）／<span class="role-tag role-prod">PROD</span>（本番マシン）／<span class="role-tag role-common">共通</span> で示します。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch2"><span class="role-tag role-prod">PROD</span>2. 本番マシン側 ワンタイム準備</h2>
+
+<p>初回のみ、本番マシン上で以下を実施します。<strong>すべて管理者として PowerShell を開いて実行</strong>してください。</p>
+
+<h3 class="section"><span class="num">2.1</span>Node.js 22 LTS のインストール</h3>
+<div class="warn">
+  <strong>⚠ 開発機と本番マシンで Node.js のメジャーバージョンを必ず一致させる</strong>
+  <code>better-sqlite3</code> はネイティブモジュール (C++) で、Node のメジャーバージョンごとに
+  別の <code>.node</code> バイナリが必要です。バージョンがズレると起動時に
+  <code>NODE_MODULE_VERSION 127 vs 137</code> のような不一致エラーが出て起動できません。<br>
+  本書は開発機が <strong>Node.js 22 LTS</strong> を使用している前提で書かれています。
+  本番側も <strong>22 LTS</strong> に揃えてください。
+</div>
+<ol class="steps">
+  <li>ブラウザで <code>https://nodejs.org/dist/latest-v22.x/</code> を開く<br>
+      （または <code>https://nodejs.org/dist/v22.20.0/node-v22.20.0-x64.msi</code> を直接 DL）</li>
+  <li><strong>22 系の最新</strong> Windows Installer（<code>.msi</code>）をダウンロード</li>
+  <li>インストーラーを起動 → 既定設定で完了（PATH 追加にチェックが入っていることを確認）</li>
+  <li>PowerShell を一度閉じて開き直し、確認:
+  <pre><span class="prompt">PS&gt;</span> node --version
+v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
+<span class="prompt">PS&gt;</span> npm --version
+10.x.x</pre>
+  </li>
+</ol>
+<div class="note">
+  <strong>📌 Node 24 など別バージョンを入れてしまった場合</strong>
+  「設定 → アプリ → インストールされているアプリ → Node.js」からアンインストール後、22 LTS の MSI をインストールし直してください。
+</div>
+
+<h3 class="section"><span class="num">2.2</span>pnpm を有効化</h3>
+<pre><span class="prompt">PS&gt;</span> corepack enable
+<span class="prompt">PS&gt;</span> pnpm --version
+9.x.x</pre>
+<div class="tip">
+  <strong>💡 corepack</strong>
+  Node.js 16.10 以降に同梱されている公式のパッケージマネージャ管理ツールです。<code>pnpm</code> を別途インストールせずに使えます。
+</div>
+<div class="warn">
+  <strong>⚠ <code>npm.ps1 を読み込むことができません</code> エラーが出る場合</strong>
+  Windows のクリーン環境では PowerShell の ExecutionPolicy が <code>Restricted</code> になっていて、Node.js 同梱の <code>npm.ps1</code> / <code>pnpm.ps1</code> が実行できません。下記を 1 回実行 → PowerShell を再起動してください:
+  <pre><span class="prompt">PS&gt;</span> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</pre>
+  確認プロンプトには <code>Y</code> で答えます。<code>-Scope CurrentUser</code> なので、サービスを実行する SYSTEM アカウントには影響しません（タスクスケジューラから直接 <code>node.exe</code> を呼ぶため ExecutionPolicy 非依存）。
+</div>
+
+<h3 class="section"><span class="num">2.3</span>常駐方式：Windows タスクスケジューラ</h3>
+<p>追加インストールなしで Node.js プロセスを常駐させるため、Windows 標準のタスクスケジューラを使います。具体的な設定は <a href="#ch5">5 章</a>で実施。</p>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>方式</th></tr></thead>
+  <tbody>
+    <tr><td>起動トリガ</td><td>システム起動時（At startup、ユーザログオン不要）</td></tr>
+    <tr><td>実行アカウント</td><td>SYSTEM</td></tr>
+    <tr><td>環境変数 / ログリダイレクト</td><td>ラッパー <code>start.cmd</code> 経由（5.1 で作成）</td></tr>
+    <tr><td>自動再起動</td><td>失敗時に 1 分後にリトライ × 999 回</td></tr>
+    <tr><td>停止 / 起動</td><td><code>Stop-ScheduledTask</code> + <code>Stop-Process</code> / <code>Start-ScheduledTask</code></td></tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">2.4</span>ディレクトリ作成</h3>
+<pre><span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Apps\WbsWeb | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\logs | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\templates | Out-Null
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\AppsData\WbsWeb\addins | Out-Null</pre>
+<div class="note">
+  <strong>📌 templates と addins ディレクトリ</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li><code>templates\</code> ← Excel 出力／取込で使う旧テンプレ (<code>テンプレートファイル.xls</code>) を置く（4.3 で配置）</li>
+    <li><code>addins\</code> ← <code>km_module.xla</code>（ガント描画用 Excel アドイン）を置く。<code>/api/downloads/km_module.xla</code> エンドポイントから利用者に配布される（4.4 で配置）</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch3"><span class="role-tag role-dev">DEV</span>3. 開発機側でビルド</h2>
+
+<p>このマシン（<code>c:\Git\WBS\WbsWeb\</code>）で本番用成果物を作成します。</p>
+
+<h3 class="section"><span class="num">3.1</span>初回のみ: <code>pnpm install</code></h3>
+<p>
+  リポジトリの <code>.npmrc</code> で <code>node-linker=hoisted</code> を指定しているため、
+  初回または <code>.npmrc</code> 更新後は 1 回 <code>pnpm install</code> を実行して
+  <code>node_modules</code> をフラット構造に作り直します。これによりシンボリックリンクが使われず、
+  本番マシンへ <code>robocopy</code> で転送しても依存解決が壊れません。
+</p>
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+<span class="prompt">PS&gt;</span> pnpm install</pre>
+
+<h3 class="section"><span class="num">3.2</span>Web / API ビルドと配布ディレクトリ生成</h3>
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+
+<span class="comment"># 1) Vue 本番ビルド → packages\web\dist\</span>
+<span class="prompt">PS&gt;</span> pnpm --filter web build
+
+<span class="comment"># 2) Vue 成果物を API の public へ同期</span>
+<span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
+
+<span class="comment"># 3) NestJS 本番ビルド → packages\api\dist\</span>
+<span class="prompt">PS&gt;</span> pnpm --filter api build
+
+<span class="comment"># 4) 配布ディレクトリ（前回ぶんがあれば削除してから生成）</span>
+<span class="prompt">PS&gt;</span> Remove-Item C:\tmp\WbsWeb-deploy -Recurse -Force -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy
+
+<span class="comment"># 5) public のコピー漏れ補正（pnpm deploy は src/public を拾わないことがある）</span>
+<span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
+
+<div class="tip">
+  <strong>💡 ポイント</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>配布先が空でないと <code>ERR_PNPM_DEPLOY_DIR_NOT_EMPTY</code> エラー → 事前削除 or <code>--force</code></li>
+    <li>完了時点で <code>C:\tmp\WbsWeb-deploy\node_modules\tslib</code> が <strong>トップレベルに実体として</strong>存在するはず（hoisted が効いている証拠）</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch4"><span class="role-tag role-common">共通</span>4. ファイル転送（アプリ / DB / テンプレ / アドイン）</h2>
+
+<h3 class="section"><span class="num">4.1</span>アプリを本番マシンへ転送</h3>
+<p>下記いずれかの方法で <code>C:\tmp\WbsWeb-deploy</code> の中身を本番マシンの <code>C:\Apps\WbsWeb\</code> に配置します。</p>
+<table class="cmd">
+  <thead><tr><th>方法</th><th>例</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>同一 LAN 上で共有経由</td>
+      <td><code>robocopy C:\tmp\WbsWeb-deploy \\&lt;本番IP&gt;\C$\Apps\WbsWeb /MIR /XD logs</code><br>※ 本番マシンの管理共有 <code>C$</code> が有効＆管理者認証が通る前提</td>
+    </tr>
+    <tr>
+      <td>USB / ファイルサーバ経由</td>
+      <td><code>C:\tmp\WbsWeb-deploy</code> 全体を zip 化して持ち運び、本番側で <code>C:\Apps\WbsWeb</code> に展開</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">4.2</span>既存 SQLite データを持ち込み</h3>
+<p><span class="role-tag role-dev">DEV</span>開発機の SQLite ファイルを本番側に配置：</p>
+<pre><span class="comment"># 開発機側で、SQLite を一度安全にスナップショット（推奨）</span>
+<span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb\packages\api
+<span class="prompt">PS&gt;</span> node -e "const D=require('better-sqlite3');const d=new D('data\\wbs.db',{readonly:true});d.exec('VACUUM INTO ''C:\\tmp\\wbs-export.db''');d.close()"
+<span class="comment"># C:\tmp\wbs-export.db ができる</span></pre>
+
+<p><span class="role-tag role-prod">PROD</span>本番側に配置：</p>
+<pre><span class="prompt">PS&gt;</span> <span class="comment"># 開発機から C:\tmp\wbs-export.db を本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\wbs-export.db C:\AppsData\WbsWeb\wbs.db</pre>
+
+<div class="note">
+  <strong>📌 VACUUM INTO とは</strong>
+  SQLite を停止せずに一貫性のあるコピーを取る公式の方法です。<code>copy</code> でファイル直コピーすると WAL ファイルとズレが生じて壊れる場合があるため、必ずこちらを使ってください。
+</div>
+
+<h3 class="section"><span class="num">4.3</span>Excel テンプレートを配置</h3>
+<p>Excel 出力／取込で使うレガシーテンプレートを本番側に配置します。</p>
+<pre><span class="comment"># 開発機から本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\テンプレートファイル.xls C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</pre>
+<div class="note">
+  <strong>📌 テンプレートのソース</strong>
+  開発機側では <code>c:\Git\WBS\テンプレートファイル.xls</code> が原本です。
+  WbsWeb リポジトリ <strong>の外</strong> にあるため、本番転送時はリポジトリと別途コピーが必要です。
+</div>
+
+<h3 class="section"><span class="num">4.4</span>Excel アドイン (km_module.xla) を配置</h3>
+<p>WBS Web の <code>/downloads</code> ページから利用者にアドインを配布するため、ファイルを置きます。</p>
+<pre><span class="comment"># 開発機から本番マシンへ転送した後</span>
+<span class="prompt">PS&gt;</span> Copy-Item C:\tmp\km_module.xla C:\AppsData\WbsWeb\addins\km_module.xla</pre>
+<div class="note">
+  <strong>📌 km_module.xla のソース</strong>
+  開発機側では <code>c:\Git\WBS\AddIns\km_module.xla</code>（約 1.77 MB）が原本です。
+  本番化後、利用者は <code>http://&lt;サーバ&gt;:5000/downloads</code> からダウンロード → 自分の Excel に登録します。
+  登録手順はそのページに記載済。
+</div>
+
+<h3 class="section"><span class="num">4.5</span>マイグレーションを本番 DB に適用</h3>
+<p>もしマイグレーションが追加されていた場合に備えて、本番側でも一度実行します（重複適用は安全）：</p>
+<pre><span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
+<span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch5"><span class="role-tag role-prod">PROD</span>5. 初回サービス登録</h2>
+
+<h3 class="section"><span class="num">5.1</span>起動スクリプト <code>start.cmd</code> を作成</h3>
+<p>環境変数の設定とログリダイレクトをまとめたラッパースクリプトを <code>C:\AppsData\WbsWeb\start.cmd</code> として保存します。</p>
+<pre><span class="comment">@echo off
+REM WBS Web 起動スクリプト (タスクスケジューラから呼ばれる)</span>
+set PORT=5000
+set HOST=0.0.0.0
+set NODE_ENV=production
+set DB_PATH=C:\AppsData\WbsWeb\wbs.db
+set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
+set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+<span class="comment">REM MCP 認証を再有効化する場合のみ MCP_TOKEN を設定 (11 章参照)。</span>
+<span class="comment">REM set MCP_TOKEN=&lt;16 文字以上のランダム値&gt;</span>
+cd /d C:\Apps\WbsWeb
+"C:\Program Files\nodejs\node.exe" dist\main.js ^
+  &gt;&gt; C:\AppsData\WbsWeb\logs\stdout.log ^
+  2&gt;&gt; C:\AppsData\WbsWeb\logs\stderr.log</pre>
+
+<div class="note">
+  <strong>📌 <code>MCP_TOKEN</code> について</strong>
+  v0.1 では MCP 認証ガード (<code>McpAuthGuard</code>) がコメントアウトされており、
+  <code>MCP_TOKEN</code> 環境変数は <strong>設定不要</strong>です。
+  将来認証を再有効化する場合の手順は <a href="#ch11">11 章 セキュリティ方針</a> に記載。
+</div>
+
+<div class="note">
+  <strong>📌 保存方法（文字コードと改行コードに注意）</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>メモ帳で作る場合は「ファイル → 名前を付けて保存」で
+        <strong>「ファイルの種類」を「すべてのファイル (*.*)」</strong>に切替え、
+        <code>start.cmd</code> として保存（拡張子が <code>.txt</code> にならないように注意）</li>
+    <li>文字コード：<strong>ANSI / Shift_JIS</strong>（UTF-8 だと set 文字列が化ける可能性）</li>
+    <li>改行コード：<strong>CRLF</strong> 必須。Windows 11 のメモ帳は LF のみで保存することがあり、
+        その場合 cmd.exe が <code>'000'</code> など意味不明な文字列で
+        「内部コマンドまたは外部コマンドとして認識されていません」エラーを出す。</li>
+  </ul>
+  <strong>確認方法</strong>：
+  <pre style="margin:0.3rem 0;"><span class="prompt">PS&gt;</span> Format-Hex -Path C:\AppsData\WbsWeb\start.cmd | Select-Object -First 3
+<span class="comment"># 各行末が "0D 0A" になっていれば OK。"0A" だけ なら下記で変換:</span>
+<span class="prompt">PS&gt;</span> (Get-Content C:\AppsData\WbsWeb\start.cmd) |
+        Set-Content C:\AppsData\WbsWeb\start.cmd -Encoding OEM -Force</pre>
+</div>
+
+<div class="tip">
+  <strong>💡 cmd.exe から書く方法（CRLF と ANSI が確実）</strong>
+  メモ帳で文字コード／改行コードの罠を避けたい場合、cmd.exe を起動して直接生成：
+  <pre style="margin:0.3rem 0;">cd C:\AppsData\WbsWeb
+del start.cmd
+
+(
+echo @echo off
+echo set PORT=5000
+echo set HOST=0.0.0.0
+echo set NODE_ENV=production
+echo set DB_PATH=C:\AppsData\WbsWeb\wbs.db
+echo set XLS_TEMPLATE_PATH=C:\AppsData\WbsWeb\templates\テンプレートファイル.xls
+echo set XLA_ADDIN_PATH=C:\AppsData\WbsWeb\addins\km_module.xla
+echo cd /d C:\Apps\WbsWeb
+echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb\logs\stdout.log 2^^^>^^^> C:\AppsData\WbsWeb\logs\stderr.log
+) &gt; start.cmd</pre>
+  cmd.exe からの <code>echo &gt;</code> は確実に CRLF + ANSI で書き込まれます。
+</div>
+
+<h3 class="section"><span class="num">5.2</span>タスクスケジューラに登録</h3>
+<p>PowerShell（<strong>管理者</strong>）で実行：</p>
+<pre><span class="prompt">PS&gt;</span> $action = New-ScheduledTaskAction -Execute "C:\AppsData\WbsWeb\start.cmd"
+<span class="prompt">PS&gt;</span> $trigger = New-ScheduledTaskTrigger -AtStartup
+<span class="prompt">PS&gt;</span> $principal = New-ScheduledTaskPrincipal `
+        -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+<span class="prompt">PS&gt;</span> $settings = New-ScheduledTaskSettingsSet `
+        -RestartCount 999 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+<span class="prompt">PS&gt;</span> Register-ScheduledTask -TaskName "WbsWeb" `
+        -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
+
+<div class="tip">
+  <strong>💡 各パラメータの意味</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li><code>-AtStartup</code>: Windows 起動時に発火（ログオン不要）</li>
+    <li><code>SYSTEM + Highest</code>: SYSTEM アカウントで最高権限。ファイアウォール開放したポートにバインド可能</li>
+    <li><code>RestartCount 999 / Interval 1 min</code>: クラッシュ時に 1 分後に再起動 × 最大 999 回（実質無限）</li>
+    <li><code>ExecutionTimeLimit 0</code>: 実行時間制限なし（永続常駐させる）</li>
+    <li><code>AllowStartIfOnBatteries / DontStop</code>: ノート PC のバッテリ駆動でも止めない</li>
+  </ul>
+</div>
+
+<h3 class="section"><span class="num">5.3</span>動作確認（起動直後）</h3>
+<pre><span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo
+<span class="comment"># LastTaskResult が 267009 (= currently running) であれば OK</span>
+<span class="prompt">PS&gt;</span> Get-Process node -ErrorAction SilentlyContinue
+<span class="comment"># node.exe プロセスが見える</span>
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30</pre>
+
+<h3 class="section"><span class="num">5.4</span>環境変数の意味</h3>
+<table class="cmd">
+  <thead><tr><th>変数</th><th>必須</th><th>意味</th><th>本番値</th></tr></thead>
+  <tbody>
+    <tr><td><code>PORT</code></td><td>○</td><td>HTTP リッスンポート</td><td>5000</td></tr>
+    <tr><td><code>HOST</code></td><td>○</td><td>バインドアドレス（必ず <code>0.0.0.0</code>、これがないと別 PC からつながらない）</td><td>0.0.0.0</td></tr>
+    <tr><td><code>NODE_ENV</code></td><td>○</td><td>NestJS の本番モード切替</td><td>production</td></tr>
+    <tr><td><code>DB_PATH</code></td><td>○</td><td>SQLite ファイルの絶対パス</td><td>C:\AppsData\WbsWeb\wbs.db</td></tr>
+    <tr><td><code>XLS_TEMPLATE_PATH</code></td><td>○</td><td>Excel 出力／取込で使う旧テンプレ <code>テンプレートファイル.xls</code> の絶対パス</td><td>C:\AppsData\WbsWeb\templates\テンプレートファイル.xls</td></tr>
+    <tr><td><code>XLA_ADDIN_PATH</code></td><td>○</td><td><code>/api/downloads/km_module.xla</code> エンドポイントで配信する Excel アドインの絶対パス</td><td>C:\AppsData\WbsWeb\addins\km_module.xla</td></tr>
+    <tr><td><code>MCP_TOKEN</code></td><td>—</td><td>MCP Bearer 認証用シークレット（16 文字以上）。<strong>v0.1 では MCP 認証が無効化されているため設定不要</strong>。11 章で再有効化する場合のみ設定</td><td>未設定</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>📌 パスの考え方</strong>
+  <code>XLS_TEMPLATE_PATH</code> / <code>XLA_ADDIN_PATH</code> を明示することで、アプリ更新時に
+  <code>C:\Apps\WbsWeb\</code> 配下を <code>robocopy /MIR</code> で全削除しても、
+  永続データ側 (<code>C:\AppsData\WbsWeb\</code>) に置いたテンプレ／アドインは無傷で残ります。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch6"><span class="role-tag role-prod">PROD</span>6. ファイアウォール開放と動作確認</h2>
+
+<h3 class="section"><span class="num">6.1</span>受信ポート 5000 を許可</h3>
+<pre><span class="prompt">PS&gt;</span> New-NetFirewallRule -DisplayName "WbsWeb 5000" `
+        -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow</pre>
+
+<h3 class="section"><span class="num">6.2</span>本番マシンの IP アドレスを確認</h3>
+<pre><span class="prompt">PS&gt;</span> Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object { $_.InterfaceAlias -notmatch "Loopback|vEthernet" } |
+        Select-Object IPAddress, InterfaceAlias</pre>
+
+<h3 class="section"><span class="num">6.3</span>動作確認</h3>
+<ol class="steps">
+  <li>本番マシン自身で <code>http://localhost:5000/</code> を開く → プロジェクト一覧が表示される</li>
+  <li>同一 LAN の別 PC のブラウザで <code>http://&lt;本番マシンの IP&gt;:5000/</code> を開く → 同じ画面</li>
+  <li>持ち込んだ既存データ（プロジェクト・顧客・社員）が表示されていることを確認</li>
+  <li>適当なプロジェクトを開き「Excel 出力」をクリック → <code>.xls</code> がダウンロードできる
+    （4.3 で配置したテンプレートが見つからないと 500 エラーになる）</li>
+  <li><code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> を開き <code>km_module.xla</code> をダウンロード
+    （4.4 で配置したアドインが見つからないと 404 エラーになる）</li>
+  <li>マシンを再起動して、再度ブラウザでアクセス → サービスが自動起動して開く</li>
+</ol>
+
+<h3 class="section"><span class="num">6.4</span>常駐状態の確認コマンド</h3>
+<pre><span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo
+<span class="comment"># LastTaskResult=267009 が「稼働中」、267011 は「未稼働」</span>
+<span class="prompt">PS&gt;</span> Get-Process node -ErrorAction SilentlyContinue
+<span class="comment"># node.exe プロセスが見えれば常駐 OK</span>
+<span class="prompt">PS&gt;</span> netstat -ano | findstr :5000
+<span class="comment"># 0.0.0.0:5000 が LISTENING になっていれば外部公開 OK</span>
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stdout.log -Tail 30  <span class="comment"># 起動ログ</span>
+<span class="prompt">PS&gt;</span> Get-Content C:\AppsData\WbsWeb\logs\stderr.log -Tail 30  <span class="comment"># エラーログ</span></pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch7">7. 利用者への案内</h2>
+
+<p>同一 LAN 内のユーザ（〜10 名）には以下を周知してください。</p>
+
+<table class="cmd">
+  <thead><tr><th>項目</th><th>案内内容</th></tr></thead>
+  <tbody>
+    <tr><td>URL</td><td><code>http://&lt;本番マシンの IP&gt;:5000/</code></td></tr>
+    <tr><td>ブラウザ</td><td>Chrome / Edge 最新版を推奨</td></tr>
+    <tr><td>ブックマーク</td><td>↑ の URL をブックマークしてもらう</td></tr>
+    <tr><td>「保護されていない通信」表示</td><td>HTTP なので警告が出るが、社内 LAN なので利用 OK と案内</td></tr>
+    <tr><td>同時編集</td><td>本バージョンは同時編集非対応。同一プロジェクトを 2 人以上で開いて編集しないこと</td></tr>
+    <tr><td>使い方</td><td><a href="manual.html">manual.html</a> を参照</td></tr>
+    <tr><td>Excel アドイン</td><td>Excel 出力したファイルでガント描画を見るには <code>http://&lt;本番マシンの IP&gt;:5000/downloads</code> から <code>km_module.xla</code> をダウンロードして Excel に登録（初回 1 回のみ）。登録手順はダウンロードページに記載済</td></tr>
+  </tbody>
+</table>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch8">8. 更新リリース手順（2 回目以降）</h2>
+
+<p>機能追加・修正後に本番を更新する手順。<strong>マイグレーションが追加されていない場合と、追加されている場合で 1 ステップ違います</strong>。</p>
+
+<h3 class="section"><span class="num">8.1</span>共通: <span class="role-tag role-dev">DEV</span>開発機でビルド</h3>
+<pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
+<span class="prompt">PS&gt;</span> pnpm --filter web build
+<span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
+<span class="prompt">PS&gt;</span> pnpm --filter api build
+<span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy
+<span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
+
+<h3 class="section"><span class="num">8.2</span><span class="role-tag role-prod">PROD</span>本番マシンでサービス停止 → 差し替え → 起動</h3>
+<pre><span class="comment"># 1) タスクと実プロセスの両方を止める</span>
+<span class="comment">#    Stop-ScheduledTask は task instance を終了させるが、子プロセス node.exe が</span>
+<span class="comment">#    残ることがあるので念のため Stop-Process も実行</span>
+<span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb" -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> Get-CimInstance Win32_Process |
+        Where-Object { $_.CommandLine -like "*WbsWeb\dist\main.js*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+<span class="comment"># 2) アプリ部分のみ差し替え（C:\AppsData\ は触らない）</span>
+<span class="comment">#    テンプレ／アドイン (C:\AppsData\WbsWeb\templates / addins) もそのまま温存</span>
+<span class="prompt">PS&gt;</span> robocopy \\&lt;DEV-IP&gt;\C$\tmp\WbsWeb-deploy C:\Apps\WbsWeb /MIR /XD logs
+
+<span class="comment"># 3) マイグレーション追加があった場合のみ実行（idempotent なので毎回打っても安全）</span>
+<span class="prompt">PS&gt;</span> $env:DB_PATH = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
+<span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH
+
+<span class="comment"># 4) タスクを起動</span>
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Get-ScheduledTask -TaskName "WbsWeb" | Get-ScheduledTaskInfo</pre>
+
+<div class="note">
+  <strong>📌 テンプレ／アドインを更新したい場合</strong>
+  <code>テンプレートファイル.xls</code> や <code>km_module.xla</code> を新しい版に差し替えたいときは、
+  サービスを止めずに <code>C:\AppsData\WbsWeb\templates\</code> / <code>C:\AppsData\WbsWeb\addins\</code>
+  のファイルを上書きするだけで OK（読み込み時にディスクから都度参照しているため再起動不要）。
+</div>
+
+<div class="tip">
+  <strong>💡 ダウンタイム目安</strong>
+  停止 → 差し替え → マイグレーション → 起動で <strong>1〜2 分</strong>。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch9"><span class="role-tag role-prod">PROD</span>9. バックアップ</h2>
+
+<h3 class="section"><span class="num">9.1</span>無停止バックアップ（推奨・日次）</h3>
+<pre><span class="prompt">PS&gt;</span> $stamp = Get-Date -Format yyyyMMdd_HHmmss
+<span class="prompt">PS&gt;</span> $dst = "C:\Backup\wbs_$stamp.db"
+<span class="prompt">PS&gt;</span> New-Item -ItemType Directory -Force C:\Backup | Out-Null
+<span class="prompt">PS&gt;</span> $env:SRC = "C:\AppsData\WbsWeb\wbs.db"
+<span class="prompt">PS&gt;</span> $env:DST = $dst
+<span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
+<span class="prompt">PS&gt;</span> node -e "const D=require('better-sqlite3');const d=new D(process.env.SRC,{readonly:true});d.exec(`VACUUM INTO '${process.env.DST.replace(/\\/g,'\\\\')}'`);d.close();"
+<span class="prompt">PS&gt;</span> Remove-Item Env:SRC, Env:DST</pre>
+<p>これをタスクスケジューラに毎日 22:00 などで登録するのがおすすめです。</p>
+
+<h3 class="section"><span class="num">9.2</span>復旧</h3>
+<pre><span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Get-CimInstance Win32_Process |
+        Where-Object { $_.CommandLine -like "*WbsWeb\dist\main.js*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+<span class="prompt">PS&gt;</span> Copy-Item C:\Backup\wbs_YYYYMMDD_HHMMSS.db C:\AppsData\WbsWeb\wbs.db -Force
+<span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-wal -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> Remove-Item C:\AppsData\WbsWeb\wbs.db-shm -ErrorAction SilentlyContinue
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch10">10. トラブルシューティング</h2>
+
+<table class="cmd">
+  <thead><tr><th>症状</th><th>対処</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>別 PC からアクセスできない（localhost からは OK）</td>
+      <td>
+        ① ファイアウォール（6.1 のルール）が有効か<br>
+        ② <code>start.cmd</code> に <code>set HOST=0.0.0.0</code> が含まれているか<br>
+        ③ <code>netstat -ano | findstr :5000</code> で <code>0.0.0.0:5000</code> リッスンしているか
+      </td>
+    </tr>
+    <tr>
+      <td>node.exe が起動しない / すぐ落ちる</td>
+      <td>
+        <code>C:\AppsData\WbsWeb\logs\stderr.log</code> を確認。最頻パターン:<br>
+        ・<code>Cannot find module 'tslib'</code> 等のモジュール未検出 → 開発機の <code>.npmrc</code> に <code>node-linker=hoisted</code> が入っていないか、変更後に <code>pnpm install</code> を再実行していない可能性。開発機で <code>pnpm install</code> → <code>pnpm --filter api --prod deploy</code> をやり直して再転送<br>
+        ・<code>NODE_MODULE_VERSION 127 vs 137</code> 等のネイティブモジュール不整合 → 開発機と本番マシンの Node.js メジャーバージョンが違う。両方 <strong>22 LTS</strong> に揃える（2.1 参照）<br>
+        ・<code>SQLITE_CANTOPEN</code> → <code>DB_PATH</code> のパスが間違い／フォルダ権限不足<br>
+        ・<code>MCP_TOKEN environment variable must be set</code> → 11 章 (MCP 認証) を有効化した状態で <code>MCP_TOKEN</code> 未設定／16 文字未満。<strong>v0.1 既定では発生しない</strong>
+      </td>
+    </tr>
+    <tr>
+      <td>「壊れた DB」エラー</td>
+      <td>WAL モードでサービス停止せずファイル直コピーした疑い。9.2 の復旧手順で直近バックアップから戻す</td>
+    </tr>
+    <tr>
+      <td>更新後、画面が古いまま</td>
+      <td>ブラウザのハードリロード（Ctrl + Shift + R）。それでも変わらないなら <code>C:\Apps\WbsWeb\public\</code> に新しい <code>index.html</code> がコピーされているか確認</td>
+    </tr>
+    <tr>
+      <td>タスクスケジューラで「タスクは終了しました (0x41306)」</td>
+      <td>
+        子プロセス (node.exe) が異常終了したサイン。<code>stderr.log</code> を確認。<br>
+        多くは <code>start.cmd</code> 内のパス誤り（<code>DB_PATH</code> / <code>XLS_TEMPLATE_PATH</code> / <code>XLA_ADDIN_PATH</code> のいずれか）。
+      </td>
+    </tr>
+    <tr>
+      <td>タスクスケジューラで「実行中」だが node.exe が見えない</td>
+      <td>
+        ラッパー (<code>start.cmd</code>) は終了しているが子の <code>node.exe</code> が起動していない。<br>
+        <code>start.cmd</code> 内のパス（<code>C:\Program Files\nodejs\node.exe</code> 等）が正しいか確認。
+      </td>
+    </tr>
+    <tr>
+      <td><code>npm.ps1 / pnpm.ps1 を読み込むことができません</code></td>
+      <td>
+        PowerShell の ExecutionPolicy が Restricted のため Node 同梱の .ps1 が実行できない。下記を 1 回叩いて PowerShell を再起動:<br>
+        <code>Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</code><br>
+        または <code>npm.cmd</code> / <code>pnpm.cmd</code> を直接叩く（一時回避）
+      </td>
+    </tr>
+    <tr>
+      <td>タスクを削除して再登録したい</td>
+      <td><code>Unregister-ScheduledTask -TaskName "WbsWeb" -Confirm:$false</code> で登録解除 → 5.2 をやり直し</td>
+    </tr>
+    <tr>
+      <td><code>'000'</code> や <code>'NV'</code> など意味不明な文字列で「内部コマンドまたは外部コマンドとして認識されていません」</td>
+      <td>
+        <code>start.cmd</code> の改行コードが <strong>LF だけ</strong>（CR が無い）になっている。
+        Windows 11 のメモ帳は LF を保持することあり。下記で修正：<br>
+        <code>(Get-Content C:\AppsData\WbsWeb\start.cmd) | Set-Content C:\AppsData\WbsWeb\start.cmd -Encoding OEM -Force</code><br>
+        確認: <code>Format-Hex</code> で行末が <code>0D 0A</code> になっていれば OK。
+      </td>
+    </tr>
+    <tr>
+      <td>Excel 出力で 500 エラー</td>
+      <td>
+        <code>XLS_TEMPLATE_PATH</code> が指すファイルが存在しているか確認:<br>
+        <code>Test-Path "C:\AppsData\WbsWeb\templates\テンプレートファイル.xls"</code><br>
+        false なら 4.3 でテンプレを再配置。<br>
+        環境変数も <code>start.cmd</code> を開いて <code>set XLS_TEMPLATE_PATH=...</code> 行を確認
+      </td>
+    </tr>
+    <tr>
+      <td><code>/downloads</code> から <code>km_module.xla</code> がダウンロードできない (404)</td>
+      <td>
+        <code>XLA_ADDIN_PATH</code> が指すファイルが存在しているか確認:<br>
+        <code>Test-Path "C:\AppsData\WbsWeb\addins\km_module.xla"</code><br>
+        false なら 4.4 でアドインを再配置
+      </td>
+    </tr>
+    <tr>
+      <td>Excel で <code>.xls</code> を開いてもガントが描画されない</td>
+      <td>
+        利用者側でアドイン未登録の可能性大。<br>
+        ① <code>/downloads</code> から <code>km_module.xla</code> をダウンロード<br>
+        ② Excel → ファイル → オプション → アドイン → 設定 → 参照 で <code>km_module.xla</code> を追加<br>
+        ③ Excel を再起動して、ファイル開き直し
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="danger">
+  <strong>🚫 やってはいけないこと</strong>
+  <ul class="bullets" style="margin-top:0.4rem;color:var(--danger);">
+    <li>サービス起動中に <code>C:\AppsData\WbsWeb\wbs.db</code> を直接コピー／編集（壊れる）</li>
+    <li>更新リリース時の <code>robocopy /MIR</code> でうっかり <code>C:\AppsData\</code> を含める（永続データ・テンプレ・アドインが消える）</li>
+    <li><code>C:\Apps\WbsWeb\</code> 配下にテンプレ／アドインを置く（更新時に消える）。必ず <code>C:\AppsData\WbsWeb\</code> 側に置く</li>
+    <li><code>HOST</code> 未設定で 0.0.0.0 にバインドされない状態で「動かない」と騒ぐ</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch11">11. セキュリティ方針（現状と将来）</h2>
+
+<h3 class="section"><span class="num">11.1</span>現状（v0.1）</h3>
+<p>本バージョンは <strong>同一 LAN 内のクローズドネットワーク利用</strong>を前提に、<strong>認証なし</strong>で動作します。</p>
+<table class="cmd">
+  <thead><tr><th>エンドポイント</th><th>認証</th><th>到達範囲</th></tr></thead>
+  <tbody>
+    <tr><td><code>/api/*</code>（Web API: プロジェクト・タスク・社員・顧客・休日）</td><td><strong>なし</strong></td><td>サーバに到達できる全ホスト</td></tr>
+    <tr><td><code>/mcp</code>（MCP: AI ツール連携用）</td><td><strong>なし</strong></td><td>同上</td></tr>
+    <tr><td>静的ファイル（Vue SPA）</td><td>なし</td><td>同上</td></tr>
+  </tbody>
+</table>
+
+<div class="warn">
+  <strong>⚠ 同一 LAN 上であれば誰でも操作可能</strong>
+  この前提が崩れる場面（VPN 越し他拠点接続、無線 LAN ゲスト相乗り、共有 PC 利用、リモートワーク経由のトンネリング等）では <strong>第三者がデータの読み書きを行えてしまいます</strong>。本番マシンに到達できるネットワーク範囲は、運用責任者が把握・管理してください。
+</div>
+
+<h3 class="section"><span class="num">11.2</span>現在の防御線</h3>
+<ul class="bullets">
+  <li><strong>HOST=0.0.0.0</strong> によりサーバ自身は LAN に開いているが、<strong>ファイアウォール（6.1）</strong>で TCP 5000 を社内 LAN セグメントのみに絞ることで、不要なネットワークからの到達を遮断する</li>
+  <li><strong>HTTP</strong>（平文）。社内ネットワーク内の盗聴・改ざんは想定外</li>
+  <li><strong>同時編集なし</strong>。複数人が同じプロジェクトを同時に書き換えると最後勝ち＝データ競合のリスクあり（仕様）</li>
+</ul>
+
+<h3 class="section"><span class="num">11.3</span>将来の認証導入計画（TODO）</h3>
+<p>下記の要件が発生した時点で、認証層を導入します。<strong>Web API と MCP は同じ仕組み</strong>で守る方針です（個別に部分認証はしない）。</p>
+<table class="cmd">
+  <thead><tr><th>トリガー</th><th>必要対応</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>VPN や別拠点からの利用が始まる</td>
+      <td>少なくとも Basic 認証 / IP 制限 / リバースプロキシ前段で守る</td>
+    </tr>
+    <tr>
+      <td>社外公開 / クラウド配置</td>
+      <td>HTTPS 化 + 本格的なログイン認証（NestJS Passport で JWT or セッション）<br>
+      MCP 側は <code>McpAuthGuard</code>（コード上に保持済、現在コメントアウト）を再有効化し、<code>MCP_TOKEN</code> 環境変数を必須に戻す</td>
+    </tr>
+    <tr>
+      <td>ユーザ別の操作ログ（誰がいつ何を変えたか）が必要</td>
+      <td>認証導入と同時に、変更履歴テーブルへ <code>user_id</code> 列を追加して記録</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">11.4</span>コード上の状態</h3>
+<p>MCP 認証ガード（<code>McpAuthGuard</code>）の実装は残っており、必要なら最短 5 分で復活できます。<br>
+場所: <code>packages/api/src/mcp/auth/mcp-auth.guard.ts</code><br>
+コメントアウト位置: <code>packages/api/src/mcp/mcp.module.ts</code>（3 か所、<code>// TODO(auth):</code> マーク付き）</p>
+
+<p>復活手順（必要になったとき）:</p>
+<pre><span class="comment"># 1) mcp.module.ts の 3 か所のコメントアウトを外す</span>
+<span class="comment">#    - import { McpAuthGuard } ...</span>
+<span class="comment">#    - guards: [McpAuthGuard]</span>
+<span class="comment">#    - providers 配列内の McpAuthGuard</span>
+<span class="comment"># 2) start.cmd に MCP_TOKEN 行を追記 / 既存値を更新</span>
+<span class="comment">#    set MCP_TOKEN=&lt;16 文字以上のランダム値&gt;</span>
+<span class="comment"># 3) タスクを再起動</span>
+<span class="prompt">PS&gt;</span> Stop-ScheduledTask -TaskName "WbsWeb"
+<span class="prompt">PS&gt;</span> Start-ScheduledTask -TaskName "WbsWeb"</pre>
+
+<div class="note">
+  <strong>📌 関連 TODO の位置</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>コード: <code>packages/api/src/mcp/mcp.module.ts</code> の <code>// TODO(auth):</code> コメント</li>
+    <li>運用: 本セクション（このリリース手順書 11 章）</li>
+  </ul>
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="ch12">12. MCP 接続手順（開発者・運用者向け）</h2>
+
+<p>
+  Claude Code などの MCP 対応クライアントから、本番 WBS Web の DB を
+  直接読み書きするための接続手順です。利用者画面とは別経路で、
+  CRUD 系の操作を AI に任せたい / 一括登録を自動化したいといった場面で使います。
+</p>
+
+<h3 class="section"><span class="num">12.1</span>エンドポイント情報</h3>
+<table class="cmd">
+  <thead><tr><th>項目</th><th>値</th></tr></thead>
+  <tbody>
+    <tr><td>URL</td><td><code>http://&lt;本番マシン IP&gt;:5000/mcp</code> または <code>http://TG120286:5000/mcp</code></td></tr>
+    <tr><td>Transport</td><td>Streamable HTTP（POST / GET / DELETE）</td></tr>
+    <tr><td>認証</td><td><strong>なし</strong>（v0.1 では認証ガード無効化中、11 章 参照）</td></tr>
+    <tr><td>ツール数</td><td>約 30（Customers / Projects / Tasks / Employees / Holidays の各 CRUD）</td></tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">12.2</span>クライアント側 <code>.mcp.json</code> の例</h3>
+<p>このリポジトリには既に <code>c:\Git\WBS\WbsWeb\.mcp.json</code> として下記が配置済みです：</p>
+<pre>{
+  "mcpServers": {
+    "wbs-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:5000/mcp"
+    },
+    "wbs-prod": {
+      "type": "http",
+      "url": "http://TG120286:5000/mcp"
+    }
+  }
+}</pre>
+<div class="tip">
+  <strong>💡 ホスト名で繋がらない場合は IP 直打ちに切替</strong>
+  <code>TG120286</code> で名前解決できない環境では、<code>http://192.168.x.x:5000/mcp</code> のように
+  IP を直接書いてください。本番マシンの IP は 6.2 章のコマンドで確認できます。
+</div>
+
+<h3 class="section"><span class="num">12.3</span>接続前の疎通確認</h3>
+<pre><span class="prompt">PS&gt;</span> Invoke-WebRequest -Uri "http://TG120286:5000/api/health" -UseBasicParsing
+<span class="comment"># StatusCode 200 が返れば Web API は到達可能</span>
+
+<span class="prompt">PS&gt;</span> Invoke-WebRequest -Uri "http://TG120286:5000/mcp" -UseBasicParsing -Method GET
+<span class="comment"># 405 Method Not Allowed が返れば MCP endpoint まで到達できている</span>
+<span class="comment"># (MCP は POST 中心、GET 単独は受け付けないので 405 が正解)</span></pre>
+
+<h3 class="section"><span class="num">12.4</span>Claude Code から接続</h3>
+<ol class="steps">
+  <li>クライアント PC で <code>cd</code> でプロジェクトディレクトリ（<code>.mcp.json</code> がある場所）へ</li>
+  <li><code>claude</code> を起動</li>
+  <li>セッション内で <code>/mcp</code> を叩いて、登録済 MCP サーバの一覧と接続状態を確認</li>
+  <li>「<code>wbs-prod</code> のプロジェクト一覧を取得して」のような自然言語で依頼</li>
+</ol>
+
+<h3 class="section"><span class="num">12.5</span>利用可能ツール（30 種）</h3>
+<table class="cmd">
+  <thead><tr><th>領域</th><th>操作</th></tr></thead>
+  <tbody>
+    <tr><td>Customers（顧客マスタ）</td><td>list / get / create / update / remove</td></tr>
+    <tr><td>Projects（プロジェクト）</td><td>list / get / create / update / remove / listMembers / setMembers</td></tr>
+    <tr><td>Tasks（タスク）</td><td>list / get / create / update / remove / reorder</td></tr>
+    <tr><td>Employees（社員マスタ）</td><td>list / get / create / update / remove / listAssignments</td></tr>
+    <tr><td>Holidays（休日マスタ）</td><td>list / create / bulkCreate / update / remove</td></tr>
+  </tbody>
+</table>
+
+<div class="danger">
+  <strong>🚫 取り扱い注意</strong>
+  <ul class="bullets" style="margin-top:0.4rem;color:var(--danger);">
+    <li><strong>無認証</strong>：同一 LAN から誰でも叩ける。本番データを破壊する操作（<code>remove</code> 系）も呼べる</li>
+    <li><strong>同時編集</strong>：Web UI で誰かが編集中に MCP から書き込むと整合性が崩れる可能性</li>
+    <li><strong>読み取り専用モードは未実装</strong>：必要な場合は別途実装検討（11 章の認証導入と合わせて）</li>
+  </ul>
+  AI に依頼する際は読み取り操作を先に試し、変更を伴う操作は内容を確認してから実行する運用を推奨。
+</div>
+
+<!-- ================================================ -->
+<h2 class="chapter" id="chA">付録. 凡例</h2>
+
+<table class="cmd">
+  <thead><tr><th>記号</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td><span class="role-tag role-dev">DEV</span></td><td>開発機（このリポジトリがある PC）で実行</td></tr>
+    <tr><td><span class="role-tag role-prod">PROD</span></td><td>本番マシンで実行</td></tr>
+    <tr><td><span class="role-tag role-common">共通</span></td><td>両方どちらで実施しても良い</td></tr>
+    <tr><td><code>PS&gt;</code></td><td>PowerShell プロンプト（管理者推奨）</td></tr>
+  </tbody>
+</table>
+
+<footer class="foot">
+  WBS Web リリース手順書 ／ 2026 年 5 月版
+</footer>
+</div>
+</body>
+</html>

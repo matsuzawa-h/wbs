@@ -83,6 +83,12 @@ export const useTasksStore = defineStore('tasks', () => {
     await refresh();
   }
 
+  async function duplicate(id: number): Promise<WbsTask> {
+    const res = await api.post<WbsTask>(`/tasks/${id}/duplicate`);
+    await refresh();
+    return res.data;
+  }
+
   async function refresh(): Promise<void> {
     if (projectId.value !== null) {
       await fetchByProject(projectId.value);
@@ -100,6 +106,7 @@ export const useTasksStore = defineStore('tasks', () => {
     update,
     remove,
     reorder,
+    duplicate,
     refresh,
   };
 });

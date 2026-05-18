@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "wbs-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:5000/mcp"
+    },
+    "wbs-prod": {
+      "type": "http",
+      "url": "http://TG120286:5000/mcp"
+    }
+  }
+}

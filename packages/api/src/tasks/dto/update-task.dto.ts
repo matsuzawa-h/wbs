@@ -63,6 +63,13 @@ export class UpdateTaskDto {
   @MaxLength(100)
   status?: string;
 
+  // Free-text remarks (備考). null clears it.
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(2000)
+  note?: string | null;
+
   /**
    * When false, an end-date change on a level-3 task only writes that single
    * row (and recomputes its ancestors) — sibling tasks under the same 中項目

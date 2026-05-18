@@ -9,11 +9,18 @@ const props = defineProps<{
   holidayDates?: Set<string>;
   /** Optional name lookup for the holiday tooltip / label. */
   holidayNames?: Map<string, string>;
+  /**
+   * When set, the chart scrolls horizontally so this task's bar is centered
+   * on the next render — keeps a just-edited bar in view after a date change
+   * re-renders the gantt. Cleared by the parent via `focus-applied`.
+   */
+  focusTaskId?: number | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'date-change', taskId: number, startDate: string, endDate: string): void;
   (e: 'progress-change', taskId: number, progress: number): void;
+  (e: 'focus-applied'): void;
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -21,6 +28,12 @@ let chart: Gantt | null = null;
 // True only for the very first successful render so we can center on today
 // once per mount without trampling user scroll on subsequent re-renders.
 let pendingScrollToToday = true;
+// Vertical scroll container + its handler, used to keep the date-axis header
+// pinned at the top while the bars scroll underneath it.
+let frozenScrollEl: HTMLElement | null = null;
+let frozenScrollHandler: (() => void) | null = null;
+// Detaches the proxy horizontal scrollbar's listeners + removes its element.
+let hscrollCleanup: (() => void) | null = null;
 
 interface FrappeTask {
   id: string;
@@ -32,6 +45,10 @@ interface FrappeTask {
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const GANTT_TASK_ID_PREFIX = 'wbs-gantt-row';
+const DEFAULT_ROW_HEIGHT = 40;
+const DEFAULT_TABLE_HEADER_HEIGHT = 58;
+const DEFAULT_BAR_HEIGHT = 24;
 const MONTH_NAMES_EN = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -42,17 +59,86 @@ const MONTH_NAMES_JA = [
 ];
 const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
+interface VerticalMetrics {
+  rowHeight: number;
+  tableHeaderHeight: number;
+  barHeight: number;
+  rowPadding: number;
+  frappeHeaderHeight: number;
+}
+
+function readCssPx(name: string, fallback: number): number {
+  if (typeof window === 'undefined') return fallback;
+  const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function verticalMetrics(): VerticalMetrics {
+  const rowHeight = readCssPx('--wbs-gantt-row-height', DEFAULT_ROW_HEIGHT);
+  const tableHeaderHeight = readCssPx(
+    '--wbs-gantt-table-header-height',
+    DEFAULT_TABLE_HEADER_HEIGHT,
+  );
+  const barHeight = readCssPx('--wbs-gantt-bar-height', DEFAULT_BAR_HEIGHT);
+  const rowPadding = Math.max(0, rowHeight - barHeight);
+  return {
+    rowHeight,
+    tableHeaderHeight,
+    barHeight,
+    rowPadding,
+    // frappe positions bars at header_height + padding + bar_height / 2.
+    // Table rows start after the visual header, so subtract padding / 2.
+    frappeHeaderHeight: Math.max(0, tableHeaderHeight - rowPadding / 2),
+  };
+}
+
+function visualHeaderHeight(options: { header_height: number; padding: number }): number {
+  return options.header_height + options.padding / 2;
+}
+
+function frappeTaskDomId(task: WbsTask, rowIndex: number): string {
+  return `${GANTT_TASK_ID_PREFIX}-${rowIndex}-task-${task.id}`;
+}
+
+function taskIdFromFrappeId(id: string): number | null {
+  const encoded = new RegExp(`^${GANTT_TASK_ID_PREFIX}-\\d+-task-(-?\\d+)$`).exec(id);
+  const raw = encoded?.[1] ?? id;
+  const taskId = Number(raw);
+  return Number.isFinite(taskId) ? taskId : null;
+}
+
+function barWrapperByTaskId(root: ParentNode): Map<string, SVGGElement> {
+  const wrappers = new Map<string, SVGGElement>();
+  root.querySelectorAll<SVGGElement>('.bar-wrapper').forEach((wrapper) => {
+    const taskId = wrapper.dataset.id ?? wrapper.getAttribute('data-id');
+    if (taskId) wrappers.set(taskId, wrapper);
+  });
+  return wrappers;
+}
+
+/**
+ * Map EVERY visible task to a row slot so the gantt has exactly one row per
+ * table row (same order). Tasks without planned dates still get a slot — a
+ * hidden placeholder bar (.gantt-blank) anchored to an in-range date — so the
+ * row count never shifts when a date-less heading/new item is present. The
+ * encoded id lets overlay code resolve wrappers from frappe's data-id instead
+ * of trusting DOM order.
+ */
 function toFrappeTasks(rows: WbsTask[]): FrappeTask[] {
-  return rows
-    .filter((t) => t.startDate && t.endDate)
-    .map((t) => ({
-      id: String(t.id),
-      name: t.name,
-      start: t.startDate as string,
-      end: t.endDate as string,
-      progress: t.progress,
-      custom_class: `lvl-${t.level}`,
-    }));
+  const anchor =
+    rows.find((t) => t.startDate)?.startDate ?? toIso(new Date());
+  return rows.map((t, index) => {
+    const hasDates = Boolean(t.startDate && t.endDate);
+    return {
+      id: frappeTaskDomId(t, index),
+      name: hasDates ? t.name : '',
+      start: hasDates ? (t.startDate as string) : anchor,
+      end: hasDates ? (t.endDate as string) : anchor,
+      progress: hasDates ? t.progress : 0,
+      custom_class: hasDates ? `lvl-${t.level}` : 'gantt-blank',
+    };
+  });
 }
 
 function toIso(date: Date): string {
@@ -64,33 +150,47 @@ function toIso(date: Date): string {
 
 function render(): void {
   if (!containerRef.value) return;
+  const hasAnyDated = props.tasks.some((t) => t.startDate && t.endDate);
   const data = toFrappeTasks(props.tasks);
-  if (data.length === 0) {
+  if (!hasAnyDated || data.length === 0) {
     containerRef.value.innerHTML =
       '<p class="empty">タスクに開始日と日数を設定するとチャートが表示されます。</p>';
     chart = null;
     return;
   }
 
+  // Re-render runs on every add/edit. Emptying the container collapses the
+  // pane's scrollable height, so the browser clamps the vertical scroller's
+  // scrollTop to 0 — and the scroll-sync then drags both panes to the top.
+  // Freeze the container height across the rebuild (and restore scrollTop as
+  // a safety net) so the user stays on the row they just edited.
+  const vScroller = findVerticalScroller(containerRef.value);
+  const savedTop = vScroller ? vScroller.scrollTop : 0;
+  const frozenHeight = containerRef.value.offsetHeight;
+  if (frozenHeight > 0) {
+    containerRef.value.style.minHeight = `${frozenHeight}px`;
+  }
+
   containerRef.value.innerHTML = '';
-  // To align bars vertically with the table rows, choose:
-  //   row height (= bar_height + padding) = table row min-height (= 40px)
-  //   header_height = table-header-height - padding/2 (table header = 56, padding = 16) => 48
-  // That puts the bar center at the table row center for every row.
+  const metrics = verticalMetrics();
+  // To align bars vertically with the table rows:
+  //   row height = bar_height + padding
+  //   frappe header_height = visual table header - padding / 2
+  // This puts each bar center on the corresponding table row center.
   chart = new Gantt(containerRef.value, data, {
     view_mode: 'Day',
     date_format: 'YYYY-MM-DD',
-    bar_height: 24,
-    padding: 16,
-    header_height: 48,
+    bar_height: metrics.barHeight,
+    padding: metrics.rowPadding,
+    header_height: metrics.frappeHeaderHeight,
     on_date_change: (task: FrappeTask, start: Date, end: Date) => {
-      const id = Number(task.id);
-      if (!Number.isFinite(id)) return;
+      const id = taskIdFromFrappeId(task.id);
+      if (id === null) return;
       emit('date-change', id, toIso(start), toIso(end));
     },
     on_progress_change: (task: FrappeTask, progress: number) => {
-      const id = Number(task.id);
-      if (!Number.isFinite(id)) return;
+      const id = taskIdFromFrappeId(task.id);
+      if (id === null) return;
       emit('progress-change', id, progress);
     },
   });
@@ -105,9 +205,34 @@ function render(): void {
     drawOverrunBars();
     attachBarTooltips();
     applyJapaneseLabels();
-    if (pendingScrollToToday) {
+    setupFrozenHeader();
+    setupHScrollbar();
+    if (props.focusTaskId != null) {
+      // Defer one more frame so frappe's own initial scroll has settled,
+      // then center the edited bar using its real rendered position
+      // (robust against cascade / internal layout). Tell the parent it's
+      // done so a later unrelated re-render won't hijack the scroll.
+      const fid = props.focusTaskId;
+      requestAnimationFrame(() => {
+        scrollTaskIntoView(fid);
+        emit('focus-applied');
+      });
+    } else if (pendingScrollToToday) {
       centerOnToday();
-      pendingScrollToToday = false;
+    }
+    pendingScrollToToday = false;
+
+    // The rebuilt SVG now has its real height (trimSvgHeight ran above), so
+    // release the freeze and re-assert the prior VERTICAL position. This is
+    // always safe: the only intentional scrolls a render performs (focus on
+    // an edited bar / first-render center-on-today) move scrollLeft only —
+    // vertical is purely the table-synced position and must never shift,
+    // including when the very last row's date is edited.
+    if (frozenHeight > 0 && containerRef.value) {
+      containerRef.value.style.minHeight = '';
+    }
+    if (vScroller && vScroller.scrollTop !== savedTop) {
+      vScroller.scrollTop = savedTop;
     }
   });
 }
@@ -214,6 +339,39 @@ function centerOnToday(): void {
   scrollEl.scrollLeft = Math.max(0, Math.min(target, scrollEl.scrollWidth - scrollEl.clientWidth));
 }
 
+// Days of lead-in shown before the edited bar's start (so entering a plan
+// on e.g. 6/30 scrolls the axis to begin around 6/28).
+const FOCUS_LEAD_DAYS = 2;
+
+/**
+ * Scroll horizontally so the edited task's bar starts a couple of days in
+ * from the left edge (its start date − FOCUS_LEAD_DAYS sits at the left).
+ * Uses the REAL rendered bar position (not gantt_start math) so it
+ * survives cascade shifts and frappe's own post-construction scroll. Only
+ * scrollLeft is touched — vertical scroll (synced with the table) is left
+ * untouched.
+ */
+function scrollTaskIntoView(taskId: number): void {
+  const root = containerRef.value;
+  if (!root) return;
+  const wrap = [...root.querySelectorAll<SVGGElement>('.bar-wrapper')].find(
+    (w) => (w.dataset.id ?? '').endsWith(`-task-${taskId}`),
+  );
+  const bar = wrap?.querySelector<SVGRectElement>('.bar');
+  const scroller = findHorizontalScroller(root);
+  if (!bar || !scroller) return;
+  const barRect = bar.getBoundingClientRect();
+  const scRect = scroller.getBoundingClientRect();
+  const leadPx = FOCUS_LEAD_DAYS * getColumnWidth();
+  // Put the bar's left edge `leadPx` in from the scroller's left edge.
+  const next =
+    scroller.scrollLeft + (barRect.left - scRect.left) - leadPx;
+  scroller.scrollLeft = Math.max(
+    0,
+    Math.min(next, scroller.scrollWidth - scroller.clientWidth),
+  );
+}
+
 function findHorizontalScroller(root: HTMLElement): HTMLElement | null {
   if (root.scrollWidth > root.clientWidth) return root;
   for (const el of root.querySelectorAll<HTMLElement>('*')) {
@@ -234,16 +392,21 @@ function trimSvgHeight(): void {
   const opts = (chart as unknown as {
     options: { header_height: number; padding: number; bar_height: number };
   }).options;
-  const taskCount = props.tasks.filter((t) => t.startDate && t.endDate).length;
+  // One slot per visible task (including the hidden date-less placeholders)
+  // so the SVG height equals the table's height and the panes scroll in
+  // lockstep without drifting.
+  const taskCount = props.tasks.length;
   if (taskCount === 0) return;
   const header = opts.header_height ?? 48;
   const padding = opts.padding ?? 16;
   const barHeight = opts.bar_height ?? 24;
-  // Last bar bottom is at: header + padding + (taskCount-1) * (bar_height + padding) + bar_height
-  //                      = header + taskCount * (bar_height + padding)
-  // Add 4px tail so the bar's rounded corners aren't clipped.
-  const targetHeight = header + taskCount * (barHeight + padding) + 4;
+  const rowHeight = barHeight + padding;
+  // Match the table's scrollable content height exactly:
+  // visual header + one fixed-height row per visible task.
+  const targetHeight = visualHeaderHeight({ header_height: header, padding }) + taskCount * rowHeight;
   svg.setAttribute('height', String(targetHeight));
+  svg.querySelector<SVGRectElement>('.grid-background')?.setAttribute('height', String(targetHeight));
+  svg.querySelector<SVGRectElement>('.today-highlight')?.setAttribute('height', String(targetHeight));
 }
 
 function parseDate(value: string): Date {
@@ -290,11 +453,11 @@ function drawOverrunBars(): void {
   }
   while (group.firstChild) group.removeChild(group.firstChild);
 
-  const renderedTasks = props.tasks.filter((t) => t.startDate && t.endDate);
-  const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
-  wrappers.forEach((wrapper, idx) => {
-    const task = renderedTasks[idx];
-    if (!task || !task.endDate) return;
+  const wrappers = barWrapperByTaskId(svg);
+  props.tasks.forEach((task, idx) => {
+    if (!task || !task.startDate || !task.endDate) return;
+    const wrapper = wrappers.get(frappeTaskDomId(task, idx));
+    if (!wrapper) return;
 
     const plannedEnd = parseDate(task.endDate);
     const bar = wrapper.querySelector<SVGRectElement>('.bar');
@@ -409,11 +572,11 @@ function appendOverrunRect(group: SVGGElement, args: OverrunRectArgs): void {
 function attachBarTooltips(): void {
   const svg = containerRef.value?.querySelector('svg');
   if (!svg) return;
-  const renderedTasks = props.tasks.filter((t) => t.startDate && t.endDate);
-  const wrappers = svg.querySelectorAll<SVGGElement>('.bar-wrapper');
-  wrappers.forEach((wrapper, idx) => {
-    const task = renderedTasks[idx];
-    if (!task) return;
+  const wrappers = barWrapperByTaskId(svg);
+  props.tasks.forEach((task, idx) => {
+    if (!task || !task.startDate || !task.endDate) return;
+    const wrapper = wrappers.get(frappeTaskDomId(task, idx));
+    if (!wrapper) return;
     wrapper.querySelectorAll(':scope > title').forEach((t) => t.remove());
     const title = document.createElementNS(SVG_NS, 'title');
     title.textContent = buildBarTooltip(task);
@@ -459,6 +622,11 @@ function buildBarTooltip(task: WbsTask): string {
     lines.push(`工数 予/実: ${ph} / ${ah} h`);
   }
   lines.push(`進捗: ${task.progress}%`);
+  const note = task.note?.trim();
+  if (note) {
+    lines.push('―――――');
+    lines.push(`備考: ${note}`);
+  }
   return lines.join('\n');
 }
 
@@ -487,14 +655,14 @@ function drawMonthBands(): void {
 
   const flushBand = (endIdx: number): void => {
     // Tint every other month so adjacent months read as distinct stripes.
-    const fill = bandIndex % 2 === 0 ? '#ffffff' : '#e0e7ff';
+    const fill = bandIndex % 2 === 0 ? '#ffffff' : '#eef2f7';
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('x', String(segStart * cw));
     rect.setAttribute('y', '0');
     rect.setAttribute('width', String((endIdx - segStart) * cw));
     rect.setAttribute('height', String(totalHeight));
     rect.setAttribute('fill', fill);
-    rect.setAttribute('opacity', '0.55');
+    rect.setAttribute('opacity', '0.7');
     group.appendChild(rect);
   };
 
@@ -546,21 +714,11 @@ function drawMonthBoundaries(): void {
       line.setAttribute('x2', String(x));
       line.setAttribute('y1', '0');
       line.setAttribute('y2', String(totalHeight));
-      line.setAttribute('stroke', '#1e293b');
-      line.setAttribute('stroke-width', '2.5');
+      line.setAttribute('stroke', '#94a3b8');
+      line.setAttribute('stroke-width', '1.5');
       group.appendChild(line);
-
-      // Place a duplicate month-label badge just to the right of the line so users
-      // see which month they're entering even when the chart-level upper-text is
-      // scrolled off-screen.
-      const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('x', String(x + 6));
-      label.setAttribute('y', '18');
-      label.setAttribute('font-size', '12');
-      label.setAttribute('font-weight', '700');
-      label.setAttribute('fill', '#1e293b');
-      label.textContent = `${date.getMonth() + 1}月`;
-      group.appendChild(label);
+      // The month label lived here as a scroll aid for when the header
+      // scrolled away; with the now-pinned header it's redundant.
     }
   }
 
@@ -623,13 +781,13 @@ function highlightWeekends(): void {
   if (!ganttStart || !ganttEnd) return;
 
   const cw = getColumnWidth();
-  const headerHeight = (chart as unknown as { options: { header_height: number } }).options
-    .header_height;
+  const opts = (chart as unknown as { options: { header_height: number; padding: number } }).options;
+  const bodyTop = visualHeaderHeight(opts);
 
   // Total height of the chart body (excluding header) - use grid-background as reference
   const gridBg = svg.querySelector<SVGRectElement>('.grid-background');
   const totalHeight = gridBg ? Number(gridBg.getAttribute('height')) : 400;
-  const bodyHeight = Math.max(0, totalHeight - headerHeight);
+  const bodyHeight = Math.max(0, totalHeight - bodyTop);
 
   // Inclusive number of day cells from ganttStart to ganttEnd.
   const ONE_DAY = 86_400_000;
@@ -651,14 +809,14 @@ function highlightWeekends(): void {
     if (dow === 0 || dow === 6 || isHoliday) {
       const rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('x', String(i * cw));
-      rect.setAttribute('y', String(headerHeight));
+      rect.setAttribute('y', String(bodyTop));
       rect.setAttribute('width', String(cw));
       rect.setAttribute('height', String(bodyHeight));
       // Holidays and Sundays use the same red-pink; Saturdays stay blue.
       // (Holiday + Saturday combo prefers the holiday red so it stands out.)
-      const fill = dow === 6 && !isHoliday ? '#bfdbfe' : '#fecaca';
+      const fill = dow === 6 && !isHoliday ? '#c7d6ec' : '#f3c9c9';
       rect.setAttribute('fill', fill);
-      rect.setAttribute('opacity', '0.35');
+      rect.setAttribute('opacity', '0.3');
       overlayGroup.appendChild(rect);
       if (isHoliday) {
         const name = props.holidayNames?.get(iso);
@@ -709,6 +867,145 @@ function inferDow(text: SVGTextElement, ganttStart: Date, cw: number): number | 
   return date.getDay();
 }
 
+/** Nearest scrollable ancestor that owns the chart's vertical scroll. */
+function findVerticalScroller(start: HTMLElement | null): HTMLElement | null {
+  let el = start?.parentElement ?? null;
+  while (el) {
+    const oy = getComputedStyle(el).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Pin the date-axis header (the gray band + month/day labels) so it stays at
+ * the top while the bars scroll under it — mirroring the table's sticky
+ * header. Without this the left header is frozen but the gantt header
+ * scrolls away, leaving rows and bars visually offset by the header height.
+ */
+function setupFrozenHeader(): void {
+  const svg = containerRef.value?.querySelector<SVGSVGElement>('svg');
+  if (!svg) return;
+  const gridHeader = svg.querySelector<SVGRectElement>('rect.grid-header');
+  const dateGroup = svg.querySelector<SVGGElement>('g.date');
+  if (!gridHeader || !dateGroup) return;
+  const opts = (chart as unknown as { options: { header_height: number; padding: number } }).options;
+  const headerHeight = visualHeaderHeight(opts);
+  gridHeader.setAttribute('height', String(headerHeight));
+
+  svg.querySelectorAll('.frozen-header').forEach((el) => el.remove());
+  const fg = document.createElementNS(SVG_NS, 'g');
+  fg.setAttribute('class', 'frozen-header');
+  // Header rect must be opaque (see .grid-header fill) so the body is masked.
+  fg.appendChild(gridHeader);
+  fg.appendChild(dateGroup);
+
+  // Hairline so the pinned strip reads as separate from the scrolling body.
+  const ww = gridHeader.getAttribute('width') ?? String(svg.getAttribute('width') ?? 0);
+  const sep = document.createElementNS(SVG_NS, 'line');
+  sep.setAttribute('x1', '0');
+  sep.setAttribute('x2', String(ww));
+  sep.setAttribute('y1', String(headerHeight));
+  sep.setAttribute('y2', String(headerHeight));
+  sep.setAttribute('stroke', '#cbd5e1');
+  sep.setAttribute('stroke-width', '1');
+  fg.appendChild(sep);
+
+  // Must be the very last child so it paints on top of everything — the
+  // bars, the red overrun rects and the today marker all scroll *under*
+  // the pinned date header instead of overwriting the dates.
+  svg.appendChild(fg);
+
+  if (frozenScrollEl && frozenScrollHandler) {
+    frozenScrollEl.removeEventListener('scroll', frozenScrollHandler);
+  }
+  const scroller = findVerticalScroller(containerRef.value);
+  const apply = (): void => {
+    fg.setAttribute('transform', `translate(0, ${scroller ? scroller.scrollTop : 0})`);
+  };
+  if (scroller) {
+    scroller.addEventListener('scroll', apply, { passive: true });
+    frozenScrollEl = scroller;
+    frozenScrollHandler = apply;
+  }
+  apply();
+}
+
+/**
+ * Always-visible horizontal scrollbar. frappe's inner .gantt-container owns
+ * the real horizontal scroll, but its scrollbar sits at the bottom of the
+ * tall content (only reachable after scrolling all the way down). This adds
+ * a thin proxy scrollbar pinned (sticky) to the bottom edge of the visible
+ * pane and two-way-synced with the real scroller, so it is always there.
+ */
+function setupHScrollbar(): void {
+  if (hscrollCleanup) {
+    hscrollCleanup();
+    hscrollCleanup = null;
+  }
+  const root = containerRef.value;
+  const wrapper = root?.parentElement ?? null;
+  if (!root || !wrapper) return;
+  wrapper.querySelectorAll('.gantt-hscroll').forEach((el) => el.remove());
+
+  const real = findHorizontalScroller(root);
+  if (!real || real.scrollWidth <= real.clientWidth + 1) return;
+  // Hide frappe's own horizontal scrollbar — the proxy is the visible one.
+  // Otherwise frappe's bar reappears at the very bottom of the tall inner
+  // container and the content visibly shifts when scrolled all the way down.
+  real.classList.add('wbs-no-native-scrollbar');
+
+  // Scoped <style> does NOT apply to JS-created nodes (no data-v attr), so
+  // the layout-critical styles are set inline. The scrollbar's *appearance*
+  // still comes from the global ::-webkit-scrollbar rule.
+  const proxy = document.createElement('div');
+  proxy.className = 'gantt-hscroll';
+  proxy.style.cssText = [
+    'position:sticky',
+    'bottom:0',
+    'left:0',
+    'z-index:50',
+    'overflow-x:scroll',
+    'overflow-y:hidden',
+    'height:14px',
+    'background:var(--c-surface)',
+    'box-shadow:0 -1px 0 var(--c-border)',
+  ].join(';');
+  const spacer = document.createElement('div');
+  spacer.className = 'gantt-hscroll-spacer';
+  spacer.style.width = `${real.scrollWidth}px`;
+  spacer.style.height = '1px';
+  proxy.appendChild(spacer);
+  wrapper.appendChild(proxy);
+
+  let lock = false;
+  const fromProxy = (): void => {
+    if (lock) return;
+    lock = true;
+    real.scrollLeft = proxy.scrollLeft;
+    lock = false;
+  };
+  const fromReal = (): void => {
+    if (lock) return;
+    lock = true;
+    proxy.scrollLeft = real.scrollLeft;
+    lock = false;
+  };
+  proxy.addEventListener('scroll', fromProxy, { passive: true });
+  real.addEventListener('scroll', fromReal, { passive: true });
+  proxy.scrollLeft = real.scrollLeft;
+
+  hscrollCleanup = (): void => {
+    proxy.removeEventListener('scroll', fromProxy);
+    real.removeEventListener('scroll', fromReal);
+    real.classList.remove('wbs-no-native-scrollbar');
+    proxy.remove();
+  };
+}
+
 onMounted(async () => {
   await nextTick();
   render();
@@ -717,6 +1014,15 @@ onMounted(async () => {
 watch(() => props.tasks, () => render(), { deep: true });
 
 onBeforeUnmount(() => {
+  if (frozenScrollEl && frozenScrollHandler) {
+    frozenScrollEl.removeEventListener('scroll', frozenScrollHandler);
+  }
+  frozenScrollEl = null;
+  frozenScrollHandler = null;
+  if (hscrollCleanup) {
+    hscrollCleanup();
+    hscrollCleanup = null;
+  }
   if (containerRef.value) containerRef.value.innerHTML = '';
   chart = null;
 });
@@ -730,51 +1036,106 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .gantt-wrapper {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  /* No top padding so the SVG header lines up exactly with the table's
-     group-head + col-head stack. Side / bottom padding kept for breathing room. */
-  padding: 0 0.5rem 0.5rem 0.5rem;
-  /* Horizontal scroll stays inside the wrapper for the wide date axis.
-     Vertical scroll is owned by the outer .split-viewport so the left
-     table and right gantt stay in lockstep. */
-  overflow-x: auto;
-  overflow-y: visible;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  /* No vertical padding: the SVG height is matched to the task table so both
+     panes share the same vertical scroll range. */
+  padding: 0 0.5rem;
+  /* Must NOT be a scroll container: the proxy horizontal scrollbar is a
+     sticky child here and has to resolve its sticky context to .pane.right
+     (the actual vertical scroller). frappe's inner .gantt-container keeps
+     its own overflow-x:auto and still drives the real horizontal scroll;
+     setupHScrollbar mirrors it into the always-visible sticky proxy. */
+  overflow: visible;
 }
 .gantt-container {
   min-height: 200px;
 }
 /* Frappe Gantt creates a nested .gantt-container with overflow:auto on
-   both axes. Force its vertical to visible so the outer split-viewport
-   owns the scroll. */
+   both axes. Force its vertical to visible so .pane.right owns the
+   vertical scroll (the horizontal stays on this inner container). */
 .gantt-container :deep(.gantt-container) {
   overflow-y: visible !important;
 }
+/* .gantt-hscroll / .gantt-hscroll-spacer are created in JS (setupHScrollbar)
+   and styled inline there — scoped styles can't reach JS-created nodes. */
+/* The SVG is inline by default, so its line box adds ~5px of descender
+   space below it. That made the right pane ~5px taller than the table and
+   the two desynced only at the very bottom. display:block removes it so
+   right-pane scrollHeight == SVG height == table height exactly. */
+.gantt-container :deep(svg) {
+  display: block;
+}
 .gantt-container :deep(.empty) {
-  color: #6b7280;
+  color: var(--c-text-muted);
   font-size: 0.9rem;
   margin: 0.5rem 0;
 }
+/* Bars use one calm accent family by depth (deep → light) instead of the
+   old blue / purple / green mix, so the chart reads as one system. */
+/* Date-less rows still occupy a slot (keeps row↔bar index aligned) but
+   draw nothing. */
+.gantt-container :deep(.bar-wrapper.gantt-blank) {
+  display: none;
+}
 .gantt-container :deep(.bar-wrapper.lvl-1 .bar) {
-  fill: #1d4ed8;
+  fill: #1e3a8a;
 }
 .gantt-container :deep(.bar-wrapper.lvl-2 .bar) {
-  fill: #7c3aed;
+  fill: #3b6fd4;
 }
 .gantt-container :deep(.bar-wrapper.lvl-3 .bar) {
-  fill: #059669;
+  fill: #93b4e6;
 }
+.gantt-container :deep(.bar) {
+  rx: 4;
+  ry: 4;
+}
+/* Higher-contrast progress fill so completion is readable at a glance. */
 .gantt-container :deep(.bar-progress) {
-  fill: rgba(0, 0, 0, 0.25);
+  fill: #16a34a;
+  opacity: 0.92;
+}
+.gantt-container :deep(.bar-wrapper.lvl-3 .bar-progress) {
+  fill: #15803d;
+}
+/* Bar name: white glyphs with a dark halo so it stays readable on light
+   (lvl-3) AND dark (lvl-1/2) bars, over the green progress fill, and over
+   the weekend / today / overrun overlays. */
+.gantt-container :deep(.bar-label) {
+  fill: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  paint-order: stroke;
+  stroke: rgba(15, 23, 42, 0.66);
+  stroke-width: 2.6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+/* When the bar is too short, frappe draws the label OUTSIDE on the chart
+   background — dark text with a white halo instead. */
+.gantt-container :deep(.bar-label.big) {
+  fill: var(--c-text);
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 3px;
 }
 .gantt-container :deep(.upper-text) {
   font-size: 0.8rem;
-  font-weight: 600;
-  fill: #1f2937;
+  font-weight: 700;
+  fill: var(--c-text);
 }
 .gantt-container :deep(.lower-text) {
   font-size: 0.7rem;
-  fill: #4b5563;
+  fill: var(--c-text-muted);
+}
+.gantt-container :deep(.grid-header) {
+  fill: var(--c-surface-2);
+}
+.gantt-container :deep(.tick) {
+  stroke: var(--c-border);
+}
+.gantt-container :deep(.today-highlight) {
+  fill: transparent;
 }
 </style>
