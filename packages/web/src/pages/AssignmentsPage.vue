@@ -4,9 +4,16 @@ import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
+import { useHolidaysStore } from '@/stores/holidays';
 import { computeStatus, STATUS_BUCKETS, type StatusBucket, todayUtc } from '@/utils/status';
 import ColumnFilter, { type FilterOption } from '@/components/ColumnFilter.vue';
 import TaskNoteDialog from '@/components/TaskNoteDialog.vue';
+import AssignmentCalendar, {
+  type CalendarEvent,
+} from '@/components/AssignmentCalendar.vue';
+import AssignmentEditDialog, {
+  type EditTask,
+} from '@/components/AssignmentEditDialog.vue';
 import type { AssignmentRow, PersonalTask } from '@/types';
 
 type FilterValue = string | number | null;
@@ -19,7 +26,9 @@ const PERSONAL_LABEL = '（個人タスク）';
 const router = useRouter();
 const employees = useEmployeesStore();
 const projects = useProjectsStore();
+const holidays = useHolidaysStore();
 
+const viewMode = ref<'list' | 'calendar'>('calendar');
 const selectedId = ref<number | null>(null);
 const periodFilter = ref<'all' | 'in-progress' | 'this-month' | 'future'>('all');
 // Default: show everything EXCEPT 完了 (the 'completed' bucket also covers
@@ -71,7 +80,11 @@ function setStatusColFilter(v: Set<FilterValue> | null): void {
 }
 
 onMounted(async () => {
-  await Promise.all([employees.fetchAll(), projects.fetchAll()]);
+  await Promise.all([
+    employees.fetchAll(),
+    projects.fetchAll(),
+    holidays.fetchAll(),
+  ]);
   if (selectedId.value === null && employees.activeItems.length > 0) {
     selectedId.value = employees.activeItems[0].id;
   }
@@ -277,7 +290,7 @@ const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).pa
 
 // Period filters narrow the list; status filter narrows further. Both client-side
 // so the user can flip between them without re-fetching.
-const visible = computed<AssignmentRow[]>(() => {
+const visible = computed<Row[]>(() => {
   const period = periodFilter.value;
   return rows.value.filter((r) => {
     if (period === 'this-month') {
@@ -336,6 +349,151 @@ function openTaskInGantt(r: Row): void {
   router.push({ path: `/projects/${r.projectId}/gantt`, query: { focus: String(r.id) } });
 }
 
+// Calendar view: only rows with a planned start AND end can be drawn as a
+// bar. Aggregates (大/中) are rolled-up spans of their children, so the
+// calendar shows leaf items (項目) + personal tasks to keep it readable.
+const calendarEvents = computed<CalendarEvent[]>(() =>
+  visible.value
+    .filter((r) => r.level === 3 && !!r.startDate && !!r.endDate)
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      projectName: r.projectName,
+      startDate: r.startDate as string,
+      endDate: r.endDate as string,
+      statusBucket: statusOf(r).bucket,
+    })),
+);
+
+// kind+id → Row so a calendar bar click can reuse the existing actions.
+const rowByKey = computed<Map<string, Row>>(() => {
+  const m = new Map<string, Row>();
+  for (const r of rows.value) m.set(`${r.kind}-${r.id}`, r);
+  return m;
+});
+
+// Calendar interactions:
+//  - bar click  → edit popup for that existing task (editRow)
+//  - empty cell → NEW-task popup pre-filled with the clicked date
+//                 (draftDate). Nothing is persisted until 作成 is pressed.
+const editRow = ref<Row | null>(null);
+const draftDate = ref<string | null>(null);
+const isNewEdit = computed(() => draftDate.value !== null);
+
+const editTask = computed<EditTask | null>(() => {
+  if (draftDate.value !== null) {
+    return {
+      id: 0,
+      kind: 'personal',
+      name: '',
+      projectId: null,
+      projectName: '（個人タスク）',
+      startDate: draftDate.value,
+      duration: 1,
+      endDate: null,
+      plannedHours: null,
+      actualStartDate: null,
+      actualEndDate: null,
+      actualHours: null,
+      progress: 0,
+      note: null,
+      statusLabel: '新規（未保存）',
+    };
+  }
+  const r = editRow.value;
+  if (!r) return null;
+  return {
+    id: r.id,
+    kind: r.kind,
+    name: r.name,
+    projectId: r.kind === 'personal' ? (r.projectId || null) : r.projectId,
+    projectName: r.projectName,
+    startDate: r.startDate,
+    duration: r.duration,
+    endDate: r.endDate,
+    plannedHours: r.plannedHours,
+    actualStartDate: r.actualStartDate,
+    actualEndDate: r.actualEndDate,
+    actualHours: r.actualHours,
+    progress: r.progress,
+    note: r.note,
+    statusLabel: statusOf(r).label,
+  };
+});
+
+function closeEdit(): void {
+  editRow.value = null;
+  draftDate.value = null;
+}
+
+function onOpenCalendarEvent(ev: CalendarEvent): void {
+  const r = rowByKey.value.get(`${ev.kind}-${ev.id}`);
+  if (!r) return;
+  draftDate.value = null;
+  editRow.value = r;
+}
+
+// Drag a personal-task bar onto another day → change its start date
+// (duration kept; server recomputes the end date). Personal only.
+async function onCalendarMove(payload: {
+  ev: CalendarEvent;
+  date: string;
+}): Promise<void> {
+  const { ev, date } = payload;
+  if (ev.kind !== 'personal') return;
+  const r = rowByKey.value.get(`personal-${ev.id}`);
+  if (!r || r.startDate === date) return;
+  await patchTask(r, { startDate: date });
+}
+
+// Click an empty calendar cell → open the popup in NEW mode only (no API
+// call). The personal task is created only when 作成 is pressed.
+function onCalendarCreate(date: string): void {
+  if (selectedId.value === null) return;
+  editRow.value = null;
+  draftDate.value = date;
+}
+
+async function onEditSave(patch: Record<string, unknown>): Promise<void> {
+  // Create mode: persist a brand-new personal task now (and only now).
+  if (draftDate.value !== null) {
+    const date = draftDate.value;
+    closeEdit();
+    if (selectedId.value === null || saving.value) return;
+    saving.value = true;
+    errorMessage.value = null;
+    try {
+      await api.post(`/employees/${selectedId.value}/personal-tasks`, {
+        name: '',
+        startDate: date,
+        duration: 1,
+        ...patch,
+      });
+      await loadRows(selectedId.value);
+    } catch (e: unknown) {
+      errorMessage.value =
+        extractMessage(e) ?? '個人タスクの作成に失敗しました';
+    } finally {
+      saving.value = false;
+    }
+    return;
+  }
+  const r = editRow.value;
+  editRow.value = null;
+  if (r) await patchTask(r, patch);
+}
+async function onEditRemove(): Promise<void> {
+  const r = editRow.value;
+  closeEdit();
+  if (r) await removePersonalTask(r);
+}
+function onEditOpenGantt(): void {
+  const r = editRow.value;
+  closeEdit();
+  if (r) openTaskInGantt(r);
+}
+
 function extractMessage(e: unknown): string | null {
   if (typeof e === 'object' && e !== null) {
     const anyE = e as { response?: { data?: { message?: string | string[] } }; message?: string };
@@ -390,6 +548,20 @@ function fmtFullDate(d: string | null): string {
             {{ opt.l }}
           </button>
         </div>
+        <div class="view-tabs" role="tablist" aria-label="表示切替">
+          <button
+            class="btn pill"
+            :class="{ active: viewMode === 'list' }"
+            type="button"
+            @click="viewMode = 'list'"
+          >一覧</button>
+          <button
+            class="btn pill"
+            :class="{ active: viewMode === 'calendar' }"
+            type="button"
+            @click="viewMode = 'calendar'"
+          >カレンダー</button>
+        </div>
         <button
           class="btn add-personal"
           type="button"
@@ -426,6 +598,17 @@ function fmtFullDate(d: string | null): string {
     <p v-if="loading" class="muted">読込中…</p>
     <p v-else-if="selectedId === null" class="muted">社員を選択してください。</p>
     <p v-else-if="rows.length === 0" class="muted">割当タスクはありません。</p>
+
+    <AssignmentCalendar
+      v-else-if="viewMode === 'calendar'"
+      :events="calendarEvents"
+      :today-str="todayStr"
+      :holiday-names="holidays.dateNameMap"
+      @open="onOpenCalendarEvent"
+      @create="onCalendarCreate"
+      @move="onCalendarMove"
+    />
+
     <p v-else-if="visible.length === 0" class="muted">条件に一致するタスクがありません。</p>
 
     <div v-else class="table-scroll">
@@ -701,6 +884,17 @@ function fmtFullDate(d: string | null): string {
       @close="noteRow = null"
       @save="onSaveNote"
     />
+
+    <AssignmentEditDialog
+      :open="editRow !== null || draftDate !== null"
+      :task="editTask"
+      :is-new="isNewEdit"
+      :projects="projects.items"
+      @close="closeEdit"
+      @save="onEditSave"
+      @remove="onEditRemove"
+      @open-gantt="onEditOpenGantt"
+    />
   </div>
 </template>
 
@@ -740,9 +934,14 @@ function fmtFullDate(d: string | null): string {
   font: inherit;
   min-width: 260px;
 }
-.period-tabs {
+.period-tabs,
+.view-tabs {
   display: inline-flex;
   gap: 0.3rem;
+}
+.view-tabs {
+  padding-left: 0.6rem;
+  border-left: 1px solid #e5e7eb;
 }
 .btn {
   border: 1px solid #d1d5db;
@@ -987,10 +1186,15 @@ function fmtFullDate(d: string | null): string {
   padding: 0.18rem 0.3rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
-  background: #fffdf5;
+  background: #f5f3ff;
 }
+/* Personal tasks use the same violet as the calendar's 個人 bars so the two
+   views read consistently. */
 .personal-row td {
-  background: #fffdf5;
+  background: #ede9fe;
+}
+.assign-table tbody tr.personal-row:hover td {
+  background: #ddd6fe;
 }
 .col-breadcrumb {
   width: 150px;
