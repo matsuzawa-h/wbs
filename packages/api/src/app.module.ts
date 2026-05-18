@@ -11,6 +11,7 @@ import { McpModule } from './mcp/mcp.module';
 import { ExcelModule } from './excel/excel.module';
 import { ExcelImportModule } from './excel/import/excel-import.module';
 import { DownloadsModule } from './downloads/downloads.module';
+import { HelpModule } from './help/help.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { DownloadsModule } from './downloads/downloads.module';
     ExcelModule,
     ExcelImportModule,
     DownloadsModule,
+    HelpModule,
     McpModule,
   ],
   controllers: [HealthController],
