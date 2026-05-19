@@ -24,6 +24,7 @@ export class ProjectMembersService {
         isActive: assignees.isActive,
         note: assignees.note,
         sortOrder: assignees.sortOrder,
+        organizationId: assignees.organizationId,
       })
       .from(projectMembers)
       .innerJoin(assignees, eq(projectMembers.employeeId, assignees.id))
