@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import {
   AppDb,
   assignees,
@@ -35,6 +35,21 @@ export interface ManhourProjectMatch {
 export interface ManhourCustomerMatch {
   name: string;
   suggestedCustomerId: number | null;
+  /** 名寄せ先の既存顧客名（表記揺れで一致した場合に何へ寄せたか可視化）。 */
+  suggestedCustomerName: string | null;
+}
+
+/**
+ * 顧客名の表記揺れ吸収用キー。NFKC（全角→半角・互換文字）＋空白除去＋
+ * 会社表記（株式会社/(株)/㈱ 等）除去＋小文字化。**安全側**：見た目だけ
+ * 違う名前を同一視するに留め、別物の名称までは統合しない。
+ */
+export function normalizeCustomerName(s: string): string {
+  return s
+    .normalize('NFKC')
+    .replace(/[\s　]+/g, '')
+    .replace(/(株式会社|有限会社|合同会社|合名会社|合資会社|\(株\)|\(有\)|\(合\))/g, '')
+    .toLowerCase();
 }
 
 export interface ManhourPreviewResult {
@@ -72,18 +87,33 @@ export class ManhourImportService {
       (name) => ({ name, suggestedAssigneeId: byName.get(name) ?? null }),
     );
 
+    const existingCustomers = this.db
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .orderBy(asc(customers.id))
+      .all();
     const customerByName = new Map(
-      this.db
-        .select({ id: customers.id, name: customers.name })
-        .from(customers)
-        .all()
-        .map((c) => [c.name, c.id]),
+      existingCustomers.map((c) => [c.name, { id: c.id, name: c.name }]),
     );
+    // 表記揺れ用: 正規化キー → 最初(最小id)の既存顧客。
+    const customerByNorm = new Map<string, { id: number; name: string }>();
+    for (const c of existingCustomers) {
+      const k = normalizeCustomerName(c.name);
+      if (k && !customerByNorm.has(k)) customerByNorm.set(k, c);
+    }
     const customerMatches: ManhourCustomerMatch[] = parsed.customerNames.map(
-      (name) => ({
-        name,
-        suggestedCustomerId: customerByName.get(name) ?? null,
-      }),
+      (name) => {
+        // 完全一致を優先、無ければ正規化一致（全半角/空白/会社表記ゆれ）。
+        const hit =
+          customerByName.get(name) ??
+          customerByNorm.get(normalizeCustomerName(name)) ??
+          null;
+        return {
+          name,
+          suggestedCustomerId: hit ? hit.id : null,
+          suggestedCustomerName: hit ? hit.name : null,
+        };
+      },
     );
     const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) =>
       this.matchProject(p),
@@ -184,12 +214,29 @@ export class ManhourImportService {
       }
 
       // 1.5) 顧客の名寄せ（CSV E列。未登録は顧客マスタに新規登録）
+      // create でも正規化一致する既存顧客があれば再利用（再取込・表記揺れで
+      // 重複顧客を作らない）。同一取込内の表記揺れも同じ顧客へ集約。
       let customersCreated = 0;
       const customerNameToId = new Map<string, number>();
+      const normToCustomerId = new Map<string, number>();
+      for (const c of tx
+        .select({ id: customers.id, name: customers.name })
+        .from(customers)
+        .orderBy(asc(customers.id))
+        .all()) {
+        const k = normalizeCustomerName(c.name);
+        if (k && !normToCustomerId.has(k)) normToCustomerId.set(k, c.id);
+      }
       for (const r of dto.customerResolution ?? []) {
         if (r.action === 'link' && r.customerId !== undefined) {
           customerNameToId.set(r.name, r.customerId);
         } else if (r.action === 'create' && r.newCustomer) {
+          const norm = normalizeCustomerName(r.newCustomer.name);
+          const existingId = norm ? normToCustomerId.get(norm) : undefined;
+          if (existingId !== undefined) {
+            customerNameToId.set(r.name, existingId);
+            continue;
+          }
           const created = tx
             .insert(customers)
             .values({
@@ -201,6 +248,7 @@ export class ManhourImportService {
             .returning()
             .get();
           customerNameToId.set(r.name, created.id);
+          if (norm) normToCustomerId.set(norm, created.id);
           customersCreated += 1;
         }
         // skip → マップに入れない（その顧客は紐づけない）

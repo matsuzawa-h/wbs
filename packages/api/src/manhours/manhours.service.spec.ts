@@ -304,6 +304,42 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('顧客名は表記揺れ(全角/全角空白)を吸収して同一顧客に名寄せ', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+      const custCount = () => db.select().from(schema.customers).all().length;
+      expect(custCount()).toBe(2); // NIPPO / 顧客X
+
+      // 再取込: 顧客名を「ＮＩＰＰＯ　」(全角＋全角空白) に
+      const rows = [
+        ['堀田　和彦', 'AFT', 'ＮＩＰＰＯ　', 'A案件', 'AAP001', months({ 4: '10' })],
+        ['堀田　和彦', '合計', '', '月基準時間', '', months({ 4: '160' })],
+      ];
+      // 全角空白は parser の trim で除去され、全角英字は NFKC で吸収される
+      const p = imp.preview(csvBuf(rows), FY);
+      const m = p.customerMatches.find((x) => x.name === 'ＮＩＰＰＯ')!;
+      expect(m.suggestedCustomerId).not.toBeNull();
+      expect(m.suggestedCustomerName).toBe('NIPPO'); // 既存へ名寄せ
+
+      // create を明示しても正規化一致で重複作成しない（commit 側の二重防御）
+      const dto2 = commitDtoFromPreview(imp, csvBuf(rows), FY, 'b.csv');
+      imp.commit({
+        ...dto2,
+        fileName: 'c.csv',
+        customerResolution: dto2.customerResolution.map((c) =>
+          c.name === 'ＮＩＰＰＯ'
+            ? { name: c.name, action: 'create', newCustomer: { name: c.name } }
+            : c,
+        ),
+      });
+      expect(custCount()).toBe(2); // 顧客は増えない
+    } finally {
+      close();
+    }
+  });
+
   it('CD無し明細はラベルのみ（projects マスタを作らず件名で内訳表示）', () => {
     const { db, close } = makeDb();
     try {
