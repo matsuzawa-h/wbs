@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { integer, real, sqliteTable, text, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import {
+  integer,
+  real,
+  sqliteTable,
+  text,
+  index,
+  primaryKey,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const customers = sqliteTable(
   'customers',
@@ -198,6 +206,31 @@ export const personalTasks = sqliteTable(
 
 export type PersonalTask = typeof personalTasks.$inferSelect;
 export type NewPersonalTask = typeof personalTasks.$inferInsert;
+
+// 1 プロジェクトに複数のプロジェクトCD（外部システムは工程ごとにCDが分かれる）。
+// 稼働取込はこのコードで案件→プロジェクトを突合する。code はグローバル一意
+// （1つのCDは必ず1プロジェクトに属する）。projects.project_code は代表コード
+// （表示用）として併存。
+export const projectCodes = sqliteTable(
+  'project_codes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex('uniq_project_codes_code').on(table.code),
+    projectIdx: index('idx_project_codes_project').on(table.projectId),
+  }),
+);
+
+export type ProjectCode = typeof projectCodes.$inferSelect;
+export type NewProjectCode = typeof projectCodes.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // 月次工数管理 / 稼働見通し (monthly man-hours & capacity planning).
