@@ -107,6 +107,7 @@ function commitDtoFromPreview(
       yearMonth: e.yearMonth,
       hours: e.hours,
       label: e.label,
+      customerLabel: e.customerLabel,
     })),
     capacities: p.capacities.map((c) => ({
       assigneeName: c.assigneeName,

@@ -141,6 +141,12 @@ export class ManhourEntryRowDto {
   @IsString()
   @MaxLength(200)
   label?: string | null;
+
+  /** CSV顧客名(E列)の生値（明細表示用・顧客マスタ非依存）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  customerLabel?: string | null;
 }
 
 export class ManhourCapacityRowDto {

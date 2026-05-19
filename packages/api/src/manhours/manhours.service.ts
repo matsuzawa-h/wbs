@@ -419,7 +419,8 @@ export class ManhoursService {
         projectId: manhourEntries.projectId,
         projectName: projects.name,
         projectCode: projects.projectCode,
-        customerName: customers.name,
+        // 顧客名は CSV顧客名(E列)の生値を使う（顧客マスタ非依存。MNT等も出る）
+        customerLabel: manhourEntries.customerLabel,
         label: manhourEntries.label,
         workType: manhourEntries.workType,
         yearMonth: manhourEntries.yearMonth,
@@ -429,7 +430,6 @@ export class ManhoursService {
       })
       .from(manhourEntries)
       .leftJoin(projects, eq(manhourEntries.projectId, projects.id))
-      .leftJoin(customers, eq(projects.customerId, customers.id))
       .where(eq(manhourEntries.assigneeId, assigneeId))
       .all();
 
@@ -446,23 +446,22 @@ export class ManhoursService {
         if (batchId === null || r.batchId !== batchId) continue;
       }
       const source: 'imported' | 'manual' = isManual ? 'manual' : 'imported';
-      const subject =
-        r.projectName ??
-        r.label ??
-        (r.workType === 'zz' ? '非稼働' : '(未割当)');
-      const key = [
-        source,
-        r.workType,
-        r.projectId ?? `L:${subject}`,
-      ].join('|');
+      const isZz = r.workType === 'zz';
+      // zz は「非稼働」1行に集約（source 別）。顧客/CD/件名は持たない。
+      const subject = isZz
+        ? '非稼働'
+        : (r.projectName ?? r.label ?? '(未割当)');
+      const key = isZz
+        ? `${source}|zz`
+        : [source, r.workType, r.projectId ?? `L:${subject}`].join('|');
       let row = rowMap.get(key);
       if (!row) {
         row = {
           workType: r.workType,
-          customerName: r.customerName ?? null,
+          customerName: isZz ? null : (r.customerLabel ?? null),
           subject,
-          projectCode: r.projectCode ?? null,
-          projectId: r.projectId,
+          projectCode: isZz ? null : (r.projectCode ?? null),
+          projectId: isZz ? null : r.projectId,
           source,
           cells: {},
           total: 0,
@@ -475,13 +474,20 @@ export class ManhoursService {
     }
 
     const months = [...monthSet].sort();
-    const rows = [...rowMap.values()].sort(
-      (x, y) =>
-        x.workType.localeCompare(y.workType, 'ja') ||
+    // 行順: zz(非稼働)は最後、それ以外は 顧客名 → プロジェクトCD → 件名。
+    const rows = [...rowMap.values()].sort((x, y) => {
+      const xz = x.workType === 'zz' ? 1 : 0;
+      const yz = y.workType === 'zz' ? 1 : 0;
+      return (
+        xz - yz ||
         (x.customerName ?? '').localeCompare(y.customerName ?? '', 'ja') ||
+        (x.projectCode ?? '').localeCompare(y.projectCode ?? '', 'en', {
+          numeric: true,
+        }) ||
         x.subject.localeCompare(y.subject, 'ja') ||
-        x.source.localeCompare(y.source),
-    );
+        x.source.localeCompare(y.source)
+      );
+    });
     return {
       assigneeId: a.id,
       assigneeName: a.name,

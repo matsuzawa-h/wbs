@@ -32,6 +32,8 @@ export interface ParsedManhourEntry {
   projectKey: string;
   /** 件名（project 化しない明細＝CD無し/zz の内訳ラベル用）。 */
   label: string;
+  /** CSV顧客名(E列) の生値。明細に顧客マスタ非依存で出すため保持。 */
+  customerLabel: string | null;
 }
 
 export interface ParsedCapacity {
@@ -302,6 +304,7 @@ export function parseManhourCsv(
           hours: hrs,
           projectKey,
           label: subject || (isZz ? '非稼働' : '(名称未設定)'),
+          customerLabel: customer,
         });
       }
     }

@@ -395,6 +395,7 @@ export class ManhourImportService {
             yearMonth: e.yearMonth,
             hours: e.hours,
             label,
+            customerLabel: e.customerLabel ?? null,
           })
           .run();
         entriesInserted += 1;

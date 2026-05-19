@@ -280,6 +280,9 @@ export const manhourEntries = sqliteTable(
     // project_id が NULL の明細（CD無しのフリー作業 / zz 非稼働）の件名。
     // 稼働見通しの内訳表示に使う。projects マスタは作らずラベルだけ保持。
     label: text('label'),
+    // CSV「顧客名」(E列) の生値。MNT 等の非プロジェクト行でも顧客名を
+    // 担当者別明細に出すため、顧客マスタに依存せず明細に保持する。
+    customerLabel: text('customer_label'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
