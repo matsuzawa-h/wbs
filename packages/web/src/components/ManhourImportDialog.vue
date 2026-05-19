@@ -297,6 +297,19 @@ const employeeOptions = computed<Employee[]>(() => employees.activeItems);
 const projectOptions = computed<Project[]>(() => projects.items);
 const customerOptions = computed<Customer[]>(() => customers.activeItems);
 
+// 案件の束ね表は プロジェクトCD 昇順（小さい方を上）。CD無しは末尾。
+const sortedProjectMatches = computed<ProjectMatch[]>(() => {
+  const list = preview.value ? [...preview.value.projectMatches] : [];
+  return list.sort((a, b) => {
+    const ca = a.projectCode ?? '';
+    const cb = b.projectCode ?? '';
+    if (!ca && !cb) return 0;
+    if (!ca) return 1;
+    if (!cb) return -1;
+    return ca.localeCompare(cb, 'en', { numeric: true });
+  });
+});
+
 // 現在 pBucket で使われている新規グループ(grp:*)と、束ねられたCD件数。
 const groupBuckets = computed<Array<{ key: string; count: number }>>(() => {
   const counts = new Map<string, number>();
@@ -461,7 +474,7 @@ const fyOptions = computed<number[]>(() => {
               <tr><th>件名 / 顧客名 / CD / 束ね名</th><th>束ね先</th></tr>
             </thead>
             <tbody>
-              <tr v-for="m in preview.projectMatches" :key="m.projectKey">
+              <tr v-for="m in sortedProjectMatches" :key="m.projectKey">
                 <td>
                   <span class="excel-name">{{ m.sampleName }}</span><br />
                   <span class="muted small">
