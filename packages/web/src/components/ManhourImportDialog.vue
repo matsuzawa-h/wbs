@@ -39,6 +39,7 @@ interface ProjectMatch {
 interface CustomerMatch {
   name: string;
   suggestedCustomerId: number | null;
+  suggestedCustomerName: string | null;
 }
 interface PreviewResult {
   fiscalYear: number;
@@ -390,7 +391,9 @@ const fyOptions = computed<number[]>(() => {
               <tr v-for="m in preview.customerMatches" :key="m.name">
                 <td>
                   <span class="excel-name">{{ m.name }}</span>
-                  <span v-if="m.suggestedCustomerId !== null" class="badge match">既存マッチ</span>
+                  <span v-if="m.suggestedCustomerId !== null" class="badge match">
+                    既存マッチ<template v-if="m.suggestedCustomerName && m.suggestedCustomerName !== m.name"> → {{ m.suggestedCustomerName }}</template>
+                  </span>
                   <span v-else class="badge new">未登録</span>
                 </td>
                 <td>
