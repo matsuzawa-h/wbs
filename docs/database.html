@@ -396,7 +396,9 @@ project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<stro
 <code>zz</code> は非稼働 entry（project なし）、AFT/MNT/SY/空は案件工数。
 同一 担当者×CD×作業区分×年月 は合算。
 <code>preview</code> は担当者名・顧客名(E列)・プロジェクトCD を名寄せ（DB 変更なし）。
-<code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに、未一致顧客を顧客マスタに自動作成。
+<code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに、未一致顧客を顧客マスタに自動作成
+（顧客は <strong>NFKC＋空白除去＋会社表記ゆれ＋小文字化</strong>の正規化キーで突合し、表記揺れ・再取込でも
+重複作成しない＝既存を再利用。安全側で見た目違いのみ同一視）。
 案件は CD有り未一致のみ仮プロジェクト作成（<strong>再取込時は CD/名前で既存仮案件を再利用＝重複防止</strong>、
 顧客は名寄せ結果で紐づけ）。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
 projects マスタを作らず <code>project_id=NULL</code>＋<code>label</code>=件名 で計上（<code>zz</code> も同様にラベル保持）。
