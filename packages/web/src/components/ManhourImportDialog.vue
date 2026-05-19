@@ -458,14 +458,15 @@ const fyOptions = computed<number[]>(() => {
 
           <table class="match-table">
             <thead>
-              <tr><th>件名 / CD / 束ね名</th><th>束ね先</th></tr>
+              <tr><th>件名 / 顧客名 / CD / 束ね名</th><th>束ね先</th></tr>
             </thead>
             <tbody>
               <tr v-for="m in preview.projectMatches" :key="m.projectKey">
                 <td>
                   <span class="excel-name">{{ m.sampleName }}</span><br />
                   <span class="muted small">
-                    {{ m.projectCode ? `CD: ${m.projectCode}` : 'CD なし' }}
+                    顧客: {{ m.customerName || '（顧客名なし）' }}
+                    / {{ m.projectCode ? `CD: ${m.projectCode}` : 'CD なし' }}
                     <template v-if="m.projectCode"> / 束ね名: {{ m.proposedGroupName }}</template>
                   </span>
                   <span v-if="m.suggestedProjectId !== null" class="badge match">既存マッチ</span>
