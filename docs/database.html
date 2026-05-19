@@ -68,6 +68,10 @@
                  ├─&lt; project_members &gt;── assignees   (PK: project_id+employee_id)
                  └─&lt; personal_tasks   &gt;── assignees   (employee 必須 / project 任意)
 
+manhour_import_batches ──&lt; manhour_entries    &gt;── assignees / projects
+                        └─&lt; manhour_capacities &gt;── assignees
+        (取込スナップショット。batch_id NULL = 手入力。月次工数/月基準時間)
+
 holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
 <table>
   <thead><tr><th>関係</th><th>カーディナリティ</th><th>削除時の挙動（FK）</th></tr></thead>
@@ -79,6 +83,9 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>projects × assignees</td><td>N : M（表示メンバー）</td><td>project／社員 削除 → project_members を <code>CASCADE</code> 削除</td></tr>
     <tr><td>assignees → personal_tasks</td><td>1 : N</td><td>社員削除 → personal_tasks を <code>CASCADE</code> 削除</td></tr>
     <tr><td>projects → personal_tasks</td><td>0..1 : N（任意紐付）</td><td>project 削除 → personal_tasks.project_id を <code>SET NULL</code></td></tr>
+    <tr><td>manhour_import_batches → manhour_entries / _capacities</td><td>1 : N（batch_id NULL=手入力）</td><td>バッチ削除 → 子を <code>CASCADE</code> 削除（仮案件は残す）</td></tr>
+    <tr><td>assignees → manhour_entries / _capacities</td><td>1 : N</td><td>社員削除 → <code>CASCADE</code> 削除</td></tr>
+    <tr><td>projects → manhour_entries</td><td>0..1 : N（zz は project なし）</td><td>project 削除 → manhour_entries を <code>CASCADE</code> 削除</td></tr>
   </tbody>
 </table>
 
@@ -107,6 +114,8 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
     <tr><td><span class="fk">customer_id</span></td><td>INTEGER</td><td>FK customers.id（任意）/ ON DELETE SET NULL（idx_projects_customer）</td></tr>
     <tr><td>name</td><td>TEXT</td><td>NOT NULL プロジェクト名</td></tr>
+    <tr><td>project_code</td><td>TEXT</td><td>別システムのプロジェクトCD（任意・<strong>非ユニーク</strong>。取込工数の突合キー。idx_projects_code）</td></tr>
+    <tr><td>is_provisional</td><td>INTEGER / 0</td><td>NOT NULL 仮プロジェクトフラグ（1=仮。稼働見通しで確定/仮を区別）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
 </table>
@@ -187,6 +196,49 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
   </tbody>
 </table>
 
+<table class="def">
+  <caption>2.8 manhour_import_batches（稼働管理表 取込バッチ：履歴保持の単位）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td>file_name</td><td>TEXT</td><td>NOT NULL 取込ファイル名</td></tr>
+    <tr><td>fiscal_year</td><td>INTEGER</td><td>NOT NULL 対象会計年度（4月始まり。idx_mh_batches_fy）</td></tr>
+    <tr><td>org_code</td><td>TEXT</td><td>組織コード（CSV 由来）</td></tr>
+    <tr><td>row_count</td><td>INTEGER / 0</td><td>NOT NULL 取込明細件数</td></tr>
+    <tr><td>imported_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL 取込時刻（最新判定に使用）</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.9 manhour_entries（月次工数明細：担当者×案件×作業区分×年月）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">batch_id</span></td><td>INTEGER</td><td>FK manhour_import_batches.id CASCADE / <strong>NULL=手入力(仮)</strong>（idx_mh_entries_batch）</td></tr>
+    <tr><td>source</td><td>TEXT / 'imported'</td><td>NOT NULL 'imported'（取込=確定）/ 'manual'（手入力=仮）</td></tr>
+    <tr><td><span class="fk">assignee_id</span></td><td>INTEGER</td><td>NOT NULL / FK assignees.id CASCADE（idx_mh_entries_assignee）</td></tr>
+    <tr><td><span class="fk">project_id</span></td><td>INTEGER</td><td>FK projects.id CASCADE / NULL=zz 非稼働（idx_mh_entries_project）</td></tr>
+    <tr><td>work_type</td><td>TEXT / ''</td><td>NOT NULL 作業区分（AFT/MNT/SY/'' / 'zz'=非稼働）</td></tr>
+    <tr><td>year_month</td><td>TEXT</td><td>NOT NULL <code>YYYY-MM</code>（1〜3月は翌暦年。idx_mh_entries_ym）</td></tr>
+    <tr><td>hours</td><td>REAL / 0</td><td>NOT NULL 工数（人時）</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.10 manhour_capacities（月基準時間：担当者×年月のキャパ）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">batch_id</span></td><td>INTEGER</td><td>FK manhour_import_batches.id CASCADE / NULL=手動上書（idx_mh_capacities_batch）</td></tr>
+    <tr><td>source</td><td>TEXT / 'imported'</td><td>NOT NULL imported / manual（手動上書が優先）</td></tr>
+    <tr><td><span class="fk">assignee_id</span></td><td>INTEGER</td><td>NOT NULL / FK assignees.id CASCADE</td></tr>
+    <tr><td>year_month</td><td>TEXT</td><td>NOT NULL <code>YYYY-MM</code>（idx_mh_capacities_key: assignee_id, year_month）</td></tr>
+    <tr><td>base_hours</td><td>REAL</td><td>NOT NULL 月基準時間。稼働率=Σhours/base_hours は都度算出（CSV 稼働率行は不使用）</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
 <h2 class="chapter" id="d3">3. マイグレーション一覧</h2>
 <p>適用状況は <code>src/db/migrations/meta/_journal.json</code> で管理（冪等。本番は <code>release.html</code> 8.0／8.2 の <code>migrate</code> で適用）。</p>
 <table>
@@ -200,9 +252,10 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0005</td><td>add_customers</td><td>customers 追加＋projects.customer_id</td></tr>
     <tr><td>0006</td><td>add_task_note</td><td>wbs_tasks.note 追加（備考）</td></tr>
     <tr><td>0007</td><td>add_personal_tasks</td><td>personal_tasks テーブル追加</td></tr>
+    <tr><td>0008</td><td>add_manhours</td><td>projects に project_code / is_provisional 追加＋manhour_import_batches / manhour_entries / manhour_capacities 追加</td></tr>
   </tbody>
 </table>
-<div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が動作しません。</div>
+<div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>
 
 <h2 class="chapter" id="d4">4. CRUD 図（機能 × テーブル）</h2>
 <p>
@@ -330,6 +383,22 @@ project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<stro
 <code>project_members</code> は各プロジェクトの担当ピッカー候補。メンバーから外しても
 既存タスクの <code>assignee_id</code> は保持（ソフト除外）し、UI は「(メンバー外)」表示で
 新規割当を抑止。<code>PUT /:id/members</code> はメンバー集合を置換。
+</p>
+
+<h3 class="section"><span class="num">5.10</span>稼働管理表 CSV 取込（プレビュー → 確定）</h3>
+<p>
+別システム出力の Shift-JIS CSV を Node 組込 <code>TextDecoder('shift_jis')</code> で
+デコード（UTF-8 BOM 付きなら UTF-8 として読む＝再保存フォールバック）。
+会計年度（4月始まり）で月→<code>YYYY-MM</code> 変換（<strong>1〜3月は翌暦年</strong>）。
+行区分: <code>合計</code> の派生行は破棄、件名「月基準時間」のみ <code>manhour_capacities</code> へ、
+<code>zz</code> は非稼働 entry（project なし）、AFT/MNT/SY/空は案件工数。
+同一 担当者×CD×作業区分×年月 は合算。
+<code>preview</code> は担当者名・プロジェクトCD を名寄せ（DB 変更なし）。
+<code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに自動作成、
+未一致/CD空案件を仮プロジェクト作成（<strong>再取込時は CD/名前で既存仮案件を再利用＝重複防止</strong>）、
+<strong>毎回新規バッチ</strong>として明細・月基準時間を投入（履歴保持）。
+集計は「選択/最新の取込バッチ ∪ 手入力(<code>batch_id NULL</code>)」で行い、
+稼働率は <code>Σhours / base_hours</code> を都度算出（CSV 稼働率行は不使用）。
 </p>
 
 <footer>

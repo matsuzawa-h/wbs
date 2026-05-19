@@ -123,9 +123,10 @@
     <tr><td>HolidaysModule</td><td><code>/api/holidays</code>, <code>/bulk</code></td><td>休日マスタ CRUD。営業日計算の入力。短期キャッシュ付き。</td></tr>
     <tr><td>ExcelModule</td><td><code>/api/projects/:id/export.xls</code></td><td>旧 Excel テンプレートへ流し込み出力（BIFF 直書き）。</td></tr>
     <tr><td>ExcelImportModule</td><td><code>/api/projects/import/preview</code>, <code>/commit</code></td><td>Excel から WBS を解析・取込（プレビュー → 確定）。</td></tr>
+    <tr><td>ManhoursModule</td><td><code>/api/manhours/*</code>, <code>/import/preview</code>, <code>/commit</code></td><td>稼働管理表 CSV 取込（Shift-JIS）・担当者/案件CD名寄せ・稼働見通し集計・仮案件/手入力。バッチ単位の履歴保持。</td></tr>
     <tr><td>DownloadsModule</td><td><code>/api/downloads/km_module.xla</code></td><td>Excel アドイン配布。</td></tr>
     <tr><td>HelpModule</td><td><code>/api/help/manual.html</code>, <code>/screenshots/:name</code></td><td>操作手順書をアプリ内配信（<code>docs/</code> 単一ソース、パストラバーサル遮断）。</td></tr>
-    <tr><td>McpModule</td><td><code>/mcp</code></td><td>顧客/プロジェクト/タスク/個人タスク/社員/休日の MCP ツール（REST と同一サービス層）。</td></tr>
+    <tr><td>McpModule</td><td><code>/mcp</code></td><td>顧客/プロジェクト/タスク/個人タスク/社員/休日/稼働工数 の MCP ツール（REST と同一サービス層）。</td></tr>
     <tr><td>DbModule</td><td>—</td><td>better-sqlite3 接続を <code>DB_TOKEN</code> で供給（グローバル）。</td></tr>
   </tbody>
 </table>
@@ -137,13 +138,15 @@
     <tr><td><code>/</code></td><td>プロジェクト一覧</td><td>顧客でグルーピング、作成・Excel 取込導線。</td></tr>
     <tr><td><code>/projects/:id/gantt</code></td><td>WBS／ガント</td><td>3 階層（大/中/項目）テーブル＋ガント。連動・複製・備考・実績・状態。</td></tr>
     <tr><td><code>/assignments</code></td><td>担当別予定</td><td>社員横断の割当＋個人タスク。一覧／<strong>カレンダー</strong>切替（既定カレンダー）。</td></tr>
+    <tr><td><code>/manhours</code></td><td>稼働見通し</td><td>担当者×月の工数サマリー（確定/仮トグル・稼働率色分け・案件内訳）。CSV取込／仮案件導線。</td></tr>
+    <tr><td><code>/projects/:id/manhours</code></td><td>案件別工数</td><td>1 案件の担当者×月。工程表(ガント)と相互リンク。セル手入力（仮）。</td></tr>
     <tr><td><code>/customers</code> / <code>/employees</code> / <code>/holidays</code></td><td>各マスタ</td><td>顧客／社員／休日の保守。</td></tr>
     <tr><td><code>/downloads</code></td><td>ダウンロード</td><td>Excel アドイン取得手順。</td></tr>
     <tr><td><code>/manual</code></td><td>操作手順</td><td>アプリ枠内に <code>/api/help/manual.html</code> を iframe 表示。</td></tr>
   </tbody>
 </table>
 <p>
-状態管理は Pinia（projects / tasks / employees / customers / holidays / projectMembers ストア）。
+状態管理は Pinia（projects / tasks / employees / customers / holidays / projectMembers / manhours ストア）。
 ガントは frappe-gantt を土台に、スクロール同期・固定ヘッダ・今日マーカー・週末/休日表示・
 バーラベル可読性などを独自実装。担当別予定カレンダーは月グリッド（バーのレーン配置・D&D・新規作成ポップアップ）を独自実装。
 </p>
@@ -193,6 +196,8 @@
     <tr><td>タスク複製</td><td>部分木をディープコピー（進捗・実績も引継ぎ）、元の直後に配置、終了日再計算・祖先再集計。</td></tr>
     <tr><td>個人タスク分離</td><td>個人タスクは WBS ツリー外。ガント／Excel に出さず、担当別予定のみで管理。</td></tr>
     <tr><td>Excel 入出力</td><td>旧テンプレートへ BIFF 直書き出力／Excel から WBS 解析・取込（プレビュー→確定）。</td></tr>
+    <tr><td>稼働見通し</td><td>稼働管理表 CSV を取込み、担当者×月の工数を集計。会計年度4月始まり（1〜3月=翌暦年）。再取込は<strong>毎回新規バッチ（履歴保持）</strong>、未一致案件は仮プロジェクト自動作成（CD/名前で重複防止）。確定(取込)/仮(手入力)を区別表示、稼働率＝Σ工数/月基準時間を都度算出。</td></tr>
+    <tr><td>Shift-JIS デコード</td><td>CSV は Node 組込 <code>TextDecoder('shift_jis')</code>（full-ICU 既定。<strong>追加依存なし</strong>）。UTF-8 BOM 付きは UTF-8 として読む（再保存フォールバック）。小ICUビルドは「UTF-8 で再保存」を促す。</td></tr>
     <tr><td>MCP 整合</td><td>MCP ツールは REST と同一サービス層。Zod ↔ DTO パリティをテストで担保。</td></tr>
   </tbody>
 </table>
