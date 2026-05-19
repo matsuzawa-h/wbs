@@ -310,14 +310,39 @@ const sortedProjectMatches = computed<ProjectMatch[]>(() => {
   });
 });
 
-// 現在 pBucket で使われている新規グループ(grp:*)と、束ねられたCD件数。
-const groupBuckets = computed<Array<{ key: string; count: number }>>(() => {
-  const counts = new Map<string, number>();
-  for (const v of Object.values(pBucket.value)) {
-    if (v && v.startsWith('grp:'))
-      counts.set(v, (counts.get(v) ?? 0) + 1);
+// 現在 pBucket で使われている新規グループ(grp:*)と、束ねられた顧客/CD。
+interface GroupBucket {
+  key: string;
+  count: number;
+  customers: string[];
+  codes: string[];
+}
+const groupBuckets = computed<GroupBucket[]>(() => {
+  const pv = preview.value;
+  if (!pv) return [];
+  const byKey = new Map<string, ProjectMatch[]>();
+  for (const m of pv.projectMatches) {
+    const b = pBucket.value[m.projectKey];
+    if (b && b.startsWith('grp:')) {
+      const arr = byKey.get(b) ?? [];
+      arr.push(m);
+      byKey.set(b, arr);
+    }
   }
-  return [...counts.entries()].map(([key, count]) => ({ key, count }));
+  return [...byKey.entries()].map(([key, members]) => {
+    const customers = [
+      ...new Set(
+        members
+          .map((m) => m.customerName)
+          .filter((c): c is string => !!c),
+      ),
+    ];
+    const codes = members
+      .map((m) => m.projectCode)
+      .filter((c): c is string => !!c)
+      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    return { key, count: members.length, customers, codes };
+  });
 });
 const fyOptions = computed<number[]>(() => {
   const base = currentFiscalYear();
@@ -465,7 +490,11 @@ const fyOptions = computed<number[]>(() => {
             <strong class="small">新規グループ（束ねて作成するプロジェクト名・編集可）</strong>
             <div v-for="g in groupBuckets" :key="g.key" class="group-row">
               <input v-model="groupNames[g.key]" type="text" maxlength="200" class="link-select" />
-              <span class="muted small">CD {{ g.count }} 件を束ねて 1 プロジェクト</span>
+              <span class="muted small">
+                顧客: {{ g.customers.join('・') || '（顧客名なし）' }}
+                / CD: {{ g.codes.join(', ') }}
+                （{{ g.count }} CD を 1 プロジェクトに束ね）
+              </span>
             </div>
           </div>
 
