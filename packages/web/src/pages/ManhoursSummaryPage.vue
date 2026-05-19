@@ -325,9 +325,9 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           :key="i"
                           :class="{ 'is-manual': d.source === 'manual' }"
                         >
-                          <td>{{ d.customerName || '—' }}</td>
-                          <td>{{ d.projectCode || '—' }}</td>
-                          <td>{{ d.subject }}</td>
+                          <td :title="d.customerName || ''">{{ d.customerName || '—' }}</td>
+                          <td :title="d.projectCode || ''">{{ d.projectCode || '—' }}</td>
+                          <td :title="d.subject">{{ d.subject }}</td>
                           <td>
                             {{ d.workType === 'zz' ? '非稼働' : (d.workType || '—') }}
                             <span class="tag" :class="d.source">{{ d.source === 'manual' ? '仮' : '確定' }}</span>
@@ -422,9 +422,11 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
 .mh-grid col.c-lead { width: var(--mh-lead); }
 .mh-grid col.c-mon { width: var(--mh-mw); }
 .mh-grid col.c-tot { width: var(--mh-tot); }
-.detail-grid.orig col.c-cust { width: 7rem; }
-.detail-grid.orig col.c-code { width: 7rem; }
-.detail-grid.orig col.c-subj { width: 6rem; }
+/* 合計は --mh-lead(24rem) を維持＝月列はサマリーと縦に揃ったまま。
+   顧客名/CD を狭め、余りは件名へ。 */
+.detail-grid.orig col.c-cust { width: 4.5rem; }
+.detail-grid.orig col.c-code { width: 5.5rem; }
+.detail-grid.orig col.c-subj { width: 10rem; }
 .detail-grid.orig col.c-wt { width: 4rem; }
 .detail-grid.orig col.c-mon { width: var(--mh-mw); }
 .detail-grid.orig col.c-tot { width: var(--mh-tot); }
