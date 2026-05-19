@@ -193,6 +193,15 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
 
     <div v-if="manhours.summary && manhours.summary.rows.length" class="grid-wrap">
       <table class="mh-grid">
+        <colgroup>
+          <col class="c-lead" />
+          <col
+            v-for="ym in manhours.summary.months"
+            :key="ym"
+            class="c-mon"
+          />
+          <col class="c-tot" />
+        </colgroup>
         <thead>
           <tr>
             <th class="sticky-col">担当者</th>
@@ -283,13 +292,26 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
               v-if="openAssignee === row.assigneeId && manhours.assigneeDetail"
               class="detail-row"
             >
-              <td :colspan="manhours.summary.months.length + 2">
-                <div class="detail">
+              <td class="adetail-cell" :colspan="manhours.summary.months.length + 2">
+                <div class="adetail-h">
                   <strong>
                     {{ row.assigneeName }} の明細（原本形・<span class="tag manual">仮</span>セルは直接編集可）
                   </strong>
-                  <div class="detail-scroll">
+                </div>
+                <div class="detail-scroll">
                     <table class="detail-grid orig">
+                      <colgroup>
+                        <col class="c-cust" />
+                        <col class="c-code" />
+                        <col class="c-subj" />
+                        <col class="c-wt" />
+                        <col
+                          v-for="ym in manhours.summary.months"
+                          :key="ym"
+                          class="c-mon"
+                        />
+                        <col class="c-tot" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>顧客名</th><th>プロジェクトCD</th><th>件名</th><th>作業区分</th>
@@ -335,7 +357,6 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                         </tr>
                       </tbody>
                     </table>
-                  </div>
                 </div>
               </td>
             </tr>
@@ -367,7 +388,13 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
 </template>
 
 <style scoped>
-.mh-page { display: flex; flex-direction: column; gap: 1rem; }
+.mh-page {
+  display: flex; flex-direction: column; gap: 1rem;
+  /* サマリーと展開明細で月列を縦に揃えるための共通幅 */
+  --mh-lead: 24rem;  /* 先頭ブロック幅（サマリー=担当者列 / 明細=顧客名+CD+件名+区分） */
+  --mh-mw: 2.9rem;   /* 月1列の幅（両テーブル共通・狭め） */
+  --mh-tot: 4.2rem;  /* 合計列の幅 */
+}
 .page-header {
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
   background: var(--c-surface); border: 1px solid var(--c-border);
@@ -385,18 +412,29 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
 .seg-btn.active { background: var(--c-accent-weak); color: var(--c-accent-strong); font-weight: 600; }
 .seg-btn.prov.active { background: var(--c-warn-bg); color: var(--c-warn-fg); }
 .grid-wrap { overflow: auto; border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); }
-.mh-grid { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.mh-grid { border-collapse: collapse; width: 100%; font-size: 0.85rem; table-layout: fixed; }
 .mh-grid th, .mh-grid td {
   border-bottom: 1px solid var(--c-border); border-right: 1px solid var(--c-border);
-  padding: 0.3rem 0.5rem; text-align: right; white-space: nowrap;
+  padding: 0.3rem 0.4rem; text-align: right; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
 }
+/* 列幅（colgroup）。サマリーと明細で月幅・先頭幅を一致させる */
+.mh-grid col.c-lead { width: var(--mh-lead); }
+.mh-grid col.c-mon { width: var(--mh-mw); }
+.mh-grid col.c-tot { width: var(--mh-tot); }
+.detail-grid.orig col.c-cust { width: 7rem; }
+.detail-grid.orig col.c-code { width: 7rem; }
+.detail-grid.orig col.c-subj { width: 6rem; }
+.detail-grid.orig col.c-wt { width: 4rem; }
+.detail-grid.orig col.c-mon { width: var(--mh-mw); }
+.detail-grid.orig col.c-tot { width: var(--mh-tot); }
 .mh-grid thead th {
   background: var(--c-surface-2); color: var(--c-text-muted);
   position: sticky; top: 0; z-index: 2; font-weight: 600;
 }
 .sticky-col {
   position: sticky; left: 0; background: var(--c-surface); text-align: left;
-  z-index: 1; min-width: 8rem;
+  z-index: 1;
 }
 thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name { font-weight: 600; }
@@ -427,8 +465,15 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name.clickable { cursor: pointer; }
 .name.clickable:hover { color: var(--c-accent-strong); text-decoration: underline; }
 .name.clickable.open { background: var(--c-accent-weak); color: var(--c-accent-strong); }
-.detail-scroll { overflow-x: auto; margin-top: 0.35rem; }
-.detail-grid.orig { min-width: 60rem; }
+/* 担当者明細セル: 余白0でテーブルを行頭に揃え、月列をサマリーと一致させる */
+.adetail-cell { padding: 0 !important; }
+.adetail-h { padding: 0.4rem 0.6rem; }
+.detail-scroll { margin-top: 0; }
+/* サマリーと同じ固定レイアウト＆同幅。td 幅は colgroup に従う */
+.detail-grid.orig { width: 100%; table-layout: fixed; }
+.detail-grid.orig th, .detail-grid.orig td {
+  overflow: hidden; text-overflow: ellipsis;
+}
 .detail-grid.orig td.total { font-weight: 700; background: var(--c-surface-2); }
 .detail-grid tr.is-manual { background: var(--c-warn-bg); }
 .detail-grid tr.is-manual input.edit { background: var(--c-surface); }
