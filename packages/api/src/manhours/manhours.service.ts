@@ -80,6 +80,7 @@ interface JoinedEntry {
   assigneeName: string;
   projectId: number | null;
   projectName: string | null;
+  label: string | null;
   isProvisional: number | null;
   workType: string;
   yearMonth: string;
@@ -149,6 +150,7 @@ export class ManhoursService {
         assigneeName: assignees.name,
         projectId: manhourEntries.projectId,
         projectName: projects.name,
+        label: manhourEntries.label,
         isProvisional: projects.isProvisional,
         workType: manhourEntries.workType,
         yearMonth: manhourEntries.yearMonth,
@@ -174,6 +176,7 @@ export class ManhoursService {
         assigneeName: r.assigneeName ?? '(不明)',
         projectId: r.projectId,
         projectName: r.projectName,
+        label: r.label,
         isProvisional: r.isProvisional,
         workType: r.workType,
         yearMonth: r.yearMonth,
@@ -267,7 +270,10 @@ export class ManhoursService {
       row.totalHours += e.hours;
       cell.byProject.push({
         projectId: e.projectId,
-        projectName: e.projectName ?? (e.workType === 'zz' ? '非稼働' : '(未割当)'),
+        projectName:
+          e.projectName ??
+          e.label ??
+          (e.workType === 'zz' ? '非稼働' : '(未割当)'),
         isProvisional: e.isProvisional === 1,
         source: e.source as 'imported' | 'manual',
         workType: e.workType,

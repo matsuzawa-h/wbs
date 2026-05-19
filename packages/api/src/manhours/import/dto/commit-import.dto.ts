@@ -88,8 +88,9 @@ export class ManhourProjectResolutionDto {
   @MaxLength(64)
   projectCode?: string | null;
 
-  @IsIn(['link', 'createProvisional'])
-  action!: 'link' | 'createProvisional';
+  // labelOnly = projects マスタを作らず、件名ラベルだけで工数計上（CD無し既定）。
+  @IsIn(['link', 'createProvisional', 'labelOnly'])
+  action!: 'link' | 'createProvisional' | 'labelOnly';
 
   @IsOptional()
   @IsInt()
@@ -125,6 +126,12 @@ export class ManhourEntryRowDto {
 
   @IsNumber()
   hours!: number;
+
+  /** project 化しない明細の内訳ラベル（件名）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string | null;
 }
 
 export class ManhourCapacityRowDto {

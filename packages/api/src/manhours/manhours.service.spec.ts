@@ -79,27 +79,31 @@ function commitDtoFromPreview(
         ? { name: m.name, action: 'link', customerId: m.suggestedCustomerId }
         : { name: m.name, action: 'create', newCustomer: { name: m.name } },
     ),
-    projectResolution: p.projectMatches.map((m) =>
-      m.suggestedProjectId !== null
-        ? {
-            projectKey: m.projectKey,
-            action: 'link',
-            projectId: m.suggestedProjectId,
-          }
-        : {
-            projectKey: m.projectKey,
-            action: 'createProvisional',
-            projectCode: m.projectCode,
-            provisionalName: m.sampleName,
-            customerName: m.customerName,
-          },
-    ),
+    projectResolution: p.projectMatches.map((m) => {
+      if (m.suggestedProjectId !== null)
+        return {
+          projectKey: m.projectKey,
+          action: 'link',
+          projectId: m.suggestedProjectId,
+        };
+      // CD無し＆未一致は既定でラベルのみ（マスタ化しない）。
+      if (!m.projectCode)
+        return { projectKey: m.projectKey, action: 'labelOnly' };
+      return {
+        projectKey: m.projectKey,
+        action: 'createProvisional',
+        projectCode: m.projectCode,
+        provisionalName: m.sampleName,
+        customerName: m.customerName,
+      };
+    }),
     entries: p.entries.map((e) => ({
       assigneeName: e.assigneeName,
       projectKey: e.projectKey,
       workType: e.workType,
       yearMonth: e.yearMonth,
       hours: e.hours,
+      label: e.label,
     })),
     capacities: p.capacities.map((c) => ({
       assigneeName: c.assigneeName,
@@ -295,6 +299,44 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(mx.grandTotal).toBe(140); // 100 + 40
       expect(mx.monthTotals['2026-04']).toBe(100);
       expect(mx.rows[0].cells['2026-05'].total).toBe(40);
+    } finally {
+      close();
+    }
+  });
+
+  it('CD無し明細はラベルのみ（projects マスタを作らず件名で内訳表示）', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      const rows = [
+        ...SAMPLE(),
+        // CD 無しのフリー作業
+        ['西本　拓真', 'MNT', '顧客X', '保守作業', '', months({ 6: '10' })],
+      ];
+      const res = imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
+      // CD付き2件のみ仮作成。CD無し「保守作業」はマスタ化しない。
+      expect(res.projectsCreated).toBe(2);
+      const hasHosyu = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .some((p) => p.name === '保守作業');
+      expect(hasHosyu).toBe(false);
+
+      // 工数は担当者に計上され、内訳は件名ラベルで出る。
+      const sum = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const nishimoto = sum.rows.find((r) => r.assigneeName === '西本　拓真')!;
+      const jun = nishimoto.cells['2026-06'];
+      expect(jun.total).toBe(10);
+      expect(
+        jun.byProject.some(
+          (b) => b.projectId === null && b.projectName === '保守作業',
+        ),
+      ).toBe(true);
     } finally {
       close();
     }

@@ -207,9 +207,15 @@ export class ManhourImportService {
       }
 
       // 2) 案件の名寄せ（未一致/CD空は仮案件、再取込で重複作成しない）
+      // labelOnly = projects マスタを作らず件名ラベルだけで計上（CD無し既定）。
       let projectsCreated = 0;
       const keyToProjectId = new Map<string, number>();
+      const labelOnlyKeys = new Set<string>();
       for (const r of dto.projectResolution) {
+        if (r.action === 'labelOnly') {
+          labelOnlyKeys.add(r.projectKey);
+          continue;
+        }
         if (r.action === 'link' && r.projectId !== undefined) {
           keyToProjectId.set(r.projectKey, r.projectId);
           continue;
@@ -275,10 +281,20 @@ export class ManhourImportService {
         if (assigneeId === undefined) continue; // skip 担当者
         const isZz = e.workType === 'zz';
         let projectId: number | null = null;
-        if (!isZz && e.projectKey) {
+        let label: string | null = null;
+        if (isZz) {
+          // 非稼働: project なし、件名をラベルに（休暇/事務処理 等）。
+          label = e.label ?? '非稼働';
+        } else if (e.projectKey) {
           const pid = keyToProjectId.get(e.projectKey);
-          if (pid === undefined) continue; // 解決不能な案件は取り込まない
-          projectId = pid;
+          if (pid !== undefined) {
+            projectId = pid;
+          } else if (labelOnlyKeys.has(e.projectKey)) {
+            // CD無し等: マスタ化せず件名ラベルだけで計上。
+            label = e.label ?? null;
+          } else {
+            continue; // 解決不能な案件は取り込まない
+          }
         }
         tx.insert(manhourEntries)
           .values({
@@ -289,6 +305,7 @@ export class ManhourImportService {
             workType: e.workType ?? '',
             yearMonth: e.yearMonth,
             hours: e.hours,
+            label,
           })
           .run();
         entriesInserted += 1;
