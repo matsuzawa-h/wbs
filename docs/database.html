@@ -114,7 +114,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
     <tr><td><span class="fk">customer_id</span></td><td>INTEGER</td><td>FK customers.id（任意）/ ON DELETE SET NULL（idx_projects_customer）</td></tr>
     <tr><td>name</td><td>TEXT</td><td>NOT NULL プロジェクト名</td></tr>
-    <tr><td>project_code</td><td>TEXT</td><td>別システムのプロジェクトCD（任意・<strong>非ユニーク</strong>。取込工数の突合キー。idx_projects_code）</td></tr>
+    <tr><td>project_code</td><td>TEXT</td><td>代表プロジェクトCD（表示用。実際の突合は project_codes が正本。idx_projects_code）</td></tr>
     <tr><td>is_provisional</td><td>INTEGER / 0</td><td>NOT NULL 仮プロジェクトフラグ（1=仮。稼働見通しで確定/仮を区別）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
@@ -240,6 +240,17 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
   </tbody>
 </table>
 
+<table class="def">
+  <caption>2.11 project_codes（1プロジェクト×複数プロジェクトCD）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">project_id</span></td><td>INTEGER</td><td>NOT NULL / FK projects.id CASCADE（idx_project_codes_project）</td></tr>
+    <tr><td>code</td><td>TEXT</td><td>NOT NULL / <strong>UNIQUE</strong>（1CD=1プロジェクト。uniq_project_codes_code）。工程ごとに別CDでも同一プロジェクトに複数行で束ねる</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
 <h2 class="chapter" id="d3">3. マイグレーション一覧</h2>
 <p>適用状況は <code>src/db/migrations/meta/_journal.json</code> で管理（冪等。本番は <code>release.html</code> 8.0／8.2 の <code>migrate</code> で適用）。</p>
 <table>
@@ -255,6 +266,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0007</td><td>add_personal_tasks</td><td>personal_tasks テーブル追加</td></tr>
     <tr><td>0008</td><td>add_manhours</td><td>projects に project_code / is_provisional 追加＋manhour_import_batches / manhour_entries / manhour_capacities 追加</td></tr>
     <tr><td>0009</td><td>add_manhour_entry_label</td><td>manhour_entries.label 追加（CD無し/zz をマスタ化せず件名ラベルで計上）</td></tr>
+    <tr><td>0010</td><td>add_project_codes</td><td>project_codes 追加（1プロジェクト×複数CD）。既存 projects.project_code を backfill</td></tr>
   </tbody>
 </table>
 <div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>
@@ -399,8 +411,11 @@ project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<stro
 <code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに、未一致顧客を顧客マスタに自動作成
 （顧客は <strong>NFKC＋空白除去＋会社表記ゆれ＋小文字化</strong>の正規化キーで突合し、表記揺れ・再取込でも
 重複作成しない＝既存を再利用。安全側で見た目違いのみ同一視）。
-案件は CD有り未一致のみ仮プロジェクト作成（<strong>再取込時は CD/名前で既存仮案件を再利用＝重複防止</strong>、
-顧客は名寄せ結果で紐づけ）。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
+案件の突合は <code>project_codes</code>（CD一意）が正本。登録済CDは常に所属プロジェクトへ（<strong>再取込・付け替え防止</strong>）。
+未登録CDは件名から期間/工程表記を除いた<strong>束ね名(stem)で自動グルーピング提案</strong>し、
+同一 stem の複数CD（工程別など）を <strong>1 プロジェクト＝1ガント</strong>に束ねて作成（<code>newGroup</code>）。
+既存プロジェクトへ <code>link</code> した場合もそのCDを <code>project_codes</code> に恒久登録し次回以降自動で同じプロジェクトへ。
+顧客は名寄せ結果で紐づけ。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
 projects マスタを作らず <code>project_id=NULL</code>＋<code>label</code>=件名 で計上（<code>zz</code> も同様にラベル保持）。
 <strong>毎回新規バッチ</strong>として明細・月基準時間を投入（履歴保持）。
 集計は「選択/最新の取込バッチ ∪ 手入力(<code>batch_id NULL</code>)」で行い、
