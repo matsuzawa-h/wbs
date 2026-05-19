@@ -209,8 +209,8 @@ function back(): void {
       <span class="muted small">セルをダブルクリックで手入力（仮）。担当者行を追加：</span>
       <select v-model.number="extraAssigneeId">
         <option :value="null">（担当者を選択）</option>
-        <option v-for="e in employees.activeItems" :key="e.id" :value="e.id">
-          {{ e.name }}
+        <option v-for="e in employees.byCodeAsc" :key="e.id" :value="e.id">
+          {{ e.code ? `[${e.code}] ` : '' }}{{ e.name }}
         </option>
       </select>
       <button class="btn small" type="button" :disabled="extraAssigneeId === null" @click="addExtraRow">行追加</button>

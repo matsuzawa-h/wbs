@@ -80,7 +80,7 @@ const monthLabel = (ym: string): string => `${Number(ym.split('-')[1])}月`;
 
 const availableEmployees = computed<Employee[]>(() => {
   const present = new Set(displayRows.value.map((r) => r.assigneeId));
-  return employees.activeItems.filter((e) => !present.has(e.id));
+  return employees.byCodeAsc.filter((e) => !present.has(e.id));
 });
 
 function addRow(): void {
@@ -243,7 +243,7 @@ function onClose(): void {
           <span class="muted small">メンバー追加:</span>
           <select v-model.number="addAssigneeId">
             <option :value="null">（担当者を選択）</option>
-            <option v-for="e in availableEmployees" :key="e.id" :value="e.id">{{ e.name }}</option>
+            <option v-for="e in availableEmployees" :key="e.id" :value="e.id">{{ e.code ? `[${e.code}] ` : '' }}{{ e.name }}</option>
           </select>
           <button class="btn small" type="button" :disabled="addAssigneeId === null" @click="addRow">行追加</button>
           <span class="muted small">追加後、月セルに工数を入れると保存されます（0 で削除）。</span>

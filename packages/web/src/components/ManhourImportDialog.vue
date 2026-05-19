@@ -293,7 +293,7 @@ function extractMessage(e: unknown): string | null {
   return null;
 }
 
-const employeeOptions = computed<Employee[]>(() => employees.activeItems);
+const employeeOptions = computed<Employee[]>(() => employees.byCodeAsc);
 const projectOptions = computed<Project[]>(() => projects.items);
 const customerOptions = computed<Customer[]>(() => customers.activeItems);
 

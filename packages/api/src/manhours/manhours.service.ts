@@ -239,6 +239,29 @@ export class ManhoursService {
     return out;
   }
 
+  // 担当者を「コード昇順（NULL/空は末尾）」で並べるための比較器を返す。
+  private codeAscSorter(): (a: number, b: number) => number {
+    const idToCode = new Map<number, string | null>();
+    for (const a of this.db
+      .select({ id: assignees.id, code: assignees.code })
+      .from(assignees)
+      .all()) {
+      idToCode.set(a.id, a.code);
+    }
+    return (a: number, b: number): number => {
+      const ca = idToCode.get(a) ?? null;
+      const cb = idToCode.get(b) ?? null;
+      const ae = !ca;
+      const be = !cb;
+      if (ae && be) return a - b;
+      if (ae) return 1;
+      if (be) return -1;
+      return (ca as string).localeCompare(cb as string, 'en', {
+        numeric: true,
+      });
+    };
+  }
+
   // ---- screen (b): cross-assignee capacity / 見通し ----------------------
 
   getSummary(opts: {
@@ -323,8 +346,9 @@ export class ManhoursService {
       }
     }
 
+    const sortByCode = this.codeAscSorter();
     const rows = [...rowMap.values()].sort((a, b) =>
-      a.assigneeName.localeCompare(b.assigneeName, 'ja'),
+      sortByCode(a.assigneeId, b.assigneeId),
     );
     return { fiscalYear: opts.fiscalYear ?? null, batchId, months, rows };
   }
@@ -384,8 +408,9 @@ export class ManhoursService {
       grandTotal += e.hours;
     }
 
+    const sortByCode = this.codeAscSorter();
     const rows = [...rowMap.values()].sort((a, b) =>
-      a.assigneeName.localeCompare(b.assigneeName, 'ja'),
+      sortByCode(a.assigneeId, b.assigneeId),
     );
     return {
       projectId: project.id,
