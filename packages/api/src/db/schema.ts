@@ -244,6 +244,9 @@ export const manhourEntries = sqliteTable(
     workType: text('work_type').notNull().default(''),
     yearMonth: text('year_month').notNull(),
     hours: real('hours').notNull().default(0),
+    // project_id が NULL の明細（CD無しのフリー作業 / zz 非稼働）の件名。
+    // 稼働見通しの内訳表示に使う。projects マスタは作らずラベルだけ保持。
+    label: text('label'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
