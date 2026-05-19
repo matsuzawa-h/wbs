@@ -441,6 +441,7 @@ const fyOptions = computed<number[]>(() => {
         <section class="match-section">
           <strong>案件（プロジェクトCD）の束ね（{{ preview.projectMatches.length }} 件）</strong>
           <p class="muted">
+            <strong>プロジェクト化の対象は作業区分=AFTの行のみ</strong>です（MNT/SY/空/zz は工数のみ計上＝件名ラベル）。<br />
             工程ごとに別CDでも、<strong>同じ「束ね名」のCDは1プロジェクト＝1ガント</strong>に束ねます
             （件名から期間/工程表記を除いて自動提案）。各CDの「束ね先」を変えれば手動で再編成できます。
             既存プロジェクトに紐付けるとそのCDが恒久登録され、次回以降は自動で同じプロジェクトへ。
