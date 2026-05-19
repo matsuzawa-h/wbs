@@ -379,11 +379,10 @@ export class ManhourImportService {
           const pid = keyToProjectId.get(e.projectKey);
           if (pid !== undefined) {
             projectId = pid;
-          } else if (labelOnlyKeys.has(e.projectKey)) {
-            // CD無し等: マスタ化せず件名ラベルだけで計上。
-            label = e.label ?? null;
           } else {
-            continue; // 解決不能な案件は取り込まない
+            // labelOnly / 非AFT(プロジェクト対象外)CD / 未解決 →
+            // プロジェクト化せず件名ラベルで計上（工数は欠損させない）。
+            label = e.label ?? null;
           }
         }
         tx.insert(manhourEntries)

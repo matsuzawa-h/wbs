@@ -308,8 +308,9 @@ export function parseManhourCsv(
 
     if (hadValue) addAssignee(assignee);
 
-    // 案件同一性（zz は project を持たない）
-    if (!isZz && (hadValue || subject)) {
+    // プロジェクト作成対象は作業区分=AFT のみ。
+    // MNT/SY/空/zz は工数のみ計上（ラベル）でプロジェクト化しない。
+    if (workType === 'AFT' && (hadValue || subject)) {
       addCustomer(customer);
       const existing = projMap.get(projectKey);
       if (!existing) {

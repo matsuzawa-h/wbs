@@ -91,10 +91,14 @@ describe('parseManhourCsv', () => {
     expect(p.assigneeNames).toEqual(['堀田　和彦', '堤　昇太朗', '西本　拓真']);
   });
 
-  it('顧客名(E列)を案件行から distinct 抽出（zz/合計は対象外）', () => {
+  it('顧客名(E列)は AFT 行からのみ distinct 抽出（非AFT/zz/合計は対象外）', () => {
     const p = parseManhourCsv(csv, fy);
-    expect(p.customerNames).toEqual(['NIPPO', 'AG', '顧客X']);
-    expect(p.customerNames).not.toContain('休暇系'); // zz
+    // 顧客は AFT 行のみ収集（NIPPO は堀田 AFT 行）。AG=空区分, 顧客X=MNT,
+    // 休暇系=zz は対象外。
+    expect(p.customerNames).toEqual(['NIPPO']);
+    expect(p.customerNames).not.toContain('AG');
+    expect(p.customerNames).not.toContain('顧客X');
+    expect(p.customerNames).not.toContain('休暇系');
   });
 
   it('期間分割行を (担当者,CD,作業区分,年月) で合算する', () => {
@@ -128,17 +132,25 @@ describe('parseManhourCsv', () => {
     expect(cap.find((c) => c.yearMonth === '2026-05')!.baseHours).toBe(119);
   });
 
-  it('zz は非稼働 entry（project なし）、空CDは件名で案件化', () => {
+  it('zz/非AFT は projects 対象外（工数は entry として残る）', () => {
     const p = parseManhourCsv(csv, fy);
     const zz = p.entries.find((e) => e.workType === 'zz');
     expect(zz).toBeTruthy();
     expect(zz!.projectCode).toBeNull();
     expect(zz!.projectKey).toBe('zz:堀田　和彦');
-    // zz は projects 同一性に出ない
+    // zz も、空区分の「お助けサポート」も projects 同一性に出ない
     expect(p.projects.some((x) => x.projectKey.startsWith('zz:'))).toBe(false);
-    const help = p.projects.find((x) => x.projectKey === 'nm:お助けサポート');
-    expect(help).toBeTruthy();
-    expect(help!.projectCode).toBeNull();
+    expect(
+      p.projects.some((x) => x.projectKey === 'nm:お助けサポート'),
+    ).toBe(false);
+    // ただし工数は entry として保持される（ラベル計上）
+    expect(
+      p.entries.some(
+        (e) => e.projectKey === 'nm:お助けサポート' && e.label === 'お助けサポート',
+      ),
+    ).toBe(true);
+    // projects はすべて AFT 由来（CDあり）
+    expect(p.projects.every((x) => x.projectCode !== null)).toBe(true);
   });
 
   it('クォート内カンマを含む件名を壊さない', () => {

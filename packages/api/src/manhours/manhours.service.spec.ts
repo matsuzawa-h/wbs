@@ -134,9 +134,11 @@ describe('ManhourImportService + ManhoursService', () => {
       const res = imp.commit(
         commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'),
       );
-      expect(res.assigneesCreated).toBe(2);
-      expect(res.customersCreated).toBe(2); // NIPPO / 顧客X を顧客マスタへ登録
-      expect(res.projectsCreated).toBe(2); // AAP001 / AAP002 を仮作成
+      expect(res.assigneesCreated).toBe(2); // 堀田/西本（全区分の行から）
+      // 顧客・プロジェクトは AFT 行のみ対象 → NIPPO / AAP001 だけ。
+      // 西本の B案件(AAP002,顧客X) は MNT なので projects/customers 化しない。
+      expect(res.customersCreated).toBe(1);
+      expect(res.projectsCreated).toBe(1);
 
       // 仮案件が CSV顧客名で作成済み顧客に紐づく（zz の 休暇系 は対象外）
       const nippo = db
@@ -193,7 +195,7 @@ describe('ManhourImportService + ManhoursService', () => {
         .from(schema.projects)
         .all()
         .filter((p) => p.isProvisional === 1).length;
-      expect(projectCount).toBe(2);
+      expect(projectCount).toBe(1); // AFT の AAP001 のみ
 
       const batches = svc.listBatches(FY);
       expect(batches.length).toBe(2);
@@ -313,7 +315,7 @@ describe('ManhourImportService + ManhoursService', () => {
       const imp = new ManhourImportService(db);
       imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
       const custCount = () => db.select().from(schema.customers).all().length;
-      expect(custCount()).toBe(2); // NIPPO / 顧客X
+      expect(custCount()).toBe(1); // AFT 行の NIPPO のみ（顧客X は MNT）
 
       // 再取込: 顧客名を「ＮＩＰＰＯ　」(全角＋全角空白) に
       const rows = [
@@ -337,7 +339,7 @@ describe('ManhourImportService + ManhoursService', () => {
             : c,
         ),
       });
-      expect(custCount()).toBe(2); // 顧客は増えない
+      expect(custCount()).toBe(1); // 顧客は増えない
     } finally {
       close();
     }
@@ -406,8 +408,8 @@ describe('ManhourImportService + ManhoursService', () => {
         ['西本　拓真', 'MNT', '顧客X', '保守作業', '', months({ 6: '10' })],
       ];
       const res = imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
-      // CD付き2件のみ仮作成。CD無し「保守作業」はマスタ化しない。
-      expect(res.projectsCreated).toBe(2);
+      // AFT の AAP001 のみ作成。AAP002(MNT)・CD無し「保守作業」(MNT) は不作成。
+      expect(res.projectsCreated).toBe(1);
       const hasHosyu = db
         .select()
         .from(schema.projects)
