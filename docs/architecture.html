@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WBS Web アーキテクチャ設計書</title>
+<style>
+  :root{ --acc:#2563eb; --acc2:#1e3a8a; --bd:#e5e7eb; --bd2:#cbd5e1; --tx:#1f2937; --mut:#6b7280; --bg:#fff; }
+  *{ box-sizing:border-box; }
+  body{ font-family:"Segoe UI",Meiryo,system-ui,sans-serif; color:var(--tx);
+        max-width:1000px; margin:0 auto; padding:2rem 1.4rem 4rem; line-height:1.7; }
+  h1{ font-size:1.7rem; margin:0 0 .2rem; }
+  .lead{ color:var(--mut); margin:.2rem 0 .2rem; }
+  .meta{ color:var(--mut); font-size:.85rem; margin:0 0 1rem; }
+  hr.rule{ border:0; border-top:3px solid var(--acc); margin:1rem 0 1.6rem; }
+  h2.chapter{ font-size:1.25rem; color:var(--acc2); border-bottom:2px solid var(--bd);
+        padding-bottom:.3rem; margin:2.2rem 0 .8rem; }
+  h3.section{ font-size:1.05rem; margin:1.6rem 0 .5rem; }
+  h3.section .num{ display:inline-block; min-width:2.2rem; color:var(--acc); font-weight:700; }
+  nav.toc{ background:#f8fafc; border:1px solid var(--bd); border-radius:8px; padding:.8rem 1.1rem; margin:1rem 0 1.5rem; }
+  nav.toc h2{ font-size:1rem; margin:.1rem 0 .5rem; }
+  nav.toc ol{ margin:0; padding-left:1.3rem; }
+  nav.toc a{ color:var(--acc); text-decoration:none; }
+  nav.toc a:hover{ text-decoration:underline; }
+  table.cmd{ border-collapse:collapse; width:100%; margin:.7rem 0; font-size:.9rem; }
+  table.cmd th,table.cmd td{ border:1px solid var(--bd2); padding:.4rem .6rem; text-align:left; vertical-align:top; }
+  table.cmd th{ background:#f1f5f9; color:#475569; }
+  pre{ background:#0f172a; color:#e2e8f0; border-radius:8px; padding:.8rem 1rem; overflow:auto; font-size:.85rem; }
+  pre.diagram{ background:#f8fafc; color:#1f2937; border:1px solid var(--bd); line-height:1.4; }
+  code{ background:#eef2ff; color:#3730a3; padding:.05rem .35rem; border-radius:4px; font-size:.88em; }
+  pre code{ background:none; color:inherit; padding:0; }
+  .note,.tip,.warn{ border-radius:8px; padding:.6rem .9rem; margin:.8rem 0; font-size:.92rem; }
+  .note{ background:#eff6ff; border:1px solid #bfdbfe; }
+  .tip{ background:#ecfdf5; border:1px solid #a7f3d0; }
+  .warn{ background:#fef2f2; border:1px solid #fecaca; }
+  ul.bullets{ margin:.3rem 0; padding-left:1.3rem; }
+  ul.bullets li{ margin:.2rem 0; }
+  .tag{ display:inline-block; font-size:.72rem; font-weight:700; border-radius:4px; padding:.05rem .4rem; }
+  .t-fe{ background:#dbeafe; color:#1e40af; } .t-be{ background:#dcfce7; color:#166534; }
+  .t-db{ background:#fef3c7; color:#92400e; } .t-ops{ background:#ede9fe; color:#5b21b6; }
+  footer{ color:var(--mut); font-size:.8rem; margin-top:3rem; border-top:1px solid var(--bd); padding-top:.8rem; }
+</style>
+</head>
+<body>
+
+<h1>WBS Web アーキテクチャ設計書</h1>
+<p class="lead">Excel 製 WBS／ガント工程表の社内 Web 化システム — システム構成と方式</p>
+<p class="meta">対象: 社内 LAN クローズド / 想定 〜10 ユーザ / Windows 11 + Node.js 22 LTS / SQLite / 認証なし</p>
+<hr class="rule">
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#c1">目的とスコープ</a></li>
+    <li><a href="#c2">全体構成</a></li>
+    <li><a href="#c3">技術スタック</a></li>
+    <li><a href="#c4">バックエンド構成（NestJS モジュール）</a></li>
+    <li><a href="#c5">フロントエンド構成（Vue 3 SPA）</a></li>
+    <li><a href="#c6">リクエスト経路</a></li>
+    <li><a href="#c7">データ永続化</a></li>
+    <li><a href="#c8">デプロイ・アーキテクチャ</a></li>
+    <li><a href="#c9">横断的な処理方針</a></li>
+    <li><a href="#c10">セキュリティ方針</a></li>
+    <li><a href="#c11">非機能・制約</a></li>
+  </ol>
+</nav>
+
+<h2 class="chapter" id="c1">1. 目的とスコープ</h2>
+<p>
+従来 Excel テンプレート（<code>テンプレートファイル.xls</code>）で運用していた WBS／ガント工程表を Web 化し、
+複数プロジェクトの工程・進捗・実績・担当を一元管理する。Excel との相互運用（取込・出力）と、
+プロジェクトに紐づかない「個人タスク」管理、社員横断の「担当別予定」表示・カレンダーを提供する。
+インターネット公開は不要で、社内 LAN 内の 1 台に常駐させる構成とする。
+</p>
+
+<h2 class="chapter" id="c2">2. 全体構成</h2>
+<p>
+フロントエンド（Vue 3 SPA）はビルド成果物を API に同梱し、<strong>単一の Node.js プロセス</strong>
+（NestJS）が「静的 SPA 配信」「REST API <code>/api/*</code>」「MCP <code>/mcp</code>」「業務ファイル配信」を兼ねる。
+データは同一マシンの SQLite ファイル 1 個。永続データはアプリ本体と別ディレクトリに置き、
+アプリ差し替え時に消えないようにする。
+</p>
+<pre class="diagram">  ブラウザ (社内LAN, Chrome/Edge)
+        │  HTTP  http://&lt;server&gt;:5000/
+        ▼
+ ┌──────────────────────────────────────────────┐
+ │  単一 Node.js プロセス  (NestJS 10 / Express 4)        │
+ │                                                      │
+ │   /            → 静的配信 (Vue SPA = packages/api/public) │
+ │   /api/*        → REST コントローラ群                  │
+ │   /api/help/*   → 操作手順 (docs/manual.html, screenshots) │
+ │   /api/downloads→ Excel アドイン (km_module.xla)        │
+ │   /mcp          → MCP (Streamable HTTP, @rekog/mcp-nest) │
+ │                                                      │
+ │   サービス層 → drizzle-orm → better-sqlite3            │
+ └───────────────────────┬──────────────────────────────┘
+                          │ file I/O
+                          ▼
+       SQLite  C:\AppsData\WbsWeb\wbs.db   (WAL)
+       テンプレ/アドイン/docs  C:\AppsData\WbsWeb\...</pre>
+
+<h2 class="chapter" id="c3">3. 技術スタック</h2>
+<table class="cmd">
+  <thead><tr><th>層</th><th>採用技術</th><th>補足</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag t-fe">FE</span></td><td>Vue 3 (script setup) / Vite / TypeScript / Pinia / vue-router / frappe-gantt 0.6</td><td>SPA。ガントは frappe-gantt をベースに独自オーバーレイ（今日線・週末・固定ヘッダ等）。</td></tr>
+    <tr><td><span class="tag t-be">BE</span></td><td>NestJS 10 / @nestjs/platform-express（Express 4）/ class-validator / class-transformer</td><td>静的配信は <code>app.useStaticAssets(public)</code>。SPA フォールバック有。</td></tr>
+    <tr><td><span class="tag t-db">DB</span></td><td>SQLite / drizzle-orm 0.36 / better-sqlite3 11 / drizzle-kit 0.28（マイグレーション）</td><td>WAL モード。<code>drizzle-kit</code> は<strong>本番依存</strong>（本番で <code>migrate</code> 実行可能にするため）。</td></tr>
+    <tr><td><span class="tag t-be">MCP</span></td><td>@rekog/mcp-nest / @modelcontextprotocol/sdk / zod</td><td>Streamable HTTP（statelessMode）。Zod スキーマと class-validator DTO の整合をテストで担保。</td></tr>
+    <tr><td><span class="tag t-ops">OPS</span></td><td>pnpm（<code>node-linker=hoisted</code>）/ Windows タスクスケジューラ常駐 / robocopy・tar</td><td>hoisted によりシンボリックリンク無し → robocopy/zip 転送で壊れない（ネット制限環境対応）。</td></tr>
+  </tbody>
+</table>
+
+<h2 class="chapter" id="c4">4. バックエンド構成（NestJS モジュール）</h2>
+<table class="cmd">
+  <thead><tr><th>モジュール</th><th>主なルート</th><th>責務</th></tr></thead>
+  <tbody>
+    <tr><td>ProjectsModule</td><td><code>/api/projects</code>, <code>/:id/members</code></td><td>プロジェクト CRUD、表示メンバー（project_members）設定。</td></tr>
+    <tr><td>TasksModule</td><td><code>/api/projects/:id/tasks</code>, <code>/api/tasks/:id</code>, <code>/duplicate</code>, <code>/reorder</code></td><td>WBS タスク CRUD・複製・並び替え。<strong>連動カスケード／集計ロールアップ</strong>を内包（DateCascadeService）。</td></tr>
+    <tr><td>PersonalTasksModule</td><td><code>/api/employees/:id/personal-tasks</code>, <code>/api/personal-tasks/:id</code></td><td>個人タスク CRUD（WBS と非干渉）。</td></tr>
+    <tr><td>EmployeesModule</td><td><code>/api/employees</code>, <code>/:id/tasks</code></td><td>社員（assignees）マスタ CRUD、社員横断の割当タスク取得。</td></tr>
+    <tr><td>CustomersModule</td><td><code>/api/customers</code></td><td>顧客マスタ CRUD。</td></tr>
+    <tr><td>HolidaysModule</td><td><code>/api/holidays</code>, <code>/bulk</code></td><td>休日マスタ CRUD。営業日計算の入力。短期キャッシュ付き。</td></tr>
+    <tr><td>ExcelModule</td><td><code>/api/projects/:id/export.xls</code></td><td>旧 Excel テンプレートへ流し込み出力（BIFF 直書き）。</td></tr>
+    <tr><td>ExcelImportModule</td><td><code>/api/projects/import/preview</code>, <code>/commit</code></td><td>Excel から WBS を解析・取込（プレビュー → 確定）。</td></tr>
+    <tr><td>DownloadsModule</td><td><code>/api/downloads/km_module.xla</code></td><td>Excel アドイン配布。</td></tr>
+    <tr><td>HelpModule</td><td><code>/api/help/manual.html</code>, <code>/screenshots/:name</code></td><td>操作手順書をアプリ内配信（<code>docs/</code> 単一ソース、パストラバーサル遮断）。</td></tr>
+    <tr><td>McpModule</td><td><code>/mcp</code></td><td>顧客/プロジェクト/タスク/個人タスク/社員/休日の MCP ツール（REST と同一サービス層）。</td></tr>
+    <tr><td>DbModule</td><td>—</td><td>better-sqlite3 接続を <code>DB_TOKEN</code> で供給（グローバル）。</td></tr>
+  </tbody>
+</table>
+
+<h2 class="chapter" id="c5">5. フロントエンド構成（Vue 3 SPA）</h2>
+<table class="cmd">
+  <thead><tr><th>ルート</th><th>画面</th><th>概要</th></tr></thead>
+  <tbody>
+    <tr><td><code>/</code></td><td>プロジェクト一覧</td><td>顧客でグルーピング、作成・Excel 取込導線。</td></tr>
+    <tr><td><code>/projects/:id/gantt</code></td><td>WBS／ガント</td><td>3 階層（大/中/項目）テーブル＋ガント。連動・複製・備考・実績・状態。</td></tr>
+    <tr><td><code>/assignments</code></td><td>担当別予定</td><td>社員横断の割当＋個人タスク。一覧／<strong>カレンダー</strong>切替（既定カレンダー）。</td></tr>
+    <tr><td><code>/customers</code> / <code>/employees</code> / <code>/holidays</code></td><td>各マスタ</td><td>顧客／社員／休日の保守。</td></tr>
+    <tr><td><code>/downloads</code></td><td>ダウンロード</td><td>Excel アドイン取得手順。</td></tr>
+    <tr><td><code>/manual</code></td><td>操作手順</td><td>アプリ枠内に <code>/api/help/manual.html</code> を iframe 表示。</td></tr>
+  </tbody>
+</table>
+<p>
+状態管理は Pinia（projects / tasks / employees / customers / holidays / projectMembers ストア）。
+ガントは frappe-gantt を土台に、スクロール同期・固定ヘッダ・今日マーカー・週末/休日表示・
+バーラベル可読性などを独自実装。担当別予定カレンダーは月グリッド（バーのレーン配置・D&D・新規作成ポップアップ）を独自実装。
+</p>
+
+<h2 class="chapter" id="c6">6. リクエスト経路</h2>
+<ul class="bullets">
+  <li><strong>静的 SPA</strong>：<code>/</code> ほか未マッチ URL → <code>packages/api/public</code> の Vue ビルド成果物（<code>useStaticAssets</code>, fallthrough）。ディープリンクは SPA 側ルータが処理。</li>
+  <li><strong>REST</strong>：<code>/api/*</code> を各コントローラが処理。検証は class-validator DTO（whitelist）。</li>
+  <li><strong>MCP</strong>：<code>/mcp</code>（Streamable HTTP・statelessMode）。ツールは REST と<strong>同一のサービス層</strong>を呼ぶため挙動が一致。</li>
+  <li><strong>業務ファイル</strong>：Excel 出力／取込、アドイン配布、操作手順・スクショ配信。<code>docs/</code> は実行時にディスク参照（更新は再起動不要）。</li>
+</ul>
+
+<h2 class="chapter" id="c7">7. データ永続化</h2>
+<ul class="bullets">
+  <li>SQLite 単一ファイル。接続は <code>better-sqlite3</code>、クエリは <code>drizzle-orm</code>。WAL モード。</li>
+  <li>DB パスは環境変数 <code>DB_PATH</code>（本番 <code>C:\AppsData\WbsWeb\wbs.db</code>）。未指定時は <code>cwd/data/wbs.db</code>。</li>
+  <li>スキーマ変更は <code>drizzle-kit</code> マイグレーション（<code>src/db/migrations</code> + <code>_journal.json</code>）。冪等。詳細は別紙「テーブル定義・処理設計書」。</li>
+  <li>無停止スナップショットは <code>VACUUM INTO</code>（WAL とズレないコピー）。</li>
+</ul>
+
+<h2 class="chapter" id="c8">8. デプロイ・アーキテクチャ</h2>
+<pre class="diagram">[開発機 DEV]                         [本番機 PROD: TG120286]
+ build-deploy-zip.bat                 release-prod.bat (管理者)
+  pnpm install                         サービス停止 + node 終了
+  web/api build                        tar 展開 (長パス対応)
+  pnpm --prod deploy ─┐                robocopy /MIR /XD logs
+  tar zip            ├─→ \\TG120286\tmp\WbsWeb-deploy.zip → C:\Apps\WbsWeb
+  docs 同期 ─────────┘ → \\TG120286\C$\AppsData\WbsWeb\docs
+                                       drizzle-kit migrate
+                                       タスク起動 (port 5000)</pre>
+<ul class="bullets">
+  <li><strong>単一プロセス常駐</strong>：Windows タスクスケジューラ（システム起動時・失敗時リトライ）。<code>start.cmd</code> が環境変数とログを設定。</li>
+  <li><strong>ディレクトリ分離</strong>：<code>C:\Apps\WbsWeb</code>（毎回 <code>/MIR</code> で総入替）と <code>C:\AppsData\WbsWeb</code>（DB／テンプレ／アドイン／docs＝不可侵）。</li>
+  <li><strong>pnpm hoisted</strong>：node_modules がフラット実体 → robocopy/zip 転送で壊れない（本番ネット制限環境でも install 不要）。</li>
+  <li><strong>長パス対策</strong>：配布 zip の展開は標準 <code>tar</code>（エクスプローラ/<code>Expand-Archive</code> は 260 文字超で失敗）。</li>
+  <li>手順詳細は別紙「リリース手順書（<code>release.html</code>）」8.0 章。</li>
+</ul>
+
+<h2 class="chapter" id="c9">9. 横断的な処理方針</h2>
+<table class="cmd">
+  <thead><tr><th>方針</th><th>概要</th></tr></thead>
+  <tbody>
+    <tr><td>営業日による終了日算出</td><td>開始日＋日数（営業日）から終了日を算出。土日＋休日マスタを非稼働日として除外。</td></tr>
+    <tr><td>連動カスケード</td><td>レベル3タスクの日付変更時、同一中項目内の後続を<strong>同じ営業日数だけ平行シフト</strong>（直列再配置しない）。余裕のある独立タスクは動かさない。連動 OFF も可。</td></tr>
+    <tr><td>集計ロールアップ</td><td>大/中項目の予定・実績・工数は子の min/max/合算で自動再計算。</td></tr>
+    <tr><td>状態の自動判定</td><td>状態（完了/実行中/遅延中/着手遅れ/未着手）は開始/終了/実績/今日から<strong>導出（DB 非保存）</strong>。</td></tr>
+    <tr><td>タスク複製</td><td>部分木をディープコピー（進捗・実績も引継ぎ）、元の直後に配置、終了日再計算・祖先再集計。</td></tr>
+    <tr><td>個人タスク分離</td><td>個人タスクは WBS ツリー外。ガント／Excel に出さず、担当別予定のみで管理。</td></tr>
+    <tr><td>Excel 入出力</td><td>旧テンプレートへ BIFF 直書き出力／Excel から WBS 解析・取込（プレビュー→確定）。</td></tr>
+    <tr><td>MCP 整合</td><td>MCP ツールは REST と同一サービス層。Zod ↔ DTO パリティをテストで担保。</td></tr>
+  </tbody>
+</table>
+
+<h2 class="chapter" id="c10">10. セキュリティ方針</h2>
+<div class="warn">
+  <strong>⚠ 認証なし（社内 LAN 前提）</strong>
+  Web API・MCP とも現状<strong>無認証</strong>で動作（社内 LAN クローズド・HTTP 平文）。
+  MCP 認証ガード（<code>McpAuthGuard</code>）はコメントアウト済み。将来インターネット接続や認証導入時は
+  Web API と MCP を同じ仕組みで保護し、<code>MCP_TOKEN</code> を必須化する方針（<code>release.html</code> セキュリティ方針章参照）。
+</div>
+<ul class="bullets">
+  <li>Help 配信はファイル名を検証し<strong>パストラバーサルを遮断</strong>（不正は 404）。</li>
+  <li>入力は class-validator（whitelist）で検証。SQL は drizzle のパラメタライズ。</li>
+</ul>
+
+<h2 class="chapter" id="c11">11. 非機能・制約</h2>
+<ul class="bullets">
+  <li>規模：〜10 ユーザ／社内 LAN。<strong>同時編集は非対応</strong>（同一プロジェクトを複数人で同時編集しない運用前提）。</li>
+  <li>可用性：タスクスケジューラで OS 起動時自動起動・失敗時リトライ。ダウンタイムは更新時 1〜2 分。</li>
+  <li>バックアップ：<code>VACUUM INTO</code> による無停止日次スナップショット（<code>release.html</code> バックアップ章）。</li>
+  <li>互換：開発機と本番で Node.js メジャー一致必須（better-sqlite3 ネイティブ整合）。</li>
+</ul>
+
+<footer>
+  WBS Web アーキテクチャ設計書 — 関連: テーブル定義・処理設計書 (database.html) / リリース手順書 (release.html) / 操作マニュアル (manual.html)
+</footer>
+</body>
+</html>
