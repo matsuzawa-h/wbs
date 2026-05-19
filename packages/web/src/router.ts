@@ -7,6 +7,8 @@ import AssignmentsPage from './pages/AssignmentsPage.vue';
 import CustomerPage from './pages/CustomerPage.vue';
 import DownloadsPage from './pages/DownloadsPage.vue';
 import HelpPage from './pages/HelpPage.vue';
+import ManhoursSummaryPage from './pages/ManhoursSummaryPage.vue';
+import ProjectManhoursPage from './pages/ProjectManhoursPage.vue';
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'projects', component: ProjectListPage },
@@ -14,6 +16,13 @@ const routes: RouteRecordRaw[] = [
     path: '/projects/:projectId/gantt',
     name: 'gantt',
     component: GanttPage,
+    props: (route) => ({ projectId: Number(route.params.projectId) }),
+  },
+  { path: '/manhours', name: 'manhours', component: ManhoursSummaryPage },
+  {
+    path: '/projects/:projectId/manhours',
+    name: 'project-manhours',
+    component: ProjectManhoursPage,
     props: (route) => ({ projectId: Number(route.params.projectId) }),
   },
   { path: '/holidays', name: 'holidays', component: HolidayPage },
