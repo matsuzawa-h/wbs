@@ -190,6 +190,26 @@ export interface ProjectMatrix {
   grandTotal: number;
 }
 
+export interface AssigneeDetailRow {
+  workType: string;
+  customerName: string | null;
+  subject: string;
+  projectCode: string | null;
+  projectId: number | null;
+  source: 'imported' | 'manual';
+  cells: Record<string, number>;
+  total: number;
+}
+
+export interface AssigneeDetail {
+  assigneeId: number;
+  assigneeName: string;
+  fiscalYear: number | null;
+  batchId: number | null;
+  months: string[];
+  rows: AssigneeDetailRow[];
+}
+
 export interface ManualEntryInput {
   assigneeId: number;
   projectId?: number | null;

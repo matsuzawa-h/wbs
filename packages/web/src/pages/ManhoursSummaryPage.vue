@@ -91,6 +91,45 @@ async function onEditManual(
   await reload();
 }
 
+// 担当者クリック → 原本形（作業区分/顧客名/件名/CD × 12ヶ月）の明細を開く。
+const openAssignee = ref<number | null>(null);
+async function toggleAssignee(assigneeId: number): Promise<void> {
+  if (openAssignee.value === assigneeId) {
+    openAssignee.value = null;
+    return;
+  }
+  openAssignee.value = assigneeId;
+  expanded.value = null; // セル内訳は閉じる（パネル二重表示を避ける）
+  await manhours.fetchAssigneeDetail(assigneeId, {
+    fiscalYear: fiscalYear.value,
+    batchId: manhours.selectedBatchId,
+  });
+}
+
+// 明細グリッドの「仮(手入力)」セルを直接編集（確定=取込は参照のみ）。
+async function onEditAssigneeManual(
+  row: { projectId: number | null; workType: string },
+  ym: string,
+  raw: string,
+): Promise<void> {
+  const d = manhours.assigneeDetail;
+  if (!d) return;
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours < 0) return;
+  await manhours.saveManualEntry({
+    assigneeId: d.assigneeId,
+    projectId: row.projectId,
+    workType: row.workType,
+    yearMonth: ym,
+    hours,
+  });
+  await manhours.fetchAssigneeDetail(d.assigneeId, {
+    fiscalYear: fiscalYear.value,
+    batchId: manhours.selectedBatchId,
+  });
+  await reload(); // サマリー側も最新化
+}
+
 const monthTotals = computed<Record<string, { total: number; base: number }>>(
   () => {
     const acc: Record<string, { total: number; base: number }> = {};
@@ -164,7 +203,12 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
         <tbody>
           <template v-for="row in manhours.summary.rows" :key="row.assigneeId">
             <tr>
-              <td class="sticky-col name">{{ row.assigneeName }}</td>
+              <td
+                class="sticky-col name clickable"
+                :class="{ open: openAssignee === row.assigneeId }"
+                title="クリックで担当者の明細（原本形・仮は編集可）を開閉"
+                @click="toggleAssignee(row.assigneeId)"
+              >{{ row.assigneeName }}</td>
               <td
                 v-for="ym in manhours.summary.months"
                 :key="ym"
@@ -232,6 +276,66 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </td>
+            </tr>
+            <tr
+              v-if="openAssignee === row.assigneeId && manhours.assigneeDetail"
+              class="detail-row"
+            >
+              <td :colspan="manhours.summary.months.length + 2">
+                <div class="detail">
+                  <strong>
+                    {{ row.assigneeName }} の明細（原本形・<span class="tag manual">仮</span>セルは直接編集可）
+                  </strong>
+                  <div class="detail-scroll">
+                    <table class="detail-grid orig">
+                      <thead>
+                        <tr>
+                          <th>作業区分</th><th>顧客名</th><th>件名</th><th>プロジェクトCD</th>
+                          <th v-for="ym in manhours.assigneeDetail.months" :key="ym" class="num">{{ ymLabel(ym) }}</th>
+                          <th class="num">合計</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="(d, i) in manhours.assigneeDetail.rows"
+                          :key="i"
+                          :class="{ 'is-manual': d.source === 'manual' }"
+                        >
+                          <td>
+                            {{ d.workType || '—' }}
+                            <span class="tag" :class="d.source">{{ d.source === 'manual' ? '仮' : '確定' }}</span>
+                          </td>
+                          <td>{{ d.customerName || '—' }}</td>
+                          <td>{{ d.subject }}</td>
+                          <td>{{ d.projectCode || '—' }}</td>
+                          <td
+                            v-for="ym in manhours.assigneeDetail.months"
+                            :key="ym"
+                            class="num"
+                          >
+                            <input
+                              v-if="d.source === 'manual'"
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              class="edit"
+                              :value="d.cells[ym] ?? ''"
+                              @change="onEditAssigneeManual(d, ym, ($event.target as HTMLInputElement).value)"
+                            />
+                            <template v-else>{{ d.cells[ym] ? d.cells[ym].toFixed(2) : '' }}</template>
+                          </td>
+                          <td class="num total">{{ d.total.toFixed(2) }}</td>
+                        </tr>
+                        <tr v-if="!manhours.assigneeDetail.rows.length">
+                          <td :colspan="manhours.assigneeDetail.months.length + 5" class="muted">
+                            この担当者の明細はありません
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -320,6 +424,14 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .detail-grid input.edit {
   width: 5rem; text-align: right; padding: 0.1rem 0.3rem;
 }
+.name.clickable { cursor: pointer; }
+.name.clickable:hover { color: var(--c-accent-strong); text-decoration: underline; }
+.name.clickable.open { background: var(--c-accent-weak); color: var(--c-accent-strong); }
+.detail-scroll { overflow-x: auto; margin-top: 0.35rem; }
+.detail-grid.orig { min-width: 60rem; }
+.detail-grid.orig td.total { font-weight: 700; background: var(--c-surface-2); }
+.detail-grid tr.is-manual { background: var(--c-warn-bg); }
+.detail-grid tr.is-manual input.edit { background: var(--c-surface); }
 .tag {
   display: inline-block; font-size: 0.7rem; padding: 0.02rem 0.35rem;
   border-radius: 3px; margin-right: 0.25rem;

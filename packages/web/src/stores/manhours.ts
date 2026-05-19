@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '@/api/client';
 import type {
+  AssigneeDetail,
   CapacitySummary,
   ManhourBatch,
   ManualEntryInput,
@@ -17,6 +18,7 @@ export const useManhoursStore = defineStore('manhours', () => {
   const batches = ref<ManhourBatch[]>([]);
   const summary = ref<CapacitySummary | null>(null);
   const projectMatrix = ref<ProjectMatrix | null>(null);
+  const assigneeDetail = ref<AssigneeDetail | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -89,6 +91,29 @@ export const useManhoursStore = defineStore('manhours', () => {
     }
   }
 
+  async function fetchAssigneeDetail(
+    assigneeId: number,
+    opts: { fiscalYear?: number; batchId?: number | null } = {},
+  ): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const params: Record<string, unknown> = { ...sourceParams() };
+      if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
+      if (opts.batchId !== null && opts.batchId !== undefined)
+        params.batchId = opts.batchId;
+      const res = await api.get<AssigneeDetail>(
+        `/manhours/assignees/${assigneeId}/detail`,
+        { params },
+      );
+      assigneeDetail.value = res.data;
+    } catch (e: any) {
+      error.value = e?.message ?? 'failed to load assignee detail';
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function saveManualEntry(input: ManualEntryInput): Promise<void> {
     await api.post('/manhours/manual-entries', input);
   }
@@ -115,6 +140,7 @@ export const useManhoursStore = defineStore('manhours', () => {
     batches,
     summary,
     projectMatrix,
+    assigneeDetail,
     loading,
     error,
     selectedBatchId,
@@ -123,6 +149,7 @@ export const useManhoursStore = defineStore('manhours', () => {
     fetchBatches,
     fetchSummary,
     fetchProjectMatrix,
+    fetchAssigneeDetail,
     saveManualEntry,
     deleteManualEntry,
     createManualProject,
