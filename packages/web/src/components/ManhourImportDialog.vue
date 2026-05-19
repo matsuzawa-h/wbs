@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
-import type { Employee, Project } from '@/types';
+import { useCustomersStore } from '@/stores/customers';
+import type { Customer, Employee, Project } from '@/types';
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'committed'): void }>();
@@ -12,6 +13,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'committed'): void }>();
 const router = useRouter();
 const employees = useEmployeesStore();
 const projects = useProjectsStore();
+const customers = useCustomersStore();
 
 type Step = 'upload' | 'review';
 const step = ref<Step>('upload');
@@ -33,6 +35,7 @@ interface ProjectMatch {
   customerName: string | null;
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
+  suggestedCustomerId: number | null;
 }
 interface PreviewResult {
   fiscalYear: number;
@@ -61,6 +64,7 @@ interface PCh {
   action: 'link' | 'createProvisional';
   projectId: number | null;
   provisionalName: string;
+  customerId: number | null;
 }
 const aChoices = ref<Record<string, ACh>>({});
 const pChoices = ref<Record<string, PCh>>({});
@@ -95,6 +99,7 @@ watch(
     uploading.value = false;
     employees.fetchAll();
     projects.fetchAll();
+    customers.fetchAll();
   },
 );
 
@@ -138,6 +143,7 @@ async function onPreview(): Promise<void> {
         action: m.suggestedProjectId !== null ? 'link' : 'createProvisional',
         projectId: m.suggestedProjectId,
         provisionalName: m.sampleName,
+        customerId: m.suggestedCustomerId,
       };
     }
     pChoices.value = p;
@@ -201,6 +207,7 @@ async function onCommit(): Promise<void> {
         action: 'createProvisional',
         projectCode: m.projectCode,
         provisionalName: c.provisionalName.trim(),
+        customerId: c.customerId,
       };
     });
     await api.post('/manhours/import/commit', {
@@ -238,6 +245,7 @@ function extractMessage(e: unknown): string | null {
 
 const employeeOptions = computed<Employee[]>(() => employees.activeItems);
 const projectOptions = computed<Project[]>(() => projects.items);
+const customerOptions = computed<Customer[]>(() => customers.activeItems);
 const fyOptions = computed<number[]>(() => {
   const base = currentFiscalYear();
   return [base + 1, base, base - 1, base - 2];
@@ -350,7 +358,18 @@ const fyOptions = computed<number[]>(() => {
                       {{ p.isProvisional ? '【仮】' : '' }}{{ p.name }}{{ p.projectCode ? ` (${p.projectCode})` : '' }}
                     </option>
                   </select>
-                  <input v-else v-model="pChoices[m.projectKey].provisionalName" type="text" class="link-select" maxlength="200" placeholder="仮プロジェクト名" />
+                  <div v-else class="prov-fields">
+                    <input v-model="pChoices[m.projectKey].provisionalName" type="text" class="link-select" maxlength="200" placeholder="仮プロジェクト名" />
+                    <select v-model.number="pChoices[m.projectKey].customerId" class="link-select">
+                      <option :value="null">（顧客未指定）</option>
+                      <option v-for="cu in customerOptions" :key="cu.id" :value="cu.id">
+                        {{ cu.code ? `[${cu.code}] ` : '' }}{{ cu.name }}
+                      </option>
+                    </select>
+                    <span v-if="m.customerName" class="muted small">
+                      CSV顧客名: {{ m.customerName }}<template v-if="pChoices[m.projectKey].customerId === null">（未登録 → 顧客マスタに無いので任意で選択）</template>
+                    </span>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -412,6 +431,7 @@ const fyOptions = computed<number[]>(() => {
 .radio { display: inline-flex; align-items: center; gap: 0.2rem; margin-right: 0.6rem; font-size: 0.83rem; }
 .link-select { width: 100%; }
 .new-emp { display: flex; flex-direction: column; gap: 0.3rem; }
+.prov-fields { display: flex; flex-direction: column; gap: 0.3rem; }
 .modal-footer {
   display: flex; justify-content: flex-end; gap: 0.5rem;
   padding-top: 0.5rem; border-top: 1px solid var(--c-border); margin-top: 0.5rem;
