@@ -441,6 +441,59 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('担当者別明細（原本形・FY12ヶ月・確定/仮の行）を返す', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      // 取込のみ
+      const d = svc.getAssigneeDetail(horita.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      expect(d.assigneeName).toBe('堀田　和彦');
+      expect(d.months).toEqual([
+        '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09',
+        '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03',
+      ]);
+      const aft = d.rows.find((r) => r.projectCode === 'AAP001')!;
+      expect(aft.workType).toBe('AFT');
+      expect(aft.customerName).toBe('NIPPO');
+      expect(aft.source).toBe('imported');
+      expect(aft.cells['2026-04']).toBe(100);
+      expect(aft.total).toBe(140);
+      // zz はラベル行（project なし）
+      expect(
+        d.rows.some((r) => r.workType === 'zz' && r.projectId === null),
+      ).toBe(true);
+
+      // 仮の手入力を足すと manual 行として出る
+      svc.upsertManualEntry({
+        assigneeId: horita.id,
+        projectId: aft.projectId,
+        workType: 'AFT',
+        yearMonth: '2026-06',
+        hours: 5,
+      });
+      const d2 = svc.getAssigneeDetail(horita.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const man = d2.rows.find(
+        (r) => r.source === 'manual' && r.projectId === aft.projectId,
+      )!;
+      expect(man.cells['2026-06']).toBe(5);
+    } finally {
+      close();
+    }
+  });
+
   it('CD無し明細はラベルのみ（projects マスタを作らず件名で内訳表示）', () => {
     const { db, close } = makeDb();
     try {

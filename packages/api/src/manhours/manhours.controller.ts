@@ -66,6 +66,21 @@ export class ManhoursController {
     });
   }
 
+  @Get('assignees/:assigneeId/detail')
+  assigneeDetail(
+    @Param('assigneeId', ParseIntPipe) assigneeId: number,
+    @Query('fiscalYear') fiscalYear?: string,
+    @Query('batchId') batchId?: string,
+    @Query('imported') imported?: string,
+    @Query('manual') manual?: string,
+  ) {
+    return this.manhours.getAssigneeDetail(assigneeId, {
+      fiscalYear: toInt(fiscalYear),
+      batchId: toInt(batchId),
+      filter: sourceFilter(imported, manual),
+    });
+  }
+
   @Post('manual-entries')
   upsertManualEntry(@Body() dto: ManualEntryDto) {
     return this.manhours.upsertManualEntry(dto);

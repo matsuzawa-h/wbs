@@ -88,6 +88,27 @@ interface JoinedEntry {
   source: string;
 }
 
+// 原本「稼働管理表（明細）」と同じ形：作業区分/顧客名/件名/CD × 12ヶ月。
+export interface AssigneeDetailRow {
+  workType: string;
+  customerName: string | null;
+  subject: string;
+  projectCode: string | null;
+  projectId: number | null;
+  source: 'imported' | 'manual';
+  cells: Record<string, number>;
+  total: number;
+}
+
+export interface AssigneeDetail {
+  assigneeId: number;
+  assigneeName: string;
+  fiscalYear: number | null;
+  batchId: number | null;
+  months: string[];
+  rows: AssigneeDetailRow[];
+}
+
 @Injectable()
 export class ManhoursService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
@@ -376,6 +397,98 @@ export class ManhoursService {
       rows,
       monthTotals,
       grandTotal,
+    };
+  }
+
+  // ---- 担当者別 明細（原本稼働表の形・仮は編集可） --------------------
+
+  getAssigneeDetail(
+    assigneeId: number,
+    opts: { fiscalYear?: number; batchId?: number; filter: SourceFilter },
+  ): AssigneeDetail {
+    const a = this.db
+      .select({ id: assignees.id, name: assignees.name })
+      .from(assignees)
+      .where(eq(assignees.id, assigneeId))
+      .get();
+    if (!a) throw new NotFoundException(`assignee ${assigneeId} not found`);
+
+    const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
+    const all = this.db
+      .select({
+        projectId: manhourEntries.projectId,
+        projectName: projects.name,
+        projectCode: projects.projectCode,
+        customerName: customers.name,
+        label: manhourEntries.label,
+        workType: manhourEntries.workType,
+        yearMonth: manhourEntries.yearMonth,
+        hours: manhourEntries.hours,
+        source: manhourEntries.source,
+        batchId: manhourEntries.batchId,
+      })
+      .from(manhourEntries)
+      .leftJoin(projects, eq(manhourEntries.projectId, projects.id))
+      .leftJoin(customers, eq(projects.customerId, customers.id))
+      .where(eq(manhourEntries.assigneeId, assigneeId))
+      .all();
+
+    const monthSet = new Set<string>(
+      opts.fiscalYear !== undefined ? this.fiscalMonths(opts.fiscalYear) : [],
+    );
+    const rowMap = new Map<string, AssigneeDetailRow>();
+    for (const r of all) {
+      const isManual = r.source === 'manual' || r.batchId === null;
+      if (isManual) {
+        if (!opts.filter.manual) continue;
+      } else {
+        if (!opts.filter.imported) continue;
+        if (batchId === null || r.batchId !== batchId) continue;
+      }
+      const source: 'imported' | 'manual' = isManual ? 'manual' : 'imported';
+      const subject =
+        r.projectName ??
+        r.label ??
+        (r.workType === 'zz' ? '非稼働' : '(未割当)');
+      const key = [
+        source,
+        r.workType,
+        r.projectId ?? `L:${subject}`,
+      ].join('|');
+      let row = rowMap.get(key);
+      if (!row) {
+        row = {
+          workType: r.workType,
+          customerName: r.customerName ?? null,
+          subject,
+          projectCode: r.projectCode ?? null,
+          projectId: r.projectId,
+          source,
+          cells: {},
+          total: 0,
+        };
+        rowMap.set(key, row);
+      }
+      row.cells[r.yearMonth] = (row.cells[r.yearMonth] ?? 0) + r.hours;
+      row.total += r.hours;
+      monthSet.add(r.yearMonth);
+    }
+
+    const months = [...monthSet].sort();
+    const rows = [...rowMap.values()].sort(
+      (x, y) =>
+        x.workType.localeCompare(y.workType, 'ja') ||
+        (x.customerName ?? '').localeCompare(y.customerName ?? '', 'ja') ||
+        x.subject.localeCompare(y.subject, 'ja') ||
+        x.source.localeCompare(y.source),
+    );
+    return {
+      assigneeId: a.id,
+      assigneeName: a.name,
+      fiscalYear: opts.fiscalYear ?? null,
+      batchId,
+      months,
+      rows,
     };
   }
 
