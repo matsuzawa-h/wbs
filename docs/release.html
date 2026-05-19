@@ -667,9 +667,99 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
 <!-- ================================================ -->
 <h2 class="chapter" id="ch8">8. 更新リリース手順（2 回目以降）</h2>
 
-<p>機能追加・修正後に本番を更新する手順。<strong>マイグレーションが追加されていない場合と、追加されている場合で 1 ステップ違います</strong>。</p>
+<p>機能追加・修正後に本番を更新する手順。<strong>推奨は 8.0 の 2 本のスクリプト</strong>です。8.1〜8.2 は中身を理解するための手動フォールバックとして残しています。</p>
 
-<h3 class="section"><span class="num">8.1</span>共通: <span class="role-tag role-dev">DEV</span>開発機でビルド</h3>
+<h3 class="section"><span class="num">8.0</span>推奨：スクリプトによる自動デプロイ</h3>
+<p>
+リポジトリ直下の 2 本の BAT で「DEV ビルド〜本番反映」を自動化します。
+途中失敗してもログ末尾の <code>RESULT:</code> 行でどのステップで止まったか判別できます。
+</p>
+<table class="cmd">
+  <thead><tr><th>スクリプト</th><th>実行場所</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td><code>build-deploy-zip.bat</code></td><td><span class="role-tag role-dev">DEV</span></td><td>9 ステップ：pnpm install → web build → web 成果物を api\public へ → api build → <code>pnpm --prod deploy C:\tmp\WbsWeb-deploy</code> → <strong>drizzle-kit 同梱検証</strong> → <code>tar</code> で zip 化 → <code>\\TG120286\tmp</code> へ zip 配置 → <strong>docs を <code>\\TG120286\C$\AppsData\WbsWeb\docs</code> へ自動同期</strong></td></tr>
+    <tr><td><code>release-prod.bat</code></td><td><span class="role-tag role-prod">PROD</span>（管理者）</td><td>6 ステップ：サービス停止＋node 終了 → <code>tar</code> 展開 → <code>robocopy /MIR /XD logs</code> で <code>C:\Apps\WbsWeb</code> 差し替え → DB マイグレーション → サービス起動 → 点検（5000 LISTEN / docs / stderr）</td></tr>
+  </tbody>
+</table>
+<pre><span class="comment"># DEV（開発機）</span>
+<span class="prompt">PS&gt;</span> c:\Git\WBS\WbsWeb\build-deploy-zip.bat
+<span class="comment"># PROD（本番機・管理者 Command Prompt）</span>
+<span class="prompt">PS&gt;</span> cmd /c "C:\AppsData\WbsWeb\release-prod.bat"
+<span class="comment"># 結果確認（最新ログの末尾）</span>
+<span class="prompt">PS&gt;</span> powershell -c "Get-Content (gci C:\AppsData\WbsWeb\logs\release_*.log | sort LastWriteTime | select -last 1).FullName -Tail 25"</pre>
+<div class="note">
+  <strong>📌 release-prod.bat の挙動</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>ログは <code>C:\AppsData\WbsWeb\logs\release_&lt;日時&gt;.log</code>。末尾が
+        <code>===== RESULT: SUCCESS … =====</code> なら成功、
+        <code>===== RESULT: FAILED at &lt;step&gt; =====</code> なら停止箇所が分かる。</li>
+    <li><strong>ZIP が前回成功時と同一（SHA256 一致）なら展開・差し替えを自動スキップ</strong>し、マイグレーションと再起動だけ実行（<code>C:\AppsData\WbsWeb\.release-zip.sha256</code> で判定）。</li>
+    <li><code>drizzle-kit</code> は <strong>本番依存</strong>（4.5 参照）なので、本番の <code>node_modules</code> から <code>migrate</code> がそのまま動く。</li>
+    <li>差し替えは <code>C:\Apps\WbsWeb</code> のみ（<code>/XD logs</code>）。<code>C:\AppsData\WbsWeb</code>（DB／テンプレ／アドイン／docs）は不可侵。</li>
+  </ul>
+</div>
+<div class="warn">
+  <strong>⚠ BAT の文字コード・展開方法</strong>
+  <ul class="bullets" style="margin-top:0.4rem;">
+    <li>BAT は <strong>CRLF ＋ ANSI(OEM)／ASCII</strong> で保存。配布は<strong>ファイルコピーのみ</strong>（メモ帳で再保存すると LF/UTF-8 に戻り、cmd が途中で構文エラー終了します）。</li>
+    <li>ZIP 展開は <strong>標準 <code>tar</code></strong> を使用（<code>release-prod.bat</code> が自動実行）。<code>node_modules\.pnpm</code> が 260 文字超のため <strong>エクスプローラ／<code>Expand-Archive</code> は失敗</strong>します。</li>
+    <li>docs は <code>build-deploy-zip.bat</code> が自動同期するため、4.6 の手動配置は<strong>初回フォールバック</strong>。手順書だけ更新した場合も次回 DEV 実行時に自動反映されます（サービス再起動不要）。</li>
+  </ul>
+</div>
+
+<h3 class="section"><span class="num">8.0.1</span><span class="role-tag role-dev">DEV</span><code>build-deploy-zip.bat</code> の処理詳細</h3>
+<p>リポジトリ直下で実行。先頭で変数を定義し、いずれかのステップが失敗するとその場で中断します。</p>
+<pre><span class="comment"># 主な変数</span>
+REPO=c:\Git\WBS\WbsWeb            DEPLOY=C:\tmp\WbsWeb-deploy
+ZIP=C:\tmp\WbsWeb-deploy.zip      DEST=\\TG120286\tmp
+APPSDATA=\\TG120286\C$\AppsData\WbsWeb
+DOCSDEST=\\TG120286\C$\AppsData\WbsWeb\docs</pre>
+<table class="cmd">
+  <thead><tr><th>#</th><th>実行する内容</th><th>目的 / 補足</th><th>失敗判定</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td><code>cd /d %REPO%</code></td><td>リポジトリへ移動</td><td>無ければ中断</td></tr>
+    <tr><td>1/9</td><td><code>call pnpm install</code></td><td>node_modules を package.json と整合（<strong>drizzle-kit を本番依存として実体化</strong>）。整合性優先で毎回実行。オフライン専用にする時だけ外す。</td><td>exit≠0 で中断</td></tr>
+    <tr><td>2/9</td><td><code>call pnpm --filter web build</code></td><td>Vue 本番ビルド → <code>packages\web\dist</code></td><td>exit≠0 で中断</td></tr>
+    <tr><td>3/9</td><td><code>robocopy packages\web\dist packages\api\public /MIR</code></td><td>フロント成果物を API の <code>public</code> へミラー（API が SPA を静的配信するため）</td><td>終了コード ≥8 で中断</td></tr>
+    <tr><td>4/9</td><td><code>call pnpm --filter api build</code></td><td>NestJS 本番ビルド → <code>packages\api\dist</code></td><td>exit≠0 で中断</td></tr>
+    <tr><td>5/9</td><td><code>rmdir DEPLOY</code>（あれば）→ <code>pnpm --filter api --prod deploy DEPLOY</code> → <code>robocopy packages\api\public DEPLOY\public /MIR</code></td><td>本番依存のみで配布ツリー生成（空でないと <code>ERR_PNPM_DEPLOY_DIR_NOT_EMPTY</code> のため事前削除）。<code>pnpm deploy</code> の <code>public</code> 取りこぼしを robocopy で補正。</td><td>deploy exit≠0 / robocopy ≥8 で中断</td></tr>
+    <tr><td>6/9</td><td><code>if not exist DEPLOY\node_modules\drizzle-kit\bin.cjs</code> → 中断</td><td><strong>drizzle-kit 同梱検証</strong>。無いと本番で <code>migrate</code> 不能なので、壊れた ZIP を本番へ送らないようここで止める。</td><td>未同梱で中断</td></tr>
+    <tr><td>7/9</td><td><code>del 旧ZIP</code> → <code>tar -a -c -f ZIP -C DEPLOY .</code></td><td>標準 <code>tar</code>（libarchive）で zip 化。深い <code>node_modules</code> でも壊れない。<code>-a</code>＝拡張子から zip 形式を選択、<code>-C DEPLOY .</code>＝中身のみ（ラッパ階層なし）。</td><td>exit≠0 で中断</td></tr>
+    <tr><td>8/9</td><td>DEST 到達性確認 → <code>robocopy C:\tmp DEST WbsWeb-deploy.zip /R:2 /W:5</code></td><td>ZIP 1 ファイルだけを本番共有 <code>\\TG120286\tmp</code> へ。一時的なネット不調に 2 回リトライ。</td><td>共有不達 / ≥8 で中断</td></tr>
+    <tr><td>9/9</td><td>APPSDATA 到達性確認 → <code>robocopy %REPO%\docs DOCSDEST /MIR</code></td><td><strong>docs を本番 AppsData へ自動同期</strong>（<code>manual.html</code>＋<code>screenshots</code>）。<code>/manual</code> はディスク都度参照のためサービス再起動不要。</td><td>共有不達 / ≥8 で中断</td></tr>
+    <tr><td>—</td><td><code>[DONE]</code> 表示</td><td>local zip / remote zip / docs sync 先 / zip サイズ を出力</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3 class="section"><span class="num">8.0.2</span><span class="role-tag role-prod">PROD</span><code>release-prod.bat</code> の処理詳細</h3>
+<p>本番機で<strong>管理者</strong>実行。<code>C:\tmp\WbsWeb-deploy.zip</code>（8.0.1 で配置済み）を前提に動作し、全出力をログへ記録します。</p>
+<pre><span class="comment"># 主な変数</span>
+TASK=WbsWeb        ZIP=C:\tmp\WbsWeb-deploy.zip      STAGE=C:\tmp\WbsWeb-deploy
+APP=C:\Apps\WbsWeb DBPATH=C:\AppsData\WbsWeb\wbs.db  DOCS=C:\AppsData\WbsWeb\docs
+LOGDIR=C:\AppsData\WbsWeb\logs   HASHFILE=C:\AppsData\WbsWeb\.release-zip.sha256</pre>
+<table class="cmd">
+  <thead><tr><th>#</th><th>実行する内容</th><th>目的 / 補足</th><th>失敗時</th></tr></thead>
+  <tbody>
+    <tr><td>準備</td><td>PowerShell で <code>TS</code>(yyyyMMdd_HHmmss) 取得 → <code>LOG=logs\release_&lt;TS&gt;.log</code> 作成・ヘッダ書込・ログパス表示</td><td>実行ごとに別ログ。冒頭でログ場所を表示（落ちても参照可）。live tail コマンドも案内。</td><td>—</td></tr>
+    <tr><td>前提</td><td><code>net session</code> で管理者確認 / <code>ZIP</code> 存在確認</td><td>非管理者・ZIP 無は即終了</td><td><code>RESULT: FAILED not-admin / no-zip</code></td></tr>
+    <tr><td>判定</td><td>ZIP の <code>SHA256</code> を計算し <code>HASHFILE</code> の前回値と比較。一致<strong>かつ</strong> <code>APP\dist\main.js</code> 在 → <code>SKIPSWAP=1</code></td><td><strong>ZIP が前回成功時と同一なら展開・差し替えをスキップ</strong>。未デプロイ時は安全側で skip しない。</td><td>—</td></tr>
+    <tr><td>1/6</td><td><code>Stop-ScheduledTask</code> ＋ <code>WbsWeb\dist\main.js</code> の <code>node</code> を <code>Stop-Process</code> → ハンドル解放待ち</td><td>差し替え/migrate のためサービス完全停止（タスク終了でも残る子 node を確実に終了）</td><td>続行（停止系は許容）</td></tr>
+    <tr><td>2/6</td><td>SKIPSWAP=1 ならスキップ。else <code>STAGE</code> 掃除 → <code>tar -xf ZIP -C STAGE</code></td><td>長パス対応の <code>tar</code> で展開（エクスプローラ不可）</td><td><code>RESULT: FAILED at 2of6</code></td></tr>
+    <tr><td>3/6</td><td>SKIPSWAP=1 ならスキップ。else <code>robocopy STAGE APP /MIR /XD logs</code> → 成功時 <code>HASHFILE</code> 更新</td><td>差分削除込みで <code>C:\Apps\WbsWeb</code> を総入替（<code>/XD logs</code> でログ温存）。ハッシュは<strong>成功時のみ</strong>保存（失敗時は次回再試行されるよう更新しない）。<code>C:\AppsData</code> は不可侵。</td><td>robocopy ≥8 で <code>RESULT: FAILED at 3of6</code></td></tr>
+    <tr><td>4/6</td><td><code>set DB_PATH=DBPATH</code> → <code>cd APP</code> → <code>node node_modules\drizzle-kit\bin.cjs migrate</code></td><td>本番 DB へマイグレーション適用（冪等）。<code>drizzle-kit</code> 不在なら恒久対応案内を出して中断。</td><td>不在 / migrate 失敗で <code>RESULT: FAILED at 4of6</code></td></tr>
+    <tr><td>5/6</td><td><code>Start-ScheduledTask</code> → 待機 → <code>Get-ScheduledTaskInfo</code></td><td>サービス再起動。<code>LastTaskResult=267009</code> が稼働中。</td><td>—（点検で検出）</td></tr>
+    <tr><td>6/6</td><td>5000 番 LISTEN 判定 / <code>docs\manual.html</code> 有無 / <code>start.cmd</code> の <code>MANUAL_DOCS_DIR</code> 有無 / <code>stderr.log</code> 末尾</td><td>稼働確認。docs 未配置・<code>MANUAL_DOCS_DIR</code> 未設定は <code>[WARN]</code>（<code>/manual</code> のみ 404、他は正常）。</td><td>WARN のみ（リリースは成功）</td></tr>
+    <tr><td>結果</td><td><code>===== RESULT: SUCCESS &lt;TS&gt; =====</code>（skip 時は <code>[swap skipped: zip unchanged]</code> 付）をログ末尾に記録</td><td>末尾 1 行で成否・スキップ有無が判別可能。コンソールに確認 URL（/ , /assignments , /manual , /downloads）を表示。</td><td>—</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <strong>📌 ログの読み方</strong>
+  最新ログ末尾を見るだけで判定できます：
+  <pre style="margin:0.4rem 0;"><span class="prompt">PS&gt;</span> powershell -c "Get-Content (gci C:\AppsData\WbsWeb\logs\release_*.log | sort LastWriteTime | select -last 1).FullName -Tail 25"</pre>
+  <code>RESULT: SUCCESS</code> なら完了、<code>RESULT: FAILED at &lt;step&gt;</code> なら停止箇所が分かり、その直前に各コマンドの出力が記録されています。
+</div>
+
+<h3 class="section"><span class="num">8.1</span>（手動フォールバック）共通: <span class="role-tag role-dev">DEV</span>開発機でビルド</h3>
 <pre><span class="prompt">PS&gt;</span> cd c:\Git\WBS\WbsWeb
 <span class="prompt">PS&gt;</span> pnpm --filter web build
 <span class="prompt">PS&gt;</span> robocopy packages\web\dist packages\api\public /MIR
@@ -677,7 +767,7 @@ echo "C:\Program Files\nodejs\node.exe" dist\main.js ^^^>^^^> C:\AppsData\WbsWeb
 <span class="prompt">PS&gt;</span> pnpm --filter api --prod deploy C:\tmp\WbsWeb-deploy
 <span class="prompt">PS&gt;</span> robocopy packages\api\public C:\tmp\WbsWeb-deploy\public /MIR</pre>
 
-<h3 class="section"><span class="num">8.2</span><span class="role-tag role-prod">PROD</span>本番マシンでサービス停止 → 差し替え → 起動</h3>
+<h3 class="section"><span class="num">8.2</span>（手動フォールバック）<span class="role-tag role-prod">PROD</span>本番マシンでサービス停止 → 差し替え → 起動</h3>
 <pre><span class="comment"># 1) タスクと実プロセスの両方を止める</span>
 <span class="comment">#    Stop-ScheduledTask は task instance を終了させるが、子プロセス node.exe が</span>
 <span class="comment">#    残ることがあるので念のため Stop-Process も実行</span>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WBS Web テーブル定義・処理設計書</title>
+<style>
+  :root{ --acc:#2563eb; --acc2:#1e3a8a; --bd:#e5e7eb; --bd2:#cbd5e1; --tx:#1f2937; --mut:#6b7280; }
+  *{ box-sizing:border-box; }
+  body{ font-family:"Segoe UI",Meiryo,system-ui,sans-serif; color:var(--tx);
+        max-width:1040px; margin:0 auto; padding:2rem 1.4rem 4rem; line-height:1.7; }
+  h1{ font-size:1.7rem; margin:0 0 .2rem; }
+  .lead{ color:var(--mut); margin:.2rem 0; }
+  .meta{ color:var(--mut); font-size:.85rem; margin:0 0 1rem; }
+  hr.rule{ border:0; border-top:3px solid var(--acc); margin:1rem 0 1.6rem; }
+  h2.chapter{ font-size:1.25rem; color:var(--acc2); border-bottom:2px solid var(--bd);
+        padding-bottom:.3rem; margin:2.2rem 0 .8rem; }
+  h3.section{ font-size:1.05rem; margin:1.6rem 0 .5rem; }
+  h3.section .num{ display:inline-block; min-width:2.6rem; color:var(--acc); font-weight:700; }
+  nav.toc{ background:#f8fafc; border:1px solid var(--bd); border-radius:8px; padding:.8rem 1.1rem; margin:1rem 0 1.5rem; }
+  nav.toc h2{ font-size:1rem; margin:.1rem 0 .5rem; }
+  nav.toc ol{ margin:0; padding-left:1.3rem; }
+  nav.toc a{ color:var(--acc); text-decoration:none; }
+  table{ border-collapse:collapse; width:100%; margin:.6rem 0 1rem; font-size:.86rem; }
+  th,td{ border:1px solid var(--bd2); padding:.35rem .55rem; text-align:left; vertical-align:top; }
+  th{ background:#f1f5f9; color:#475569; }
+  table.def th:nth-child(1){ width:14rem; } table.def th:nth-child(2){ width:9rem; }
+  table.crud td{ text-align:center; font-variant-numeric:tabular-nums; }
+  table.crud td.lbl{ text-align:left; }
+  .crudC{ color:#15803d; font-weight:700; } .crudR{ color:#1d4ed8; }
+  .crudU{ color:#b45309; font-weight:700; } .crudD{ color:#b91c1c; font-weight:700; }
+  code{ background:#eef2ff; color:#3730a3; padding:.05rem .35rem; border-radius:4px; font-size:.88em; }
+  pre.diagram{ background:#f8fafc; color:#1f2937; border:1px solid var(--bd); border-radius:8px;
+        padding:.8rem 1rem; overflow:auto; font-size:.85rem; line-height:1.45; }
+  .note,.tip,.warn{ border-radius:8px; padding:.6rem .9rem; margin:.8rem 0; font-size:.92rem; }
+  .note{ background:#eff6ff; border:1px solid #bfdbfe; }
+  .tip{ background:#ecfdf5; border:1px solid #a7f3d0; }
+  .warn{ background:#fef2f2; border:1px solid #fecaca; }
+  ul.bullets{ margin:.3rem 0; padding-left:1.3rem; } ul.bullets li{ margin:.2rem 0; }
+  .pk{ color:#b45309; font-weight:700; } .fk{ color:#1d4ed8; }
+  footer{ color:var(--mut); font-size:.8rem; margin-top:3rem; border-top:1px solid var(--bd); padding-top:.8rem; }
+  caption{ text-align:left; font-weight:700; color:var(--acc2); margin:.4rem 0 .2rem; }
+</style>
+</head>
+<body>
+
+<h1>WBS Web テーブル定義・処理設計書</h1>
+<p class="lead">SQLite スキーマ定義 ／ CRUD 図 ／ テーブルに対する主要処理</p>
+<p class="meta">DB: SQLite (better-sqlite3 / drizzle-orm) / マイグレーション: drizzle-kit (src/db/migrations)</p>
+<hr class="rule">
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#d1">エンティティ関連（ER 概要）</a></li>
+    <li><a href="#d2">テーブル定義</a></li>
+    <li><a href="#d3">マイグレーション一覧</a></li>
+    <li><a href="#d4">CRUD 図（機能 × テーブル）</a></li>
+    <li><a href="#d5">主要処理設計</a></li>
+  </ol>
+</nav>
+
+<h2 class="chapter" id="d1">1. エンティティ関連（ER 概要）</h2>
+<pre class="diagram">customers ──&lt; projects ──&lt; wbs_tasks &gt;── assignees
+                 │   │            (assignee_id, ON DELETE SET NULL)
+                 │   └─&lt; (parent_id 自己参照: 大1 / 中2 / 項目3)
+                 │
+                 ├─&lt; project_members &gt;── assignees   (PK: project_id+employee_id)
+                 └─&lt; personal_tasks   &gt;── assignees   (employee 必須 / project 任意)
+
+holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
+<table>
+  <thead><tr><th>関係</th><th>カーディナリティ</th><th>削除時の挙動（FK）</th></tr></thead>
+  <tbody>
+    <tr><td>customers → projects</td><td>1 : N（customer 任意）</td><td>customer 削除 → projects.customer_id を <code>SET NULL</code></td></tr>
+    <tr><td>projects → wbs_tasks</td><td>1 : N</td><td>project 削除 → wbs_tasks を <code>CASCADE</code> 削除</td></tr>
+    <tr><td>wbs_tasks ↺ wbs_tasks</td><td>親子（level 1/2/3）</td><td><code>parent_id</code> は論理参照（FK 制約なし。アプリで整合）</td></tr>
+    <tr><td>assignees → wbs_tasks</td><td>1 : N（担当）</td><td>社員削除 → wbs_tasks.assignee_id を <code>SET NULL</code></td></tr>
+    <tr><td>projects × assignees</td><td>N : M（表示メンバー）</td><td>project／社員 削除 → project_members を <code>CASCADE</code> 削除</td></tr>
+    <tr><td>assignees → personal_tasks</td><td>1 : N</td><td>社員削除 → personal_tasks を <code>CASCADE</code> 削除</td></tr>
+    <tr><td>projects → personal_tasks</td><td>0..1 : N（任意紐付）</td><td>project 削除 → personal_tasks.project_id を <code>SET NULL</code></td></tr>
+  </tbody>
+</table>
+
+<h2 class="chapter" id="d2">2. テーブル定義</h2>
+<p>型は SQLite の格納クラス。日付列は <code>TEXT</code>（<code>YYYY-MM-DD</code>）、<code>created_at</code> は <code>INTEGER</code>（unixepoch 秒）。<span class="pk">PK</span>=主キー / <span class="fk">FK</span>=外部キー。</p>
+
+<table class="def">
+  <caption>2.1 customers（顧客マスタ）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td>code</td><td>TEXT</td><td>顧客コード（任意）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL 顧客名</td></tr>
+    <tr><td>contact_name / contact_email / contact_phone / address</td><td>TEXT</td><td>連絡先（任意）</td></tr>
+    <tr><td>is_active</td><td>INTEGER / 1</td><td>NOT NULL 有効フラグ</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 表示順（idx_customers_sort）</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL 作成時刻</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.2 projects（プロジェクト）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">customer_id</span></td><td>INTEGER</td><td>FK customers.id（任意）/ ON DELETE SET NULL（idx_projects_customer）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL プロジェクト名</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.3 assignees（社員マスタ）<span style="font-weight:400;color:var(--mut)"> ※ 既存 FK 互換のためテーブル名は assignees</span></caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td>code</td><td>TEXT</td><td>社員コード（idx_assignees_code）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL 氏名</td></tr>
+    <tr><td>name_kana / department / role / email</td><td>TEXT</td><td>かな・部署・役割・メール（任意）</td></tr>
+    <tr><td>employment_start / employment_end</td><td>TEXT</td><td>在籍期間（YYYY-MM-DD、任意）</td></tr>
+    <tr><td>works_on_holidays</td><td>INTEGER / 0</td><td>NOT NULL 休日稼働フラグ</td></tr>
+    <tr><td>is_active</td><td>INTEGER / 1</td><td>NOT NULL 有効フラグ</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 表示順（idx_assignees_sort）</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.4 wbs_tasks（WBS タスク：大1 / 中2 / 項目3）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">project_id</span></td><td>INTEGER</td><td>NOT NULL / FK projects.id / ON DELETE CASCADE（idx_wbs_tasks_project）</td></tr>
+    <tr><td>level</td><td>INTEGER</td><td>NOT NULL 階層（1=大,2=中,3=項目）</td></tr>
+    <tr><td>parent_id</td><td>INTEGER</td><td>親タスク id（論理参照、idx_wbs_tasks_parent）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL 名称</td></tr>
+    <tr><td>start_date / end_date</td><td>TEXT</td><td>予定開始 / 終了（YYYY-MM-DD）。終了は算出。</td></tr>
+    <tr><td>duration</td><td>INTEGER</td><td>予定日数（営業日）</td></tr>
+    <tr><td>actual_start_date / actual_end_date</td><td>TEXT</td><td>実績開始 / 終了</td></tr>
+    <tr><td>planned_hours / actual_hours</td><td>REAL</td><td>予定 / 実績工数</td></tr>
+    <tr><td>progress</td><td>INTEGER / 0</td><td>NOT NULL 進捗 %（0–100）</td></tr>
+    <tr><td><span class="fk">assignee_id</span></td><td>INTEGER</td><td>FK assignees.id / ON DELETE SET NULL</td></tr>
+    <tr><td>status</td><td>TEXT / ''</td><td>NOT NULL 予備（表示状態は導出。5.4 参照）</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考（0006 で追加）</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 並び順（idx_wbs_tasks_sort: project_id, sort_order）</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.5 holidays（休日マスタ）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td>date</td><td>TEXT</td><td>NOT NULL / <strong>UNIQUE</strong>（YYYY-MM-DD、idx_holidays_date）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>名称（任意）</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.6 project_members（プロジェクト表示メンバー：N:M）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk fk">project_id</span></td><td>INTEGER</td><td>NOT NULL / FK projects.id CASCADE / 複合 PK（idx_project_members_project）</td></tr>
+    <tr><td><span class="pk fk">employee_id</span></td><td>INTEGER</td><td>NOT NULL / FK assignees.id CASCADE / 複合 PK</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL ピッカー表示順</td></tr>
+  </tbody>
+</table>
+
+<table class="def">
+  <caption>2.7 personal_tasks（個人タスク：WBS 非干渉）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td><span class="fk">employee_id</span></td><td>INTEGER</td><td>NOT NULL / FK assignees.id CASCADE（idx_personal_tasks_employee）</td></tr>
+    <tr><td><span class="fk">project_id</span></td><td>INTEGER</td><td>任意 / FK projects.id / ON DELETE SET NULL（idx_personal_tasks_project）</td></tr>
+    <tr><td>name</td><td>TEXT / ''</td><td>NOT NULL 名称（空可：UI が空行追加）</td></tr>
+    <tr><td>start_date / end_date / duration</td><td>TEXT / INTEGER</td><td>予定（営業日で終了算出）</td></tr>
+    <tr><td>actual_start_date / actual_end_date</td><td>TEXT</td><td>実績</td></tr>
+    <tr><td>planned_hours / actual_hours</td><td>REAL</td><td>工数</td></tr>
+    <tr><td>progress</td><td>INTEGER / 0</td><td>NOT NULL 進捗 %</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
+<h2 class="chapter" id="d3">3. マイグレーション一覧</h2>
+<p>適用状況は <code>src/db/migrations/meta/_journal.json</code> で管理（冪等。本番は <code>release.html</code> 8.0／8.2 の <code>migrate</code> で適用）。</p>
+<table>
+  <thead><tr><th>#</th><th>ファイル</th><th>概要</th></tr></thead>
+  <tbody>
+    <tr><td>0000</td><td>initial_schema</td><td>初期スキーマ（projects / wbs_tasks / assignees の基本列）</td></tr>
+    <tr><td>0001</td><td>add_actual_tracking</td><td>実績追跡（actual_start/end・planned/actual_hours・progress 等）</td></tr>
+    <tr><td>0002</td><td>add_holidays</td><td>holidays テーブル追加</td></tr>
+    <tr><td>0003</td><td>extend_employees</td><td>assignees 拡張（code/kana/department/role/email/在籍/休日稼働/有効/備考/順）</td></tr>
+    <tr><td>0004</td><td>project_members</td><td>project_members テーブル追加（表示メンバー N:M）</td></tr>
+    <tr><td>0005</td><td>add_customers</td><td>customers 追加＋projects.customer_id</td></tr>
+    <tr><td>0006</td><td>add_task_note</td><td>wbs_tasks.note 追加（備考）</td></tr>
+    <tr><td>0007</td><td>add_personal_tasks</td><td>personal_tasks テーブル追加</td></tr>
+  </tbody>
+</table>
+<div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が動作しません。</div>
+
+<h2 class="chapter" id="d4">4. CRUD 図（機能 × テーブル）</h2>
+<p>
+各機能（REST エンドポイント群）がどのテーブルを <span class="crudC">C</span>reate /
+<span class="crudR">R</span>ead / <span class="crudU">U</span>pdate /
+<span class="crudD">D</span>elete するか。<strong>MCP ツールは同一サービス層</strong>を呼ぶため CRUD は対応する機能行と同じです。
+括弧は FK や連動による<strong>副作用</strong>。
+</p>
+<table class="crud">
+  <thead><tr>
+    <th class="lbl">機能 / エンドポイント</th>
+    <th>customers</th><th>projects</th><th>project_<br>members</th><th>assignees<br>(社員)</th><th>wbs_tasks</th><th>holidays</th><th>personal_<br>tasks</th>
+  </tr></thead>
+  <tbody>
+    <tr><td class="lbl">顧客マスタ <code>/api/customers</code></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td>(<span class="crudU">U</span>)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td class="lbl">プロジェクト <code>/api/projects</code></td>
+      <td><span class="crudR">R</span></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td>(<span class="crudD">D</span>)</td><td>—</td><td>(<span class="crudD">D</span>)</td><td>—</td><td>(<span class="crudU">U</span>)</td></tr>
+    <tr><td class="lbl">表示メンバー <code>/projects/:id/members</code></td>
+      <td>—</td><td><span class="crudR">R</span></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudD">D</span></td>
+      <td><span class="crudR">R</span></td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td class="lbl">WBS／ガント <code>/api/tasks*</code>, <code>/projects/:id/tasks</code></td>
+      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td><span class="crudR">R</span></td><td>—</td></tr>
+    <tr><td class="lbl">担当別予定（割当取得）<code>/employees/:id/tasks</code></td>
+      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
+      <td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span>※</td></tr>
+    <tr><td class="lbl">社員マスタ <code>/api/employees</code></td>
+      <td>—</td><td>—</td><td>(<span class="crudD">D</span>)</td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td>(<span class="crudU">U</span>)</td><td>—</td><td>(<span class="crudD">D</span>)</td></tr>
+    <tr><td class="lbl">個人タスク <code>/personal-tasks*</code></td>
+      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td><td>—</td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td></tr>
+    <tr><td class="lbl">休日設定 <code>/api/holidays</code>(+bulk)</td>
+      <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td><td>—</td></tr>
+    <tr><td class="lbl">Excel 出力 <code>/projects/:id/export.xls</code></td>
+      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
+      <td><span class="crudR">R</span></td><td><span class="crudR">R</span></td><td>—</td></tr>
+    <tr><td class="lbl">Excel 取込 <code>/projects/import/{preview,commit}</code></td>
+      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudU">U</span><span class="crudD">D</span>※</td><td>—</td><td>—</td></tr>
+    <tr><td class="lbl">Help / Downloads</td>
+      <td colspan="7" style="text-align:center;color:var(--mut)">DB アクセスなし（静的ファイル配信）</td></tr>
+  </tbody>
+</table>
+<ul class="bullets">
+  <li>（ ）= FK の <code>CASCADE</code>/<code>SET NULL</code> または連動による副作用（その機能が直接操作しないが結果的に変化）。</li>
+  <li>担当別予定※：割当取得 API は wbs_tasks が対象。個人タスクは別 API（個人タスク行）で取得し画面で統合。</li>
+  <li>Excel 取込※：確定時、対象プロジェクトの wbs_tasks を解析結果で<strong>置き換え</strong>（既存 D ＋ 新規 C／既存 U）。</li>
+  <li>MCP ツール（customer_*/project_*/task_*/personal_task_*/employee_*/holiday_*）は対応機能行と同一の CRUD。</li>
+</ul>
+
+<h2 class="chapter" id="d5">5. 主要処理設計</h2>
+
+<h3 class="section"><span class="num">5.1</span>営業日による終了日算出</h3>
+<p>
+<code>computeEndDate(start, duration)</code> ＝ 開始日から「営業日で duration 日」進めた日。
+土日 ＋ <code>holidays</code> を非稼働日として除外。<code>HolidaysService</code> は休日集合を短期キャッシュ（連続再計算の負荷低減）。
+レベル3タスク／個人タスクの <code>end_date</code> を保存時に再計算。
+</p>
+
+<h3 class="section"><span class="num">5.2</span>連動カスケード（DateCascadeService）</h3>
+<p>
+レベル3タスクの開始/期間（＝終了日）が変わると、<strong>同一中項目内の後続タスク</strong>を
+<strong>変更した営業日数と同じだけ平行シフト</strong>する（直列に詰め直さない）。
+連続/重なりで「連動対象」を判定し、間に余裕がある独立タスクはシフト範囲で停止。
+画面の「連動」OFF（<code>cascade=false</code>）時は後続を動かさず祖先再集計のみ。
+</p>
+<pre class="diagram">例) 5/15・5/15・5/15（各1日, 同中項目）で先頭を 5/16 へ
+  旧(直列)  : 5/16 / 5/17 / 5/18
+  新(平行)  : 5/16 / 5/16 / 5/16   ← +1営業日を全後続に適用</pre>
+
+<h3 class="section"><span class="num">5.3</span>集計ロールアップ</h3>
+<p>
+<code>recomputeAllAncestors</code>：中(2)→大(1) の順で、子タスクから
+予定開始＝min、予定終了＝max、予定日数＝営業日換算、実績開始＝最小、
+実績終了＝<strong>全子完了時のみ</strong>確定、工数＝合算 を自動再計算。タスクの追加/更新/削除/複製/並び替え後に実行。
+</p>
+
+<h3 class="section"><span class="num">5.4</span>状態の自動判定（導出・DB 非保存）</h3>
+<p>
+状態は <code>computeStatus(task, today)</code> で算出（保存しない）。
+<strong>actual_end_date があれば「完了」</strong>（予定通り/前倒し/遅れの内訳付）、
+actual_start_date のみなら「実行中」または期限超過で「遅延中」、
+未着手は開始予定との関係で「未着手／着手遅れ」。
+画面の「✓ 完了にする」は実績終了日＝今日（＋進捗100%）を書き込み、結果として状態が「完了」になる。
+</p>
+
+<h3 class="section"><span class="num">5.5</span>タスク複製</h3>
+<p>
+対象タスクとその配下を preorder でディープコピー（id 再採番・parent_id 再マッピング）。
+進捗・実績も引継ぎ、レベル3は終了日再算出。<code>sort_order</code> を採番し直して
+<strong>元の部分木の直後</strong>に新ブロックを配置、祖先を再集計。
+</p>
+
+<h3 class="section"><span class="num">5.6</span>並び替え（reorder）</h3>
+<p>
+<code>PUT /api/tasks/reorder</code> で <code>{id, sortOrder}</code> 群を一括更新。表示は
+<code>(project_id, sort_order)</code> 昇順（idx_wbs_tasks_sort）。階層整合はアプリ側で担保。
+</p>
+
+<h3 class="section"><span class="num">5.7</span>個人タスクの分離</h3>
+<p>
+<code>personal_tasks</code> は WBS ツリーに属さない。プロジェクト紐付けは任意（レポート文脈用、
+project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<strong>一切出さず</strong>、担当別予定（一覧・カレンダー）でのみ
+社員の WBS 割当と並べて表示・編集する。終了日は 5.1 で算出。
+</p>
+
+<h3 class="section"><span class="num">5.8</span>Excel 取込（プレビュー → 確定）</h3>
+<p>
+<code>preview</code> はアップロード xls を解析して階層・日付・工数等を抽出（DB 変更なし）。
+<code>commit</code> で対象プロジェクトの <code>wbs_tasks</code> を解析結果に<strong>置換</strong>
+（既存削除＋新規作成）、その後 5.1〜5.3 を適用。出力は旧テンプレートへ BIFF 直書き。
+</p>
+
+<h3 class="section"><span class="num">5.9</span>表示メンバー（ソフト除外）</h3>
+<p>
+<code>project_members</code> は各プロジェクトの担当ピッカー候補。メンバーから外しても
+既存タスクの <code>assignee_id</code> は保持（ソフト除外）し、UI は「(メンバー外)」表示で
+新規割当を抑止。<code>PUT /:id/members</code> はメンバー集合を置換。
+</p>
+
+<footer>
+  WBS Web テーブル定義・処理設計書 — 関連: アーキテクチャ設計書 (architecture.html) / リリース手順書 (release.html) / 操作マニュアル (manual.html)
+</footer>
+</body>
+</html>
