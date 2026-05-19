@@ -457,6 +457,13 @@ v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
 <span class="prompt">PS&gt;</span> cd C:\Apps\WbsWeb
 <span class="prompt">PS&gt;</span> node node_modules\drizzle-kit\bin.cjs migrate
 <span class="prompt">PS&gt;</span> Remove-Item Env:DB_PATH</pre>
+<div class="note">
+  <strong>📌 <code>drizzle-kit</code> は本番にも同梱されます</strong>
+  <code>drizzle-kit</code> は <code>packages/api</code> の <strong>dependencies</strong>（本番依存）です。
+  そのため <code>pnpm --filter api --prod deploy</code> の成果物にも含まれ、
+  本番の <code>C:\Apps\WbsWeb\node_modules\drizzle-kit</code> から上記コマンドがそのまま動きます。
+  （devDependencies だと <code>--prod</code> で除外され <code>MODULE_NOT_FOUND</code> になります）
+</div>
 
 <h3 class="section"><span class="num">4.6</span>操作手順書 (docs) を配置</h3>
 <p>
