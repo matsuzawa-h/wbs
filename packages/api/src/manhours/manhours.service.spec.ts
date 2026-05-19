@@ -495,6 +495,46 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('明細の行順: AFT(顧客名→CD,NULL末尾) → MNT等 → 非稼働', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      const rows = [
+        ['堀田　和彦', 'AFT', '顧客B', 'Bproj', 'AAP200', months({ 4: '4' })],
+        ['堀田　和彦', 'AFT', '顧客A', 'Aproj', 'AAP100', months({ 4: '3' })],
+        ['堀田　和彦', 'AFT', '', 'CD無しAFT', '', months({ 4: '2' })],
+        ['堀田　和彦', 'MNT', '顧客X', '保守', 'AAPMNT', months({ 4: '9' })],
+        ['堀田　和彦', 'zz', '休暇系', '休暇', '-', months({ 4: '8' })],
+      ];
+      imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      const d = svc.getAssigneeDetail(horita.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const seq = d.rows.map((r) => ({
+        wt: r.workType,
+        cust: r.customerName,
+        code: r.projectCode,
+        subj: r.subject,
+      }));
+      // AFT(顧客A) → AFT(顧客B) → AFT(顧客空=末尾) → MNT → 非稼働(zz)
+      expect(seq[0]).toMatchObject({ wt: 'AFT', cust: '顧客A' });
+      expect(seq[1]).toMatchObject({ wt: 'AFT', cust: '顧客B' });
+      expect(seq[2].wt).toBe('AFT');
+      expect(seq[2].cust === null || seq[2].cust === '').toBe(true);
+      expect(seq[3].wt).toBe('MNT');
+      expect(seq[4]).toMatchObject({ wt: 'zz', subj: '非稼働' });
+    } finally {
+      close();
+    }
+  });
+
   it('CD無し明細はラベルのみ（projects マスタを作らず件名で内訳表示）', () => {
     const { db, close } = makeDb();
     try {

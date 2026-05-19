@@ -474,20 +474,34 @@ export class ManhoursService {
     }
 
     const months = [...monthSet].sort();
-    // 行順: zz(非稼働)は最後、それ以外は 顧客名 → プロジェクトCD → 件名。
-    const rows = [...rowMap.values()].sort((x, y) => {
-      const xz = x.workType === 'zz' ? 1 : 0;
-      const yz = y.workType === 'zz' ? 1 : 0;
-      return (
-        xz - yz ||
-        (x.customerName ?? '').localeCompare(y.customerName ?? '', 'ja') ||
-        (x.projectCode ?? '').localeCompare(y.projectCode ?? '', 'en', {
-          numeric: true,
-        }) ||
+    // 行順: 作業区分ランク（AFT→その他(MNT等)→非稼働(zz)）、
+    // 同ランク内は 顧客名 → プロジェクトCD（各 NULL/空 は末尾）→ 件名。
+    const wtRank = (wt: string): number =>
+      wt === 'AFT' ? 0 : wt === 'zz' ? 2 : 1;
+    const nullLast = (
+      a: string | null,
+      b: string | null,
+      cmp: (x: string, y: string) => number,
+    ): number => {
+      const ae = a === null || a === '';
+      const be = b === null || b === '';
+      if (ae && be) return 0;
+      if (ae) return 1;
+      if (be) return -1;
+      return cmp(a as string, b as string);
+    };
+    const rows = [...rowMap.values()].sort(
+      (x, y) =>
+        wtRank(x.workType) - wtRank(y.workType) ||
+        nullLast(x.customerName, y.customerName, (a, b) =>
+          a.localeCompare(b, 'ja'),
+        ) ||
+        nullLast(x.projectCode, y.projectCode, (a, b) =>
+          a.localeCompare(b, 'en', { numeric: true }),
+        ) ||
         x.subject.localeCompare(y.subject, 'ja') ||
-        x.source.localeCompare(y.source)
-      );
-    });
+        x.source.localeCompare(y.source),
+    );
     return {
       assigneeId: a.id,
       assigneeName: a.name,
