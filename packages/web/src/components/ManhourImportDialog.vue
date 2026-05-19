@@ -33,8 +33,11 @@ interface ProjectMatch {
   projectCode: string | null;
   sampleName: string;
   customerName: string | null;
+  stem: string;
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
+  proposedGroupKey: string;
+  proposedGroupName: string;
 }
 interface CustomerMatch {
   name: string;
@@ -70,14 +73,12 @@ interface CCh {
   customerId: number | null;
   newCode: string;
 }
-interface PCh {
-  action: 'link' | 'createProvisional' | 'labelOnly';
-  projectId: number | null;
-  provisionalName: string;
-}
 const aChoices = ref<Record<string, ACh>>({});
 const cChoices = ref<Record<string, CCh>>({});
-const pChoices = ref<Record<string, PCh>>({});
+// 案件(CD)ごとの束ね先: 'labelOnly' | `link:<projectId>` | `grp:<groupKey>`
+const pBucket = ref<Record<string, string>>({});
+// grp:<key> → 新規プロジェクト名（編集可）
+const groupNames = ref<Record<string, string>>({});
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -105,7 +106,8 @@ watch(
     preview.value = null;
     aChoices.value = {};
     cChoices.value = {};
-    pChoices.value = {};
+    pBucket.value = {};
+    groupNames.value = {};
     errorMessage.value = null;
     uploading.value = false;
     employees.fetchAll();
@@ -157,22 +159,23 @@ async function onPreview(): Promise<void> {
       };
     }
     cChoices.value = c;
-    const p: Record<string, PCh> = {};
+    // 束ね先の既定: 既存一致→link:<id>、CD有り未一致→提案グループ grp:<key>、
+    // CD無し→labelOnly。同一 stem の複数CDは同じ grp:<key> に既定で束ねる。
+    const pb: Record<string, string> = {};
+    const gn: Record<string, string> = {};
     for (const m of res.data.projectMatches) {
-      // 既存一致→link、CD有り未一致→仮作成、CD無し→ラベルのみ(マスタ汚さない)
-      const action =
-        m.suggestedProjectId !== null
-          ? 'link'
-          : m.projectCode
-            ? 'createProvisional'
-            : 'labelOnly';
-      p[m.projectKey] = {
-        action,
-        projectId: m.suggestedProjectId,
-        provisionalName: m.sampleName,
-      };
+      if (m.suggestedProjectId !== null) {
+        pb[m.projectKey] = `link:${m.suggestedProjectId}`;
+      } else if (m.projectCode) {
+        pb[m.projectKey] = m.proposedGroupKey; // grp:<stem>
+        if (!(m.proposedGroupKey in gn))
+          gn[m.proposedGroupKey] = m.proposedGroupName;
+      } else {
+        pb[m.projectKey] = 'labelOnly';
+      }
     }
-    pChoices.value = p;
+    pBucket.value = pb;
+    groupNames.value = gn;
     step.value = 'review';
   } catch (e: unknown) {
     errorMessage.value = extractMessage(e) ?? 'プレビューに失敗しました';
@@ -195,10 +198,9 @@ const allValid = computed(() => {
     if (c.action === 'link' && c.customerId === null) return false;
   }
   for (const m of pv.projectMatches) {
-    const c = pChoices.value[m.projectKey];
-    if (!c) return false;
-    if (c.action === 'link' && c.projectId === null) return false;
-    if (c.action === 'createProvisional' && !c.provisionalName.trim())
+    const b = pBucket.value[m.projectKey];
+    if (!b) return false;
+    if (b.startsWith('grp:') && !(groupNames.value[b] ?? '').trim())
       return false;
   }
   return true;
@@ -237,20 +239,23 @@ async function onCommit(): Promise<void> {
       };
     });
     const projectResolution = pv.projectMatches.map((m) => {
-      const c = pChoices.value[m.projectKey];
-      if (c.action === 'link')
+      const b = pBucket.value[m.projectKey] ?? 'labelOnly';
+      if (b === 'labelOnly')
+        return { projectKey: m.projectKey, action: 'labelOnly' };
+      if (b.startsWith('link:'))
         return {
           projectKey: m.projectKey,
           action: 'link',
-          projectId: c.projectId!,
+          projectId: Number(b.slice(5)),
+          projectCode: m.projectCode,
         };
-      if (c.action === 'labelOnly')
-        return { projectKey: m.projectKey, action: 'labelOnly' };
+      // grp:<key> → 同じ key のCDが 1 新規プロジェクトに束ねられる
       return {
         projectKey: m.projectKey,
-        action: 'createProvisional',
+        action: 'newGroup',
         projectCode: m.projectCode,
-        provisionalName: c.provisionalName.trim(),
+        groupKey: b,
+        groupName: (groupNames.value[b] ?? m.proposedGroupName).trim(),
         customerName: m.customerName,
       };
     });
@@ -291,6 +296,16 @@ function extractMessage(e: unknown): string | null {
 const employeeOptions = computed<Employee[]>(() => employees.activeItems);
 const projectOptions = computed<Project[]>(() => projects.items);
 const customerOptions = computed<Customer[]>(() => customers.activeItems);
+
+// 現在 pBucket で使われている新規グループ(grp:*)と、束ねられたCD件数。
+const groupBuckets = computed<Array<{ key: string; count: number }>>(() => {
+  const counts = new Map<string, number>();
+  for (const v of Object.values(pBucket.value)) {
+    if (v && v.startsWith('grp:'))
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([key, count]) => ({ key, count }));
+});
 const fyOptions = computed<number[]>(() => {
   const base = currentFiscalYear();
   return [base + 1, base, base - 1, base - 2];
@@ -424,41 +439,56 @@ const fyOptions = computed<number[]>(() => {
         </section>
 
         <section class="match-section">
-          <strong>案件（プロジェクトCD）の名寄せ（{{ preview.projectMatches.length }} 件）</strong>
+          <strong>案件（プロジェクトCD）の束ね（{{ preview.projectMatches.length }} 件）</strong>
           <p class="muted">
-            CD有りで未一致は仮プロジェクト作成。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
-            projects マスタを作らず件名で工数計上（必要なものだけ手動で仮作成/既存紐付けに格上げ可）。
+            工程ごとに別CDでも、<strong>同じ「束ね名」のCDは1プロジェクト＝1ガント</strong>に束ねます
+            （件名から期間/工程表記を除いて自動提案）。各CDの「束ね先」を変えれば手動で再編成できます。
+            既存プロジェクトに紐付けるとそのCDが恒久登録され、次回以降は自動で同じプロジェクトへ。
+            CD無しの担当者フリー作業は「ラベルのみ」（マスタ作らず件名で計上）。
           </p>
+
+          <div v-if="groupBuckets.length" class="group-edit">
+            <strong class="small">新規グループ（束ねて作成するプロジェクト名・編集可）</strong>
+            <div v-for="g in groupBuckets" :key="g.key" class="group-row">
+              <input v-model="groupNames[g.key]" type="text" maxlength="200" class="link-select" />
+              <span class="muted small">CD {{ g.count }} 件を束ねて 1 プロジェクト</span>
+            </div>
+          </div>
+
           <table class="match-table">
             <thead>
-              <tr><th>件名 / CD</th><th>アクション</th><th>選択 / 仮案件名</th></tr>
+              <tr><th>件名 / CD / 束ね名</th><th>束ね先</th></tr>
             </thead>
             <tbody>
               <tr v-for="m in preview.projectMatches" :key="m.projectKey">
                 <td>
                   <span class="excel-name">{{ m.sampleName }}</span><br />
-                  <span class="muted small">{{ m.projectCode ? `CD: ${m.projectCode}` : 'CD なし' }}</span>
+                  <span class="muted small">
+                    {{ m.projectCode ? `CD: ${m.projectCode}` : 'CD なし' }}
+                    <template v-if="m.projectCode"> / 束ね名: {{ m.proposedGroupName }}</template>
+                  </span>
                   <span v-if="m.suggestedProjectId !== null" class="badge match">既存マッチ</span>
-                  <span v-else-if="m.projectCode" class="badge new">仮作成</span>
+                  <span v-else-if="m.projectCode" class="badge new">束ね（新規）</span>
                   <span v-else class="badge label">ラベルのみ</span>
                 </td>
                 <td>
-                  <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="link" />既存に紐付け</label>
-                  <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="createProvisional" />仮プロジェクト作成</label>
-                  <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="labelOnly" />ラベルのみ（登録しない）</label>
-                </td>
-                <td>
-                  <select v-if="pChoices[m.projectKey].action === 'link'" v-model.number="pChoices[m.projectKey].projectId" class="link-select">
-                    <option :value="null">（プロジェクトを選択）</option>
-                    <option v-for="p in projectOptions" :key="p.id" :value="p.id">
-                      {{ p.isProvisional ? '【仮】' : '' }}{{ p.name }}{{ p.projectCode ? ` (${p.projectCode})` : '' }}
-                    </option>
+                  <select v-model="pBucket[m.projectKey]" class="link-select">
+                    <option value="labelOnly">ラベルのみ（登録しない）</option>
+                    <optgroup label="新規グループに束ねる">
+                      <option v-for="g in groupBuckets" :key="g.key" :value="g.key">
+                        新規: {{ groupNames[g.key] || g.key }}
+                      </option>
+                    </optgroup>
+                    <optgroup label="既存プロジェクトに紐付け">
+                      <option
+                        v-for="p in projectOptions"
+                        :key="p.id"
+                        :value="`link:${p.id}`"
+                      >
+                        {{ p.isProvisional ? '【仮】' : '' }}{{ p.name }}{{ p.projectCode ? ` (${p.projectCode})` : '' }}
+                      </option>
+                    </optgroup>
                   </select>
-                  <div v-else-if="pChoices[m.projectKey].action === 'createProvisional'" class="prov-fields">
-                    <input v-model="pChoices[m.projectKey].provisionalName" type="text" class="link-select" maxlength="200" placeholder="仮プロジェクト名" />
-                    <span v-if="m.customerName" class="muted small">顧客: {{ m.customerName }}（上の顧客名寄せに従う）</span>
-                  </div>
-                  <span v-else class="muted small">件名「{{ m.sampleName }}」で工数のみ計上（マスタ登録なし）</span>
                 </td>
               </tr>
             </tbody>
