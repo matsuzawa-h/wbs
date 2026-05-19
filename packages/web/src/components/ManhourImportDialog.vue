@@ -70,7 +70,7 @@ interface CCh {
   newCode: string;
 }
 interface PCh {
-  action: 'link' | 'createProvisional';
+  action: 'link' | 'createProvisional' | 'labelOnly';
   projectId: number | null;
   provisionalName: string;
 }
@@ -158,8 +158,15 @@ async function onPreview(): Promise<void> {
     cChoices.value = c;
     const p: Record<string, PCh> = {};
     for (const m of res.data.projectMatches) {
+      // 既存一致→link、CD有り未一致→仮作成、CD無し→ラベルのみ(マスタ汚さない)
+      const action =
+        m.suggestedProjectId !== null
+          ? 'link'
+          : m.projectCode
+            ? 'createProvisional'
+            : 'labelOnly';
       p[m.projectKey] = {
-        action: m.suggestedProjectId !== null ? 'link' : 'createProvisional',
+        action,
         projectId: m.suggestedProjectId,
         provisionalName: m.sampleName,
       };
@@ -236,6 +243,8 @@ async function onCommit(): Promise<void> {
           action: 'link',
           projectId: c.projectId!,
         };
+      if (c.action === 'labelOnly')
+        return { projectKey: m.projectKey, action: 'labelOnly' };
       return {
         projectKey: m.projectKey,
         action: 'createProvisional',
@@ -413,7 +422,10 @@ const fyOptions = computed<number[]>(() => {
 
         <section class="match-section">
           <strong>案件（プロジェクトCD）の名寄せ（{{ preview.projectMatches.length }} 件）</strong>
-          <p class="muted">CD が既存プロジェクトに一致しない場合は仮プロジェクトを作成します（顧客は上の名寄せ結果で自動紐づけ）。</p>
+          <p class="muted">
+            CD有りで未一致は仮プロジェクト作成。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
+            projects マスタを作らず件名で工数計上（必要なものだけ手動で仮作成/既存紐付けに格上げ可）。
+          </p>
           <table class="match-table">
             <thead>
               <tr><th>件名 / CD</th><th>アクション</th><th>選択 / 仮案件名</th></tr>
@@ -424,11 +436,13 @@ const fyOptions = computed<number[]>(() => {
                   <span class="excel-name">{{ m.sampleName }}</span><br />
                   <span class="muted small">{{ m.projectCode ? `CD: ${m.projectCode}` : 'CD なし' }}</span>
                   <span v-if="m.suggestedProjectId !== null" class="badge match">既存マッチ</span>
-                  <span v-else class="badge new">仮作成</span>
+                  <span v-else-if="m.projectCode" class="badge new">仮作成</span>
+                  <span v-else class="badge label">ラベルのみ</span>
                 </td>
                 <td>
                   <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="link" />既存に紐付け</label>
                   <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="createProvisional" />仮プロジェクト作成</label>
+                  <label class="radio"><input v-model="pChoices[m.projectKey].action" type="radio" value="labelOnly" />ラベルのみ（登録しない）</label>
                 </td>
                 <td>
                   <select v-if="pChoices[m.projectKey].action === 'link'" v-model.number="pChoices[m.projectKey].projectId" class="link-select">
@@ -437,10 +451,11 @@ const fyOptions = computed<number[]>(() => {
                       {{ p.isProvisional ? '【仮】' : '' }}{{ p.name }}{{ p.projectCode ? ` (${p.projectCode})` : '' }}
                     </option>
                   </select>
-                  <div v-else class="prov-fields">
+                  <div v-else-if="pChoices[m.projectKey].action === 'createProvisional'" class="prov-fields">
                     <input v-model="pChoices[m.projectKey].provisionalName" type="text" class="link-select" maxlength="200" placeholder="仮プロジェクト名" />
                     <span v-if="m.customerName" class="muted small">顧客: {{ m.customerName }}（上の顧客名寄せに従う）</span>
                   </div>
+                  <span v-else class="muted small">件名「{{ m.sampleName }}」で工数のみ計上（マスタ登録なし）</span>
                 </td>
               </tr>
             </tbody>
@@ -499,6 +514,7 @@ const fyOptions = computed<number[]>(() => {
 .badge { display: inline-block; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 3px; font-weight: 500; margin-left: 0.3rem; }
 .badge.match { background: var(--c-ok-bg); color: var(--c-ok-fg); }
 .badge.new { background: var(--c-warn-bg); color: var(--c-warn-fg); }
+.badge.label { background: var(--c-neutral-bg); color: var(--c-neutral-fg); }
 .radio { display: inline-flex; align-items: center; gap: 0.2rem; margin-right: 0.6rem; font-size: 0.83rem; }
 .link-select { width: 100%; }
 .new-emp { display: flex; flex-direction: column; gap: 0.3rem; }
