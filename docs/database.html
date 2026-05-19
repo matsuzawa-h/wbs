@@ -411,8 +411,9 @@ project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<stro
 <code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに、未一致顧客を顧客マスタに自動作成
 （顧客は <strong>NFKC＋空白除去＋会社表記ゆれ＋小文字化</strong>の正規化キーで突合し、表記揺れ・再取込でも
 重複作成しない＝既存を再利用。安全側で見た目違いのみ同一視）。
-<strong>プロジェクト化対象は作業区分=AFT 行のみ</strong>（MNT/SY/空/zz は工数のみ＝件名ラベル計上、projects 化しない。
-ただし同一CDがAFTで既にプロジェクト化されていれば非AFT工数もそのプロジェクトへ合算）。
+<strong>プロジェクト化対象は「作業区分=AFT または SY」かつ「プロジェクトCD有り」の行のみ</strong>
+（CD無しのAFT/SY・MNT/空/zz は工数のみ＝件名ラベル計上、projects 化しない。
+ただし同一CDが対象行で既にプロジェクト化されていれば対象外区分の工数もそのプロジェクトへ合算）。
 案件の突合は <code>project_codes</code>（CD一意）が正本。登録済CDは常に所属プロジェクトへ（<strong>再取込・付け替え防止</strong>）。
 未登録CDは件名から期間/工程表記を除いた<strong>束ね名(stem)で自動グルーピング提案</strong>し、
 同一 stem の複数CD（工程別など）を <strong>1 プロジェクト＝1ガント</strong>に束ねて作成（<code>newGroup</code>）。
