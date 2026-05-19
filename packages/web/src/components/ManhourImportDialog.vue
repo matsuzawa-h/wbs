@@ -329,7 +329,7 @@ const groupBuckets = computed<GroupBucket[]>(() => {
       byKey.set(b, arr);
     }
   }
-  return [...byKey.entries()].map(([key, members]) => {
+  const buckets = [...byKey.entries()].map(([key, members]) => {
     const customers = [
       ...new Set(
         members
@@ -343,6 +343,12 @@ const groupBuckets = computed<GroupBucket[]>(() => {
       .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     return { key, count: members.length, customers, codes };
   });
+  // 下の「件名/顧客名/CD/束ね名」表と同じ並び＝各グループの最小CD昇順。
+  return buckets.sort((a, b) =>
+    (a.codes[0] ?? '').localeCompare(b.codes[0] ?? '', 'en', {
+      numeric: true,
+    }),
+  );
 });
 const fyOptions = computed<number[]>(() => {
   const base = currentFiscalYear();
