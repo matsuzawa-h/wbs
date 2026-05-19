@@ -221,6 +221,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>work_type</td><td>TEXT / ''</td><td>NOT NULL 作業区分（AFT/MNT/SY/'' / 'zz'=非稼働）</td></tr>
     <tr><td>year_month</td><td>TEXT</td><td>NOT NULL <code>YYYY-MM</code>（1〜3月は翌暦年。idx_mh_entries_ym）</td></tr>
     <tr><td>hours</td><td>REAL / 0</td><td>NOT NULL 工数（人時）</td></tr>
+    <tr><td>label</td><td>TEXT</td><td>project_id が NULL の明細（CD無しのフリー作業 / zz 非稼働）の件名。見通し内訳の表示名（0009 で追加）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
 </table>
@@ -253,6 +254,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0006</td><td>add_task_note</td><td>wbs_tasks.note 追加（備考）</td></tr>
     <tr><td>0007</td><td>add_personal_tasks</td><td>personal_tasks テーブル追加</td></tr>
     <tr><td>0008</td><td>add_manhours</td><td>projects に project_code / is_provisional 追加＋manhour_import_batches / manhour_entries / manhour_capacities 追加</td></tr>
+    <tr><td>0009</td><td>add_manhour_entry_label</td><td>manhour_entries.label 追加（CD無し/zz をマスタ化せず件名ラベルで計上）</td></tr>
   </tbody>
 </table>
 <div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>
@@ -393,9 +395,11 @@ project 削除で <code>SET NULL</code>）。ガント／Excel 出力には<stro
 行区分: <code>合計</code> の派生行は破棄、件名「月基準時間」のみ <code>manhour_capacities</code> へ、
 <code>zz</code> は非稼働 entry（project なし）、AFT/MNT/SY/空は案件工数。
 同一 担当者×CD×作業区分×年月 は合算。
-<code>preview</code> は担当者名・プロジェクトCD を名寄せ（DB 変更なし）。
-<code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに自動作成、
-未一致/CD空案件を仮プロジェクト作成（<strong>再取込時は CD/名前で既存仮案件を再利用＝重複防止</strong>）、
+<code>preview</code> は担当者名・顧客名(E列)・プロジェクトCD を名寄せ（DB 変更なし）。
+<code>commit</code> は 1 トランザクションで、未一致担当者を社員マスタに、未一致顧客を顧客マスタに自動作成。
+案件は CD有り未一致のみ仮プロジェクト作成（<strong>再取込時は CD/名前で既存仮案件を再利用＝重複防止</strong>、
+顧客は名寄せ結果で紐づけ）。<strong>CD無し（担当者のフリー作業）は既定で「ラベルのみ」</strong>＝
+projects マスタを作らず <code>project_id=NULL</code>＋<code>label</code>=件名 で計上（<code>zz</code> も同様にラベル保持）。
 <strong>毎回新規バッチ</strong>として明細・月基準時間を投入（履歴保持）。
 集計は「選択/最新の取込バッチ ∪ 手入力(<code>batch_id NULL</code>)」で行い、
 稼働率は <code>Σhours / base_hours</code> を都度算出（CSV 稼働率行は不使用）。
