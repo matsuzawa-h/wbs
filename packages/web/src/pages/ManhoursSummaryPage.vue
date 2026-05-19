@@ -71,6 +71,26 @@ function toggleExpand(assigneeId: number, ym: string): void {
   expanded.value = expanded.value === k ? null : k;
 }
 
+// 内訳グリッドの「仮(手入力)」行を直接編集（確定=取込分は編集不可）。
+// hours<=0 で手入力は削除される（サービス側）。
+async function onEditManual(
+  assigneeId: number,
+  ym: string,
+  b: { projectId: number | null; workType: string },
+  raw: string,
+): Promise<void> {
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours < 0) return;
+  await manhours.saveManualEntry({
+    assigneeId,
+    projectId: b.projectId,
+    workType: b.workType,
+    yearMonth: ym,
+    hours,
+  });
+  await reload();
+}
+
 const monthTotals = computed<Record<string, { total: number; base: number }>>(
   () => {
     const acc: Record<string, { total: number; base: number }> = {};
@@ -179,21 +199,39 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                   <strong>
                     {{ row.assigneeName }} / {{ ymLabel(expanded.split(':')[1]) }} の内訳
                   </strong>
-                  <ul>
-                    <li
-                      v-for="(b, i) in (row.cells[expanded.split(':')[1]]?.byProject ?? [])"
-                      :key="i"
-                    >
-                      <span class="tag" :class="b.source">{{ b.source === 'manual' ? '仮' : '確定' }}</span>
-                      <span v-if="b.isProvisional" class="tag prov">仮案件</span>
-                      {{ b.projectName }}
-                      <span v-if="b.workType" class="muted small">[{{ b.workType }}]</span>
-                      … <strong>{{ b.hours.toFixed(1) }} h</strong>
-                    </li>
-                    <li v-if="!(row.cells[expanded.split(':')[1]]?.byProject ?? []).length" class="muted">
-                      内訳なし
-                    </li>
-                  </ul>
+                  <table class="detail-grid">
+                    <thead>
+                      <tr><th>区分</th><th>案件</th><th>作業区分</th><th class="num">工数(h)</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(b, i) in (row.cells[expanded.split(':')[1]]?.byProject ?? [])"
+                        :key="i"
+                      >
+                        <td>
+                          <span class="tag" :class="b.source">{{ b.source === 'manual' ? '仮' : '確定' }}</span>
+                          <span v-if="b.isProvisional" class="tag prov">仮案件</span>
+                        </td>
+                        <td>{{ b.projectName }}</td>
+                        <td>{{ b.workType || '—' }}</td>
+                        <td class="num">
+                          <input
+                            v-if="b.source === 'manual'"
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            class="edit"
+                            :value="b.hours"
+                            @change="onEditManual(row.assigneeId, expanded.split(':')[1], b, ($event.target as HTMLInputElement).value)"
+                          />
+                          <template v-else>{{ b.hours.toFixed(1) }}</template>
+                        </td>
+                      </tr>
+                      <tr v-if="!(row.cells[expanded.split(':')[1]]?.byProject ?? []).length">
+                        <td colspan="4" class="muted">内訳なし</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </td>
             </tr>
@@ -267,8 +305,21 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .cell.foot { font-weight: 600; background: var(--c-surface-3); }
 .detail-row td { background: var(--c-surface-2); text-align: left; }
 .detail { padding: 0.4rem 0.6rem; }
-.detail ul { margin: 0.3rem 0 0; padding-left: 1rem; }
-.detail li { margin: 0.15rem 0; }
+.detail-grid {
+  margin-top: 0.35rem; border-collapse: collapse; font-size: 0.82rem;
+  background: var(--c-surface); min-width: 28rem;
+}
+.detail-grid th, .detail-grid td {
+  border: 1px solid var(--c-border); padding: 0.2rem 0.5rem;
+  text-align: left; white-space: nowrap;
+}
+.detail-grid thead th {
+  background: var(--c-surface-2); color: var(--c-text-muted); font-weight: 600;
+}
+.detail-grid .num { text-align: right; }
+.detail-grid input.edit {
+  width: 5rem; text-align: right; padding: 0.1rem 0.3rem;
+}
 .tag {
   display: inline-block; font-size: 0.7rem; padding: 0.02rem 0.35rem;
   border-radius: 3px; margin-right: 0.25rem;
