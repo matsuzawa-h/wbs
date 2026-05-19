@@ -391,8 +391,8 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
 .mh-page {
   display: flex; flex-direction: column; gap: 1rem;
   /* サマリーと展開明細で月列を縦に揃えるための共通幅 */
-  --mh-lead: 24rem;  /* 先頭ブロック幅（サマリー=担当者列 / 明細=顧客名+CD+件名+区分） */
-  --mh-mw: 2.9rem;   /* 月1列の幅（両テーブル共通・狭め） */
+  --mh-lead: 19rem;  /* 先頭ブロック幅（サマリー=担当者列 / 明細=顧客名+CD+件名+区分） */
+  --mh-mw: 3.7rem;   /* 月1列の幅（両テーブル共通・件名を詰めた分を拡大） */
   --mh-tot: 4.2rem;  /* 合計列の幅 */
 }
 .page-header {
@@ -426,7 +426,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
    顧客名/CD を狭め、余りは件名へ。 */
 .detail-grid.orig col.c-cust { width: 4.5rem; }
 .detail-grid.orig col.c-code { width: 5.5rem; }
-.detail-grid.orig col.c-subj { width: 10rem; }
+.detail-grid.orig col.c-subj { width: 5rem; }
 .detail-grid.orig col.c-wt { width: 4rem; }
 .detail-grid.orig col.c-mon { width: var(--mh-mw); }
 .detail-grid.orig col.c-tot { width: var(--mh-tot); }
