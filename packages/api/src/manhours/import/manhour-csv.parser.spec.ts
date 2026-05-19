@@ -91,6 +91,12 @@ describe('parseManhourCsv', () => {
     expect(p.assigneeNames).toEqual(['堀田　和彦', '堤　昇太朗', '西本　拓真']);
   });
 
+  it('顧客名(E列)を案件行から distinct 抽出（zz/合計は対象外）', () => {
+    const p = parseManhourCsv(csv, fy);
+    expect(p.customerNames).toEqual(['NIPPO', 'AG', '顧客X']);
+    expect(p.customerNames).not.toContain('休暇系'); // zz
+  });
+
   it('期間分割行を (担当者,CD,作業区分,年月) で合算する', () => {
     const p = parseManhourCsv(csv, fy);
     const find = (cd: string, ym: string) =>

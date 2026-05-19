@@ -30,7 +30,10 @@ export interface ManhourProjectMatch {
   customerName: string | null;
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
-  // CSV の顧客名に名前一致する既存顧客（仮案件作成時に既定で紐づける）。
+}
+
+export interface ManhourCustomerMatch {
+  name: string;
   suggestedCustomerId: number | null;
 }
 
@@ -38,6 +41,7 @@ export interface ManhourPreviewResult {
   fiscalYear: number;
   orgCode: string | null;
   assigneeMatches: ManhourAssigneeMatch[];
+  customerMatches: ManhourCustomerMatch[];
   projectMatches: ManhourProjectMatch[];
   entries: ParsedManhourEntry[];
   capacities: ParsedCapacity[];
@@ -75,17 +79,22 @@ export class ManhourImportService {
         .all()
         .map((c) => [c.name, c.id]),
     );
-    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) => ({
-      ...this.matchProject(p),
-      suggestedCustomerId:
-        customerByName.get((p.customerName ?? '').trim()) ?? null,
-    }));
+    const customerMatches: ManhourCustomerMatch[] = parsed.customerNames.map(
+      (name) => ({
+        name,
+        suggestedCustomerId: customerByName.get(name) ?? null,
+      }),
+    );
+    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) =>
+      this.matchProject(p),
+    );
 
     const totalHours = parsed.entries.reduce((s, e) => s + e.hours, 0);
     return {
       fiscalYear,
       orgCode: parsed.orgCode,
       assigneeMatches,
+      customerMatches,
       projectMatches,
       entries: parsed.entries,
       capacities: parsed.capacities,
@@ -99,9 +108,7 @@ export class ManhourImportService {
     };
   }
 
-  private matchProject(
-    p: ParsedProjectIdentity,
-  ): Omit<ManhourProjectMatch, 'suggestedCustomerId'> {
+  private matchProject(p: ParsedProjectIdentity): ManhourProjectMatch {
     let suggestedProjectId: number | null = null;
     let suggestedProjectName: string | null = null;
     if (p.projectCode) {
@@ -135,6 +142,7 @@ export class ManhourImportService {
   commit(dto: CommitManhourImportDto): {
     batchId: number;
     assigneesCreated: number;
+    customersCreated: number;
     projectsCreated: number;
     entriesInserted: number;
     capacitiesInserted: number;
@@ -175,6 +183,29 @@ export class ManhourImportService {
         // skip → マップに入れない（その担当者の行は取り込まない）
       }
 
+      // 1.5) 顧客の名寄せ（CSV E列。未登録は顧客マスタに新規登録）
+      let customersCreated = 0;
+      const customerNameToId = new Map<string, number>();
+      for (const r of dto.customerResolution ?? []) {
+        if (r.action === 'link' && r.customerId !== undefined) {
+          customerNameToId.set(r.name, r.customerId);
+        } else if (r.action === 'create' && r.newCustomer) {
+          const created = tx
+            .insert(customers)
+            .values({
+              code: r.newCustomer.code?.trim() || null,
+              name: r.newCustomer.name.trim(),
+              isActive: 1,
+              sortOrder: 0,
+            })
+            .returning()
+            .get();
+          customerNameToId.set(r.name, created.id);
+          customersCreated += 1;
+        }
+        // skip → マップに入れない（その顧客は紐づけない）
+      }
+
       // 2) 案件の名寄せ（未一致/CD空は仮案件、再取込で重複作成しない）
       let projectsCreated = 0;
       const keyToProjectId = new Map<string, number>();
@@ -208,11 +239,14 @@ export class ManhourImportService {
           keyToProjectId.set(r.projectKey, dupe.id);
           continue;
         }
+        const customerId = r.customerName
+          ? (customerNameToId.get(r.customerName) ?? null)
+          : null;
         const created = tx
           .insert(projects)
           .values({
             name,
-            customerId: r.customerId ?? null,
+            customerId,
             projectCode: code,
             isProvisional: 1,
           })
@@ -279,11 +313,13 @@ export class ManhourImportService {
 
       this.logger.log(
         `manhour import committed: batch=${batch.id} entries=${entriesInserted} ` +
-          `caps=${capacitiesInserted} newAssignees=${assigneesCreated} newProjects=${projectsCreated}`,
+          `caps=${capacitiesInserted} newAssignees=${assigneesCreated} ` +
+          `newCustomers=${customersCreated} newProjects=${projectsCreated}`,
       );
       return {
         batchId: batch.id,
         assigneesCreated,
+        customersCreated,
         projectsCreated,
         entriesInserted,
         capacitiesInserted,

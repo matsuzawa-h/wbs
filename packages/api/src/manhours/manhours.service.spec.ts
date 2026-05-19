@@ -74,6 +74,11 @@ function commitDtoFromPreview(
         ? { name: m.name, action: 'link', assigneeId: m.suggestedAssigneeId }
         : { name: m.name, action: 'create', newEmployee: { name: m.name } },
     ),
+    customerResolution: p.customerMatches.map((m) =>
+      m.suggestedCustomerId !== null
+        ? { name: m.name, action: 'link', customerId: m.suggestedCustomerId }
+        : { name: m.name, action: 'create', newCustomer: { name: m.name } },
+    ),
     projectResolution: p.projectMatches.map((m) =>
       m.suggestedProjectId !== null
         ? {
@@ -86,6 +91,7 @@ function commitDtoFromPreview(
             action: 'createProvisional',
             projectCode: m.projectCode,
             provisionalName: m.sampleName,
+            customerName: m.customerName,
           },
     ),
     entries: p.entries.map((e) => ({
@@ -122,7 +128,29 @@ describe('ManhourImportService + ManhoursService', () => {
         commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'),
       );
       expect(res.assigneesCreated).toBe(2);
+      expect(res.customersCreated).toBe(2); // NIPPO / 顧客X を顧客マスタへ登録
       expect(res.projectsCreated).toBe(2); // AAP001 / AAP002 を仮作成
+
+      // 仮案件が CSV顧客名で作成済み顧客に紐づく（zz の 休暇系 は対象外）
+      const nippo = db
+        .select()
+        .from(schema.customers)
+        .all()
+        .find((c) => c.name === 'NIPPO')!;
+      expect(nippo).toBeTruthy();
+      const aap001 = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .find((p) => p.projectCode === 'AAP001')!;
+      expect(aap001.customerId).toBe(nippo.id);
+      expect(
+        db
+          .select()
+          .from(schema.customers)
+          .all()
+          .some((c) => c.name === '休暇系'),
+      ).toBe(false);
 
       const sum = svc.getSummary({
         fiscalYear: FY,

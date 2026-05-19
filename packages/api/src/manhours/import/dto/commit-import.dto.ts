@@ -48,6 +48,36 @@ export class ManhourAssigneeResolutionDto {
   newEmployee?: NewManhourEmployeeDto;
 }
 
+export class NewManhourCustomerDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  code?: string | null;
+}
+
+export class ManhourCustomerResolutionDto {
+  /** CSV「顧客名」(E列)。 */
+  @IsString()
+  name!: string;
+
+  @IsIn(['link', 'create', 'skip'])
+  action!: 'link' | 'create' | 'skip';
+
+  @IsOptional()
+  @IsInt()
+  customerId?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewManhourCustomerDto)
+  newCustomer?: NewManhourCustomerDto;
+}
+
 export class ManhourProjectResolutionDto {
   /** parser が割り当てた案件キー (`cd:<CD>` / `nm:<件名>`)。 */
   @IsString()
@@ -70,9 +100,11 @@ export class ManhourProjectResolutionDto {
   @MaxLength(200)
   provisionalName?: string;
 
+  /** この案件の CSV顧客名。仮作成時に顧客名寄せ結果で顧客へ紐づける。 */
   @IsOptional()
-  @IsInt()
-  customerId?: number | null;
+  @IsString()
+  @MaxLength(200)
+  customerName?: string | null;
 }
 
 export class ManhourEntryRowDto {
@@ -127,6 +159,11 @@ export class CommitManhourImportDto {
   @ValidateNested({ each: true })
   @Type(() => ManhourAssigneeResolutionDto)
   assigneeResolution!: ManhourAssigneeResolutionDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ManhourCustomerResolutionDto)
+  customerResolution!: ManhourCustomerResolutionDto[];
 
   @IsArray()
   @ValidateNested({ each: true })
