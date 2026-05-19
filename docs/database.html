@@ -222,6 +222,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>year_month</td><td>TEXT</td><td>NOT NULL <code>YYYY-MM</code>（1〜3月は翌暦年。idx_mh_entries_ym）</td></tr>
     <tr><td>hours</td><td>REAL / 0</td><td>NOT NULL 工数（人時）</td></tr>
     <tr><td>label</td><td>TEXT</td><td>project_id が NULL の明細（CD無しのフリー作業 / zz 非稼働）の件名。見通し内訳の表示名（0009 で追加）</td></tr>
+    <tr><td>customer_label</td><td>TEXT</td><td>CSV顧客名(E列)の生値。MNT 等の非プロジェクト行でも担当者別明細に顧客名を出すため保持（顧客マスタ非依存。0011 で追加）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
 </table>
@@ -267,6 +268,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0008</td><td>add_manhours</td><td>projects に project_code / is_provisional 追加＋manhour_import_batches / manhour_entries / manhour_capacities 追加</td></tr>
     <tr><td>0009</td><td>add_manhour_entry_label</td><td>manhour_entries.label 追加（CD無し/zz をマスタ化せず件名ラベルで計上）</td></tr>
     <tr><td>0010</td><td>add_project_codes</td><td>project_codes 追加（1プロジェクト×複数CD）。既存 projects.project_code を backfill</td></tr>
+    <tr><td>0011</td><td>add_manhour_entry_customer_label</td><td>manhour_entries.customer_label 追加（CSV顧客名を明細に保持）</td></tr>
   </tbody>
 </table>
 <div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>

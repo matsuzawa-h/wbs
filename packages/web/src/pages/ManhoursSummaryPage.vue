@@ -292,8 +292,8 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                     <table class="detail-grid orig">
                       <thead>
                         <tr>
-                          <th>作業区分</th><th>顧客名</th><th>件名</th><th>プロジェクトCD</th>
-                          <th v-for="ym in manhours.assigneeDetail.months" :key="ym" class="num">{{ ymLabel(ym) }}</th>
+                          <th>顧客名</th><th>プロジェクトCD</th><th>件名</th><th>作業区分</th>
+                          <th v-for="ym in manhours.summary.months" :key="ym" class="num">{{ ymLabel(ym) }}</th>
                           <th class="num">合計</th>
                         </tr>
                       </thead>
@@ -303,15 +303,15 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           :key="i"
                           :class="{ 'is-manual': d.source === 'manual' }"
                         >
+                          <td>{{ d.customerName || '—' }}</td>
+                          <td>{{ d.projectCode || '—' }}</td>
+                          <td>{{ d.subject }}</td>
                           <td>
-                            {{ d.workType || '—' }}
+                            {{ d.workType === 'zz' ? '非稼働' : (d.workType || '—') }}
                             <span class="tag" :class="d.source">{{ d.source === 'manual' ? '仮' : '確定' }}</span>
                           </td>
-                          <td>{{ d.customerName || '—' }}</td>
-                          <td>{{ d.subject }}</td>
-                          <td>{{ d.projectCode || '—' }}</td>
                           <td
-                            v-for="ym in manhours.assigneeDetail.months"
+                            v-for="ym in manhours.summary.months"
                             :key="ym"
                             class="num"
                           >
@@ -329,7 +329,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           <td class="num total">{{ d.total.toFixed(2) }}</td>
                         </tr>
                         <tr v-if="!manhours.assigneeDetail.rows.length">
-                          <td :colspan="manhours.assigneeDetail.months.length + 5" class="muted">
+                          <td :colspan="manhours.summary.months.length + 5" class="muted">
                             この担当者の明細はありません
                           </td>
                         </tr>
