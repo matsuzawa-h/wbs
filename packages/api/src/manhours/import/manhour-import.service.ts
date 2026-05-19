@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import {
   AppDb,
   assignees,
+  customers,
   manhourCapacities,
   manhourEntries,
   manhourImportBatches,
@@ -29,6 +30,8 @@ export interface ManhourProjectMatch {
   customerName: string | null;
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
+  // CSV の顧客名に名前一致する既存顧客（仮案件作成時に既定で紐づける）。
+  suggestedCustomerId: number | null;
 }
 
 export interface ManhourPreviewResult {
@@ -65,9 +68,18 @@ export class ManhourImportService {
       (name) => ({ name, suggestedAssigneeId: byName.get(name) ?? null }),
     );
 
-    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) =>
-      this.matchProject(p),
+    const customerByName = new Map(
+      this.db
+        .select({ id: customers.id, name: customers.name })
+        .from(customers)
+        .all()
+        .map((c) => [c.name, c.id]),
     );
+    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) => ({
+      ...this.matchProject(p),
+      suggestedCustomerId:
+        customerByName.get((p.customerName ?? '').trim()) ?? null,
+    }));
 
     const totalHours = parsed.entries.reduce((s, e) => s + e.hours, 0);
     return {
@@ -87,7 +99,9 @@ export class ManhourImportService {
     };
   }
 
-  private matchProject(p: ParsedProjectIdentity): ManhourProjectMatch {
+  private matchProject(
+    p: ParsedProjectIdentity,
+  ): Omit<ManhourProjectMatch, 'suggestedCustomerId'> {
     let suggestedProjectId: number | null = null;
     let suggestedProjectName: string | null = null;
     if (p.projectCode) {
