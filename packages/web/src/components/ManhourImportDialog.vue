@@ -35,12 +35,16 @@ interface ProjectMatch {
   customerName: string | null;
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
+}
+interface CustomerMatch {
+  name: string;
   suggestedCustomerId: number | null;
 }
 interface PreviewResult {
   fiscalYear: number;
   orgCode: string | null;
   assigneeMatches: AssigneeMatch[];
+  customerMatches: CustomerMatch[];
   projectMatches: ProjectMatch[];
   entries: unknown[];
   capacities: unknown[];
@@ -60,13 +64,18 @@ interface ACh {
   newCode: string;
   newDepartment: string;
 }
+interface CCh {
+  action: 'link' | 'create' | 'skip';
+  customerId: number | null;
+  newCode: string;
+}
 interface PCh {
   action: 'link' | 'createProvisional';
   projectId: number | null;
   provisionalName: string;
-  customerId: number | null;
 }
 const aChoices = ref<Record<string, ACh>>({});
+const cChoices = ref<Record<string, CCh>>({});
 const pChoices = ref<Record<string, PCh>>({});
 
 function currentFiscalYear(): number {
@@ -94,6 +103,7 @@ watch(
     if (fileInputRef.value) fileInputRef.value.value = '';
     preview.value = null;
     aChoices.value = {};
+    cChoices.value = {};
     pChoices.value = {};
     errorMessage.value = null;
     uploading.value = false;
@@ -137,13 +147,21 @@ async function onPreview(): Promise<void> {
       };
     }
     aChoices.value = a;
+    const c: Record<string, CCh> = {};
+    for (const m of res.data.customerMatches) {
+      c[m.name] = {
+        action: m.suggestedCustomerId !== null ? 'link' : 'create',
+        customerId: m.suggestedCustomerId,
+        newCode: '',
+      };
+    }
+    cChoices.value = c;
     const p: Record<string, PCh> = {};
     for (const m of res.data.projectMatches) {
       p[m.projectKey] = {
         action: m.suggestedProjectId !== null ? 'link' : 'createProvisional',
         projectId: m.suggestedProjectId,
         provisionalName: m.sampleName,
-        customerId: m.suggestedCustomerId,
       };
     }
     pChoices.value = p;
@@ -162,6 +180,11 @@ const allValid = computed(() => {
     const c = aChoices.value[m.name];
     if (!c) return false;
     if (c.action === 'link' && c.assigneeId === null) return false;
+  }
+  for (const m of pv.customerMatches) {
+    const c = cChoices.value[m.name];
+    if (!c) return false;
+    if (c.action === 'link' && c.customerId === null) return false;
   }
   for (const m of pv.projectMatches) {
     const c = pChoices.value[m.projectKey];
@@ -194,6 +217,17 @@ async function onCommit(): Promise<void> {
         },
       };
     });
+    const customerResolution = pv.customerMatches.map((m) => {
+      const c = cChoices.value[m.name];
+      if (c.action === 'link')
+        return { name: m.name, action: 'link', customerId: c.customerId! };
+      if (c.action === 'skip') return { name: m.name, action: 'skip' };
+      return {
+        name: m.name,
+        action: 'create',
+        newCustomer: { name: m.name, code: c.newCode.trim() || null },
+      };
+    });
     const projectResolution = pv.projectMatches.map((m) => {
       const c = pChoices.value[m.projectKey];
       if (c.action === 'link')
@@ -207,7 +241,7 @@ async function onCommit(): Promise<void> {
         action: 'createProvisional',
         projectCode: m.projectCode,
         provisionalName: c.provisionalName.trim(),
-        customerId: c.customerId,
+        customerName: m.customerName,
       };
     });
     await api.post('/manhours/import/commit', {
@@ -215,6 +249,7 @@ async function onCommit(): Promise<void> {
       fiscalYear: pv.fiscalYear,
       orgCode: pv.orgCode,
       assigneeResolution,
+      customerResolution,
       projectResolution,
       entries: pv.entries,
       capacities: pv.capacities,
@@ -333,8 +368,52 @@ const fyOptions = computed<number[]>(() => {
         </section>
 
         <section class="match-section">
+          <strong>顧客の名寄せ（{{ preview.customerMatches.length }} 社）</strong>
+          <p class="muted">
+            CSV「顧客名」(E列) を既存の顧客マスタに紐付けるか、未登録なら新規登録します。
+            仮プロジェクト作成時、この結果で案件に顧客が紐づきます。
+          </p>
+          <table class="match-table">
+            <thead>
+              <tr><th>CSV 顧客名</th><th>アクション</th><th>選択 / 新規入力</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in preview.customerMatches" :key="m.name">
+                <td>
+                  <span class="excel-name">{{ m.name }}</span>
+                  <span v-if="m.suggestedCustomerId !== null" class="badge match">既存マッチ</span>
+                  <span v-else class="badge new">未登録</span>
+                </td>
+                <td>
+                  <label class="radio"><input v-model="cChoices[m.name].action" type="radio" value="link" />既存に紐付け</label>
+                  <label class="radio"><input v-model="cChoices[m.name].action" type="radio" value="create" />顧客マスタに新規登録</label>
+                  <label class="radio"><input v-model="cChoices[m.name].action" type="radio" value="skip" />紐付けない</label>
+                </td>
+                <td>
+                  <select v-if="cChoices[m.name].action === 'link'" v-model.number="cChoices[m.name].customerId" class="link-select">
+                    <option :value="null">（顧客を選択）</option>
+                    <option v-for="cu in customerOptions" :key="cu.id" :value="cu.id">
+                      {{ cu.code ? `[${cu.code}] ` : '' }}{{ cu.name }}
+                    </option>
+                  </select>
+                  <input
+                    v-else-if="cChoices[m.name].action === 'create'"
+                    v-model="cChoices[m.name].newCode"
+                    type="text"
+                    class="link-select"
+                    placeholder="顧客コード (任意・空欄可)"
+                    maxlength="32"
+                  />
+                  <span v-else class="muted small">顧客を紐付けずに取込</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="match-section">
           <strong>案件（プロジェクトCD）の名寄せ（{{ preview.projectMatches.length }} 件）</strong>
-          <p class="muted">CD が既存プロジェクトに一致しない場合は仮プロジェクトを作成します。</p>
+          <p class="muted">CD が既存プロジェクトに一致しない場合は仮プロジェクトを作成します（顧客は上の名寄せ結果で自動紐づけ）。</p>
           <table class="match-table">
             <thead>
               <tr><th>件名 / CD</th><th>アクション</th><th>選択 / 仮案件名</th></tr>
@@ -360,15 +439,7 @@ const fyOptions = computed<number[]>(() => {
                   </select>
                   <div v-else class="prov-fields">
                     <input v-model="pChoices[m.projectKey].provisionalName" type="text" class="link-select" maxlength="200" placeholder="仮プロジェクト名" />
-                    <select v-model.number="pChoices[m.projectKey].customerId" class="link-select">
-                      <option :value="null">（顧客未指定）</option>
-                      <option v-for="cu in customerOptions" :key="cu.id" :value="cu.id">
-                        {{ cu.code ? `[${cu.code}] ` : '' }}{{ cu.name }}
-                      </option>
-                    </select>
-                    <span v-if="m.customerName" class="muted small">
-                      CSV顧客名: {{ m.customerName }}<template v-if="pChoices[m.projectKey].customerId === null">（未登録 → 顧客マスタに無いので任意で選択）</template>
-                    </span>
+                    <span v-if="m.customerName" class="muted small">顧客: {{ m.customerName }}（上の顧客名寄せに従う）</span>
                   </div>
                 </td>
               </tr>
