@@ -88,20 +88,29 @@ export class ManhourProjectResolutionDto {
   @MaxLength(64)
   projectCode?: string | null;
 
-  // labelOnly = projects マスタを作らず、件名ラベルだけで工数計上（CD無し既定）。
-  @IsIn(['link', 'createProvisional', 'labelOnly'])
-  action!: 'link' | 'createProvisional' | 'labelOnly';
+  // link        = 既存プロジェクトに紐付け（複数CDが同じ projectId を指せば束ね）
+  // newGroup     = 同じ groupKey のCDを 1 つの新規プロジェクトに束ねて作成
+  // labelOnly    = projects マスタを作らず件名ラベルだけで計上（CD無し既定）
+  @IsIn(['link', 'newGroup', 'labelOnly'])
+  action!: 'link' | 'newGroup' | 'labelOnly';
 
   @IsOptional()
   @IsInt()
   projectId?: number;
 
+  /** newGroup: 同一 groupKey のCDを 1 プロジェクトに集約。 */
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  provisionalName?: string;
+  groupKey?: string;
 
-  /** この案件の CSV顧客名。仮作成時に顧客名寄せ結果で顧客へ紐づける。 */
+  /** newGroup: 新規プロジェクト名（編集可。既定は件名ステム）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  groupName?: string;
+
+  /** この案件の CSV顧客名。新規作成時に顧客名寄せ結果で顧客へ紐づける。 */
   @IsOptional()
   @IsString()
   @MaxLength(200)

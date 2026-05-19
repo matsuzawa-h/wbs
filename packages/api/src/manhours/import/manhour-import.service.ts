@@ -7,6 +7,7 @@ import {
   manhourCapacities,
   manhourEntries,
   manhourImportBatches,
+  projectCodes,
   projects,
 } from '../../db';
 import { DB_TOKEN } from '../../db/db.module';
@@ -14,8 +15,8 @@ import { CommitManhourImportDto } from './dto/commit-import.dto';
 import {
   ParsedCapacity,
   ParsedManhourEntry,
-  ParsedProjectIdentity,
   parseManhourCsv,
+  projectStemLabel,
 } from './manhour-csv.parser';
 
 export interface ManhourAssigneeMatch {
@@ -28,8 +29,15 @@ export interface ManhourProjectMatch {
   projectCode: string | null;
   sampleName: string;
   customerName: string | null;
+  /** 件名の束ね名（複数CDを 1 プロジェクトへ自動グルーピングするキー）。 */
+  stem: string;
+  /** CD が project_codes に登録済みなら、その所属プロジェクト。 */
   suggestedProjectId: number | null;
   suggestedProjectName: string | null;
+  /** 既定の束ね先バケット: 既存=`proj:<id>` / 新規=`grp:<stem>`。 */
+  proposedGroupKey: string;
+  /** バケット表示名（既存プロジェクト名 or 新規グループ名=stem）。 */
+  proposedGroupName: string;
 }
 
 export interface ManhourCustomerMatch {
@@ -115,9 +123,49 @@ export class ManhourImportService {
         };
       },
     );
-    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) =>
-      this.matchProject(p),
-    );
+    // CD → 既存プロジェクト（project_codes が正本。1CD=1プロジェクト）。
+    const codeToProject = new Map<string, { id: number; name: string }>();
+    for (const r of this.db
+      .select({
+        code: projectCodes.code,
+        id: projects.id,
+        name: projects.name,
+      })
+      .from(projectCodes)
+      .innerJoin(projects, eq(projectCodes.projectId, projects.id))
+      .all()) {
+      codeToProject.set(r.code, { id: r.id, name: r.name });
+    }
+    const projectMatches: ManhourProjectMatch[] = parsed.projects.map((p) => {
+      const existing = p.projectCode
+        ? (codeToProject.get(p.projectCode) ?? null)
+        : null;
+      const stemLabel = projectStemLabel(p.sampleName) || p.sampleName;
+      let proposedGroupKey: string;
+      let proposedGroupName: string;
+      if (existing) {
+        proposedGroupKey = `proj:${existing.id}`;
+        proposedGroupName = existing.name;
+      } else if (p.projectCode) {
+        proposedGroupKey = `grp:${p.stem}`;
+        proposedGroupName = stemLabel;
+      } else {
+        // CD無し: 従来どおりラベルのみ（プロジェクト化しない）。
+        proposedGroupKey = `label:${p.projectKey}`;
+        proposedGroupName = stemLabel;
+      }
+      return {
+        projectKey: p.projectKey,
+        projectCode: p.projectCode,
+        sampleName: p.sampleName,
+        customerName: p.customerName,
+        stem: p.stem,
+        suggestedProjectId: existing ? existing.id : null,
+        suggestedProjectName: existing ? existing.name : null,
+        proposedGroupKey,
+        proposedGroupName,
+      };
+    });
 
     const totalHours = parsed.entries.reduce((s, e) => s + e.hours, 0);
     return {
@@ -138,36 +186,6 @@ export class ManhourImportService {
     };
   }
 
-  private matchProject(p: ParsedProjectIdentity): ManhourProjectMatch {
-    let suggestedProjectId: number | null = null;
-    let suggestedProjectName: string | null = null;
-    if (p.projectCode) {
-      // CD 一致を優先（確定案件を仮案件より優先）。
-      const rows = this.db
-        .select({
-          id: projects.id,
-          name: projects.name,
-          isProvisional: projects.isProvisional,
-        })
-        .from(projects)
-        .where(eq(projects.projectCode, p.projectCode))
-        .all();
-      const best =
-        rows.find((r) => r.isProvisional === 0) ?? rows[0] ?? null;
-      if (best) {
-        suggestedProjectId = best.id;
-        suggestedProjectName = best.name;
-      }
-    }
-    return {
-      projectKey: p.projectKey,
-      projectCode: p.projectCode,
-      sampleName: p.sampleName,
-      customerName: p.customerName,
-      suggestedProjectId,
-      suggestedProjectName,
-    };
-  }
 
   commit(dto: CommitManhourImportDto): {
     batchId: number;
@@ -254,60 +272,84 @@ export class ManhourImportService {
         // skip → マップに入れない（その顧客は紐づけない）
       }
 
-      // 2) 案件の名寄せ（未一致/CD空は仮案件、再取込で重複作成しない）
-      // labelOnly = projects マスタを作らず件名ラベルだけで計上（CD無し既定）。
+      // 2) 案件の名寄せ → project_codes（1プロジェクト×複数CD）。
+      //   link    : 既存プロジェクトへ（複数CDが同じ projectId を指せば束ね）
+      //   newGroup: 同じ groupKey のCDを 1 新規プロジェクトに集約
+      //   labelOnly: マスタ化せず件名ラベルのみ（CD無し既定）
       let projectsCreated = 0;
       const keyToProjectId = new Map<string, number>();
       const labelOnlyKeys = new Set<string>();
+      const groupToProjectId = new Map<string, number>();
+      // 既存 project_codes（CD→projectId）が正本。再取込での重複/付け替えを防ぐ。
+      const codeToProjectId = new Map<string, number>();
+      for (const pc of tx
+        .select({ code: projectCodes.code, projectId: projectCodes.projectId })
+        .from(projectCodes)
+        .all()) {
+        codeToProjectId.set(pc.code, pc.projectId);
+      }
+      const ensureCode = (projectId: number, code: string | null): void => {
+        const c = code?.trim();
+        if (!c || codeToProjectId.has(c)) return;
+        tx.insert(projectCodes).values({ projectId, code: c }).run();
+        codeToProjectId.set(c, projectId);
+        const p = tx
+          .select({ code: projects.projectCode })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .get();
+        if (p && (p.code === null || p.code === '')) {
+          tx.update(projects)
+            .set({ projectCode: c })
+            .where(eq(projects.id, projectId))
+            .run();
+        }
+      };
+
       for (const r of dto.projectResolution) {
         if (r.action === 'labelOnly') {
           labelOnlyKeys.add(r.projectKey);
           continue;
         }
+        const code = r.projectCode?.trim() || null;
+        // CDが既に登録済みなら常にそのプロジェクト（CD一意・再取込安全）。
+        if (code && codeToProjectId.has(code)) {
+          keyToProjectId.set(r.projectKey, codeToProjectId.get(code)!);
+          continue;
+        }
         if (r.action === 'link' && r.projectId !== undefined) {
           keyToProjectId.set(r.projectKey, r.projectId);
+          ensureCode(r.projectId, code);
           continue;
         }
-        const name = (r.provisionalName?.trim() || r.projectKey).slice(0, 200);
-        const code = r.projectCode?.trim() || null;
-        // 仮案件の重複防止: CD があれば CD、無ければ名前で既存の仮案件を再利用。
-        const dupe = code
-          ? tx
-              .select({ id: projects.id })
-              .from(projects)
-              .where(
-                and(
-                  eq(projects.projectCode, code),
-                  eq(projects.isProvisional, 1),
-                ),
-              )
-              .get()
-          : tx
-              .select({ id: projects.id })
-              .from(projects)
-              .where(
-                and(eq(projects.name, name), eq(projects.isProvisional, 1)),
-              )
+        // newGroup: groupKey 単位で 1 プロジェクトを作成（同名の既存仮案件は再利用）
+        const gkey = r.groupKey?.trim() || r.projectKey;
+        let pid = groupToProjectId.get(gkey);
+        if (pid === undefined) {
+          const name = (r.groupName?.trim() || r.projectKey).slice(0, 200);
+          const customerId = r.customerName
+            ? (customerNameToId.get(r.customerName) ?? null)
+            : null;
+          const dupe = tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(and(eq(projects.name, name), eq(projects.isProvisional, 1)))
+            .get();
+          if (dupe) {
+            pid = dupe.id;
+          } else {
+            const created = tx
+              .insert(projects)
+              .values({ name, customerId, projectCode: code, isProvisional: 1 })
+              .returning()
               .get();
-        if (dupe) {
-          keyToProjectId.set(r.projectKey, dupe.id);
-          continue;
+            pid = created.id;
+            projectsCreated += 1;
+          }
+          groupToProjectId.set(gkey, pid);
         }
-        const customerId = r.customerName
-          ? (customerNameToId.get(r.customerName) ?? null)
-          : null;
-        const created = tx
-          .insert(projects)
-          .values({
-            name,
-            customerId,
-            projectCode: code,
-            isProvisional: 1,
-          })
-          .returning()
-          .get();
-        keyToProjectId.set(r.projectKey, created.id);
-        projectsCreated += 1;
+        keyToProjectId.set(r.projectKey, pid);
+        ensureCode(pid, code);
       }
 
       // 3) 取込バッチ

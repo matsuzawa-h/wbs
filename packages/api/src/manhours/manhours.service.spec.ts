@@ -85,15 +85,18 @@ function commitDtoFromPreview(
           projectKey: m.projectKey,
           action: 'link',
           projectId: m.suggestedProjectId,
+          projectCode: m.projectCode,
         };
       // CD無し＆未一致は既定でラベルのみ（マスタ化しない）。
       if (!m.projectCode)
         return { projectKey: m.projectKey, action: 'labelOnly' };
+      // CD有り未一致は提案グループ（同一 stem の複数CDが 1 プロジェクトへ）。
       return {
         projectKey: m.projectKey,
-        action: 'createProvisional',
+        action: 'newGroup',
         projectCode: m.projectCode,
-        provisionalName: m.sampleName,
+        groupKey: m.proposedGroupKey,
+        groupName: m.proposedGroupName,
         customerName: m.customerName,
       };
     }),
@@ -335,6 +338,58 @@ describe('ManhourImportService + ManhoursService', () => {
         ),
       });
       expect(custCount()).toBe(2); // 顧客は増えない
+    } finally {
+      close();
+    }
+  });
+
+  it('工程ごとに別CDでも件名ステムが同じなら 1 プロジェクトに束ねる', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      const rows = [
+        ['堀田　和彦', 'AFT', 'NIPPO', '駆付けサービス対応（SS-ST工程）', 'AAP803', months({ 4: '10' })],
+        ['西本　拓真', 'AFT', 'NIPPO', '(4?6月)駆付けサービス対応（UI工程）', 'AAP802', months({ 5: '20' })],
+      ];
+      const res = imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
+      // 2 CD だが束ね名が同一 → 新規プロジェクトは 1 個だけ
+      expect(res.projectsCreated).toBe(1);
+      const projs = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .filter((p) => p.name === '駆付けサービス対応');
+      expect(projs.length).toBe(1);
+      const pid = projs[0].id;
+      // project_codes に 2 CD がぶら下がる
+      const codes = db
+        .select()
+        .from(schema.projectCodes)
+        .all()
+        .filter((c) => c.projectId === pid)
+        .map((c) => c.code)
+        .sort();
+      expect(codes).toEqual(['AAP802', 'AAP803']);
+      // 工数は 1 プロジェクトに合算（10 + 20）
+      const mx = svc.getProjectMatrix(pid, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      expect(mx.grandTotal).toBe(30);
+
+      // 再取込: 既存CDなので新規作成されず同じプロジェクトへ
+      const res2 = imp.commit(
+        commitDtoFromPreview(imp, csvBuf(rows), FY, 'b.csv'),
+      );
+      expect(res2.projectsCreated).toBe(0);
+      expect(
+        db
+          .select()
+          .from(schema.projects)
+          .all()
+          .filter((p) => p.name === '駆付けサービス対応').length,
+      ).toBe(1);
     } finally {
       close();
     }
