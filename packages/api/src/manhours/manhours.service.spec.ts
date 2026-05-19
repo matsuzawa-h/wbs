@@ -397,6 +397,50 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('プロジェクト化対象は AFT/SY かつ CD有りのみ（CD無しAFT・MNTはラベル）', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      const rows = [
+        ['堀田　和彦', 'SY', 'NIPPO', 'SY見積', 'AAPSY1', months({ 4: '12' })],
+        ['堀田　和彦', 'AFT', 'NIPPO', 'CD無しAFT作業', '', months({ 5: '7' })],
+        ['西本　拓真', 'MNT', '顧客X', '保守', 'AAPMNT', months({ 6: '9' })],
+      ];
+      const res = imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
+      // SY+CD の AAPSY1 のみプロジェクト化。CD無しAFT・MNT は不作成。
+      expect(res.projectsCreated).toBe(1);
+      const projNames = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .map((p) => p.name);
+      expect(projNames).toContain('SY見積');
+      expect(projNames).not.toContain('CD無しAFT作業');
+      expect(projNames).not.toContain('保守');
+
+      const sum = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const horita = sum.rows.find((r) => r.assigneeName === '堀田　和彦')!;
+      // SY見積(プロジェクト) と CD無しAFT作業(ラベル) の両方が計上される
+      expect(horita.cells['2026-04'].total).toBe(12);
+      const may = horita.cells['2026-05'];
+      expect(may.total).toBe(7);
+      expect(
+        may.byProject.some(
+          (b) => b.projectId === null && b.projectName === 'CD無しAFT作業',
+        ),
+      ).toBe(true);
+      // MNT 保守 もラベルで計上
+      const nishi = sum.rows.find((r) => r.assigneeName === '西本　拓真')!;
+      expect(nishi.cells['2026-06'].total).toBe(9);
+    } finally {
+      close();
+    }
+  });
+
   it('CD無し明細はラベルのみ（projects マスタを作らず件名で内訳表示）', () => {
     const { db, close } = makeDb();
     try {

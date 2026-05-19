@@ -308,9 +308,12 @@ export function parseManhourCsv(
 
     if (hadValue) addAssignee(assignee);
 
-    // プロジェクト作成対象は作業区分=AFT のみ。
-    // MNT/SY/空/zz は工数のみ計上（ラベル）でプロジェクト化しない。
-    if (workType === 'AFT' && (hadValue || subject)) {
+    // プロジェクト作成対象は「作業区分=AFT または SY」かつ「プロジェクトCD有り」
+    // の行のみ。CD無しの AFT/SY や MNT/空/zz は工数のみ計上（件名ラベル）で
+    // プロジェクト化しない。
+    const isProjectTarget =
+      (workType === 'AFT' || workType === 'SY') && projectCode !== null;
+    if (isProjectTarget && (hadValue || subject)) {
       addCustomer(customer);
       const existing = projMap.get(projectKey);
       if (!existing) {
