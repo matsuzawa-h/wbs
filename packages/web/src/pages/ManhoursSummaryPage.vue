@@ -4,7 +4,7 @@ import { useManhoursStore } from '@/stores/manhours';
 import ManhourImportDialog from '@/components/ManhourImportDialog.vue';
 import ManualProjectDialog from '@/components/ManualProjectDialog.vue';
 import ProjectDetailDialog from '@/components/ProjectDetailDialog.vue';
-import type { SummaryCell } from '@/types';
+import type { Project, SummaryCell } from '@/types';
 
 const manhours = useManhoursStore();
 
@@ -92,13 +92,18 @@ async function onEditManual(
   await reload();
 }
 
-// プロジェクト明細ポップアップ（明細行クリックで開く）。
+// プロジェクト明細ポップアップ（明細行クリック／仮案件作成直後 に開く）。
 const projectDialogOpen = ref(false);
 const projectDialogId = ref<number | null>(null);
 function openProjectDialog(projectId: number | null): void {
   if (projectId === null) return;
   projectDialogId.value = projectId;
   projectDialogOpen.value = true;
+}
+// 仮案件作成直後に明細編集ダイアログを連続で開く。
+async function onManualProjectCreated(project: Project): Promise<void> {
+  await reload();
+  openProjectDialog(project.id);
 }
 
 // 担当者クリック → 原本形（作業区分/顧客名/件名/CD × 12ヶ月）の明細を開く。
@@ -395,7 +400,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
     <ManualProjectDialog
       :open="manualProjectOpen"
       @close="manualProjectOpen = false"
-      @created="reload"
+      @created="onManualProjectCreated"
     />
     <ProjectDetailDialog
       :open="projectDialogOpen"
