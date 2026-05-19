@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useManhoursStore } from '@/stores/manhours';
 import ManhourImportDialog from '@/components/ManhourImportDialog.vue';
 import ManualProjectDialog from '@/components/ManualProjectDialog.vue';
+import ProjectDetailDialog from '@/components/ProjectDetailDialog.vue';
 import type { SummaryCell } from '@/types';
 
 const manhours = useManhoursStore();
@@ -89,6 +90,15 @@ async function onEditManual(
     hours,
   });
   await reload();
+}
+
+// プロジェクト明細ポップアップ（明細行クリックで開く）。
+const projectDialogOpen = ref(false);
+const projectDialogId = ref<number | null>(null);
+function openProjectDialog(projectId: number | null): void {
+  if (projectId === null) return;
+  projectDialogId.value = projectId;
+  projectDialogOpen.value = true;
 }
 
 // 担当者クリック → 原本形（作業区分/顧客名/件名/CD × 12ヶ月）の明細を開く。
@@ -323,7 +333,9 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                         <tr
                           v-for="(d, i) in manhours.assigneeDetail.rows"
                           :key="i"
-                          :class="{ 'is-manual': d.source === 'manual' }"
+                          :class="{ 'is-manual': d.source === 'manual', 'row-link': d.projectId !== null }"
+                          :title="d.projectId !== null ? 'クリックでこの案件の明細を開く' : ''"
+                          @click="openProjectDialog(d.projectId)"
                         >
                           <td :title="d.customerName || ''">{{ d.customerName || '—' }}</td>
                           <td :title="d.projectCode || ''">{{ d.projectCode || '—' }}</td>
@@ -344,6 +356,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                               step="0.5"
                               class="edit"
                               :value="d.cells[ym] ?? ''"
+                              @click.stop
                               @change="onEditAssigneeManual(d, ym, ($event.target as HTMLInputElement).value)"
                             />
                             <template v-else>{{ d.cells[ym] ? d.cells[ym].toFixed(2) : '' }}</template>
@@ -383,6 +396,13 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
       :open="manualProjectOpen"
       @close="manualProjectOpen = false"
       @created="reload"
+    />
+    <ProjectDetailDialog
+      :open="projectDialogOpen"
+      :project-id="projectDialogId"
+      :fiscal-year="fiscalYear"
+      @close="projectDialogOpen = false"
+      @saved="async () => { if (openAssignee !== null) { await manhours.fetchAssigneeDetail(openAssignee, { fiscalYear, batchId: manhours.selectedBatchId }); } await reload(); }"
     />
   </div>
 </template>
@@ -479,6 +499,8 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .detail-grid.orig td.total { font-weight: 700; background: var(--c-surface-2); }
 .detail-grid tr.is-manual { background: var(--c-warn-bg); }
 .detail-grid tr.is-manual input.edit { background: var(--c-surface); }
+.detail-grid tr.row-link { cursor: pointer; }
+.detail-grid tr.row-link:hover td { background: var(--c-accent-weak); }
 .tag {
   display: inline-block; font-size: 0.7rem; padding: 0.02rem 0.35rem;
   border-radius: 3px; margin-right: 0.25rem;
