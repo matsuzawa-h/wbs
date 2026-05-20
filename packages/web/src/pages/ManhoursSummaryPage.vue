@@ -42,6 +42,25 @@ async function reload(): Promise<void> {
   });
 }
 
+// 取込直後は新規組織が作られている可能性 + 新バッチを表示したい。
+// 取込組織にフィルタを切替えて、新しいバッチが見える状態にする。
+async function onImportCommitted(): Promise<void> {
+  await orgs.fetchAll(true);
+  // 直前の取込バッチが属する組織を特定して、フィルタを合わせる。
+  await manhours.fetchBatches(fiscalYear.value);
+  const latest = manhours.batches[0];
+  if (latest) {
+    manhours.selectedBatchId = null;
+    const target =
+      latest.organizationId === null ? 'none' : latest.organizationId;
+    if (orgFilter.value !== target) {
+      orgFilter.value = target; // watch が reload を呼ぶ
+      return;
+    }
+  }
+  await reload();
+}
+
 onMounted(async () => {
   await orgs.fetchAll();
   // CSV取込は組織ごとに行うので、初期表示は「先頭の組織」を選択した状態にする。
@@ -539,7 +558,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
       表示できる稼働データがありません。CSV 取込、または仮案件＋手入力で登録してください。
     </p>
 
-    <ManhourImportDialog :open="importOpen" @close="importOpen = false" @committed="reload" />
+    <ManhourImportDialog :open="importOpen" @close="importOpen = false" @committed="onImportCommitted" />
     <ManualProjectDialog
       :open="manualProjectOpen"
       @close="manualProjectOpen = false"

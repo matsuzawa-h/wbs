@@ -140,6 +140,7 @@ export class ManhoursService {
   /**
    * 明示 batchId 優先。無ければ年度＋組織の最新バッチ（履歴＝組織別）。
    * 「組織未指定」と「組織NULL指定」は別物として扱う。
+   * （単一値版・後方互換用）
    */
   resolveImportedBatchId(
     fiscalYear?: number,
@@ -156,6 +157,43 @@ export class ManhoursService {
     }
     const list = this.listBatches(fiscalYear, organizationId);
     return list.length > 0 ? list[0].id : null;
+  }
+
+  /**
+   * 集計用のバッチ ID 集合を決定する:
+   * - batchId 明示  → 単一
+   * - organizationId 明示 → その組織の最新（1件）
+   * - 両方 undefined → **組織ごとの最新バッチを集約**（複数組織混在の運用に対応）
+   */
+  resolveImportedBatchIds(
+    fiscalYear?: number,
+    batchId?: number,
+    organizationId?: number | null,
+  ): Set<number> {
+    if (batchId !== undefined) {
+      const id = this.resolveImportedBatchId(fiscalYear, batchId, organizationId);
+      return id !== null ? new Set([id]) : new Set();
+    }
+    if (organizationId !== undefined) {
+      const id = this.resolveImportedBatchId(fiscalYear, undefined, organizationId);
+      return id !== null ? new Set([id]) : new Set();
+    }
+    return this.latestBatchIdsPerOrg(fiscalYear);
+  }
+
+  /** 年度内・組織別の最新バッチ ID（取込時刻 desc の各組織で初出）。 */
+  private latestBatchIdsPerOrg(fiscalYear?: number): Set<number> {
+    const all = this.listBatches(fiscalYear); // importedAt desc
+    const seenOrgs = new Set<number | null>();
+    const ids = new Set<number>();
+    for (const b of all) {
+      const k = b.organizationId; // null も「未紐付」グループとして1件採用
+      if (!seenOrgs.has(k)) {
+        seenOrgs.add(k);
+        ids.add(b.id);
+      }
+    }
+    return ids;
   }
 
   deleteBatch(id: number): void {
@@ -175,9 +213,18 @@ export class ManhoursService {
 
   // ---- shared loaders ----------------------------------------------------
 
+  /**
+   * @param resolvedBatchIds 取込分の絞り込みに使うバッチ ID 集合
+   *   - 空 Set → imported は 0 件（manual だけ）
+   *   - 1+    → そのバッチに属する imported を返す
+   * @param manualOrgAssigneeIds manual 行は「その組織所属の社員」だけに絞る用
+   *   - null → 絞り込み無し（手入力もすべて）
+   *   - Set  → assignee.id がこの集合にある手入力のみ
+   */
   private loadEntries(
-    resolvedBatchId: number | null,
+    resolvedBatchIds: Set<number>,
     filter: SourceFilter,
+    manualOrgAssigneeIds: Set<number> | null,
     projectId?: number,
   ): JoinedEntry[] {
     const all = this.db
@@ -203,9 +250,19 @@ export class ManhoursService {
       .filter((r) => {
         if (projectId !== undefined && r.projectId !== projectId) return false;
         const isManual = r.source === 'manual' || r.batchId === null;
-        if (isManual) return filter.manual;
+        if (isManual) {
+          if (!filter.manual) return false;
+          // manual はバッチに属さないので assignee.org で絞る（漏れ防止）
+          if (
+            manualOrgAssigneeIds !== null &&
+            !manualOrgAssigneeIds.has(r.assigneeId)
+          ) {
+            return false;
+          }
+          return true;
+        }
         if (!filter.imported) return false;
-        return resolvedBatchId !== null && r.batchId === resolvedBatchId;
+        return r.batchId !== null && resolvedBatchIds.has(r.batchId);
       })
       .map((r) => ({
         assigneeId: r.assigneeId,
@@ -221,16 +278,25 @@ export class ManhoursService {
       }));
   }
 
-  /** key `${assigneeId} ${ym}` → baseHours。手動上書きが取込値に優先。 */
+  /**
+   * key `${assigneeId} ${ym}` → baseHours。手動上書きが取込値に優先。
+   * 取込分は resolvedBatchIds（Set）に含まれるバッチのみ。
+   * manual は manualOrgAssigneeIds が指定されていればその社員に限定。
+   */
   private loadCapacityMap(
-    resolvedBatchId: number | null,
+    resolvedBatchIds: Set<number>,
     filter: SourceFilter,
+    manualOrgAssigneeIds: Set<number> | null,
   ): Map<string, number> {
     const rows = this.db.select().from(manhourCapacities).all();
     const map = new Map<string, number>();
-    if (filter.imported && resolvedBatchId !== null) {
+    if (filter.imported && resolvedBatchIds.size > 0) {
       for (const r of rows) {
-        if (r.source !== 'manual' && r.batchId === resolvedBatchId) {
+        if (
+          r.source !== 'manual' &&
+          r.batchId !== null &&
+          resolvedBatchIds.has(r.batchId)
+        ) {
           map.set(`${r.assigneeId} ${r.yearMonth}`, r.baseHours);
         }
       }
@@ -238,6 +304,12 @@ export class ManhoursService {
     if (filter.manual) {
       for (const r of rows) {
         if (r.source === 'manual' || r.batchId === null) {
+          if (
+            manualOrgAssigneeIds !== null &&
+            !manualOrgAssigneeIds.has(r.assigneeId)
+          ) {
+            continue;
+          }
           map.set(`${r.assigneeId} ${r.yearMonth}`, r.baseHours);
         }
       }
@@ -309,19 +381,24 @@ export class ManhoursService {
     batchId?: number;
     filter: SourceFilter;
     /**
-     * 未指定=絞り込まない（全組織の社員＋バッチ） / null=未設定 / number=その組織。
-     * 指定時は「その組織所属の社員」＋「その組織の最新バッチ」で集計する。
+     * 未指定 → 組織ごとの最新バッチを集約（複数組織混在運用に対応）
+     * null   → 「組織未紐付」グループのみ
+     * number → その組織の最新バッチのみ
+     * 取込分は「バッチに属するか」で判定するので、リンクで別組織の社員が
+     * 新組織のバッチに登場するケースも、新組織のビューに正しく出る。
      */
     organizationId?: number | null;
   }): CapacitySummary {
-    const batchId = this.resolveImportedBatchId(
+    const batchIds = this.resolveImportedBatchIds(
       opts.fiscalYear,
       opts.batchId,
       opts.organizationId,
     );
-    const entries = this.loadEntries(batchId, opts.filter);
-    const capMap = this.loadCapacityMap(batchId, opts.filter);
-    const orgAssigneeIds = this.assigneeIdsByOrg(opts.organizationId);
+    // 単一バッチが解決されていればそれを response の batchId にして UI 互換性を保つ
+    const batchId = batchIds.size === 1 ? [...batchIds][0]! : null;
+    const manualOrgIds = this.assigneeIdsByOrg(opts.organizationId);
+    const entries = this.loadEntries(batchIds, opts.filter, manualOrgIds);
+    const capMap = this.loadCapacityMap(batchIds, opts.filter, manualOrgIds);
 
     const monthSet = new Set<string>(
       opts.fiscalYear !== undefined ? this.fiscalMonths(opts.fiscalYear) : [],
@@ -401,12 +478,15 @@ export class ManhoursService {
       }
     }
 
+    // ※ 行レベルの assignee.org フィルタは行わない。
+    //   組織絞り込みは「imported = そのバッチに属する」「manual = assignee.org 一致」
+    //   で loadEntries / loadCapacityMap 内で適用済み。
+    //   リンクで別組織の社員が新組織のバッチに登場する場合も、その社員が新組織の
+    //   ビューに正しく出るようにするため。
     const sortByCode = this.codeAscSorter();
-    let rows = [...rowMap.values()];
-    if (orgAssigneeIds !== null) {
-      rows = rows.filter((r) => orgAssigneeIds.has(r.assigneeId));
-    }
-    rows.sort((a, b) => sortByCode(a.assigneeId, b.assigneeId));
+    const rows = [...rowMap.values()].sort((a, b) =>
+      sortByCode(a.assigneeId, b.assigneeId),
+    );
     return { fiscalYear: opts.fiscalYear ?? null, batchId, months, rows };
   }
 
@@ -428,8 +508,11 @@ export class ManhoursService {
       .get();
     if (!project) throw new NotFoundException(`project ${projectId} not found`);
 
-    const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
-    const entries = this.loadEntries(batchId, opts.filter, projectId);
+    // 案件画面は組織絞り込みを持たないため、組織未指定（=組織別最新の和）として
+    // バッチを解決する。明示 batchId はそのまま使う。
+    const batchIds = this.resolveImportedBatchIds(opts.fiscalYear, opts.batchId);
+    const batchId = batchIds.size === 1 ? [...batchIds][0]! : null;
+    const entries = this.loadEntries(batchIds, opts.filter, null, projectId);
 
     const monthSet = new Set<string>(
       opts.fiscalYear !== undefined ? this.fiscalMonths(opts.fiscalYear) : [],
@@ -495,6 +578,8 @@ export class ManhoursService {
       .get();
     if (!a) throw new NotFoundException(`assignee ${assigneeId} not found`);
 
+    // 担当者明細は assignee.id で絞るので、組織ベースのバッチ集合は使わず、
+    // 該当担当者の取込分はすべて参照する（ただし最新バッチに限定）。
     const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
     const all = this.db
       .select({
@@ -601,7 +686,11 @@ export class ManhoursService {
 
     // 月別の基準時間（フッターの「標準時間」「36(残業)」算出に使う）。
     // この担当者の capacities を、選択バッチ＋手動上書きで揃える。
-    const capMap = this.loadCapacityMap(batchId, opts.filter);
+    const capMap = this.loadCapacityMap(
+      batchId !== null ? new Set([batchId]) : new Set(),
+      opts.filter,
+      null,
+    );
     const capacity: Record<string, number> = {};
     for (const [key, base] of capMap) {
       const [idStr, ym] = key.split(' ');

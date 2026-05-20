@@ -280,7 +280,7 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
-  it('getSummary は organizationId で「その組織のバッチ＋所属社員」に揃う', () => {
+  it('getSummary: 取込分は「そのバッチに属する社員」、manual は assignee.org で絞る', () => {
     const { db, close } = makeDb();
     try {
       const imp = new ManhourImportService(db);
@@ -310,7 +310,7 @@ describe('ManhourImportService + ManhoursService', () => {
         .where(eq(schema.assignees.id, nishi.id))
         .run();
 
-      // organizationId 指定無し → グローバル最新バッチで集計、社員フィルタ無し
+      // organizationId 指定無し → 組織別最新バッチを集約。今回は 1 バッチ。
       const all = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
@@ -319,17 +319,21 @@ describe('ManhourImportService + ManhoursService', () => {
         [horita.id, nishi.id].sort(),
       );
 
-      // 組織 AA5054 指定 → AA5054 のバッチを集計、社員も AA5054 所属のみ
+      // 組織 AA5054 指定 → AA5054 のバッチに含まれる社員はすべて見せる。
+      // 西本は現在 org=null だが、AA5054 のバッチ取込に含まれていたので残る。
+      // （リンクで別組織所属になった社員も「そのバッチの社員」として扱う）
       const inOrg = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
         organizationId: org.id,
       });
       expect(inOrg.batchId).toBe(batches[0].id);
-      expect(inOrg.rows.map((r) => r.assigneeId)).toEqual([horita.id]);
+      expect(inOrg.rows.map((r) => r.assigneeId).sort()).toEqual(
+        [horita.id, nishi.id].sort(),
+      );
 
-      // 組織 null（未設定）指定 → 「組織未紐付バッチ」が無いので空
-      // （取込はすべて組織ごとに行うので、null=履歴なし＝表示なし）
+      // 組織 null（未設定）指定 → 「組織未紐付バッチ」が無いので imported は空。
+      // manual も assignee.org=null の社員のみだが、今 manual entry が無いので空。
       const noOrg = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
@@ -338,11 +342,101 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(noOrg.batchId).toBeNull();
       expect(noOrg.rows).toEqual([]);
 
-      // listBatches も organizationId で絞れる
+      // listBatches は組織絞り込みで「そのバッチが属するか」で判定される。
       expect(svc.listBatches(FY, org.id).map((b) => b.id)).toEqual([
         batches[0].id,
       ]);
       expect(svc.listBatches(FY, null)).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it('複数組織のバッチが混在する場合、未指定モードでは組織別最新バッチを集約する', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      // 1st: org AA5054（堀田/西本）
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+      const orgA = db.select().from(schema.organizations).all()[0];
+
+      // 2nd: 別組織 BB5099 を新規作成して取込（堀田はリンク、別人「新人」を新規）
+      // 別の CSV を生成（組織コード/名称を変える + 新人を追加）
+      function csvBufWithOrg(orgCode: string, orgName: string, rows: string[][]): Buffer {
+        const header =
+          '組織コード,組織名称,担当者,作業区分,顧客名,件名,プロジェクトCD,SE/NE担当部署,受注ランク,4月,5月,6月,7月,8月,9月,10月,11月,12月,1月,2月,3月';
+        const lines = [header, ...rows.map((r) =>
+          [orgCode, orgName, r[0], r[1], r[2], r[3], r[4], orgName, 'S', r[5]].join(','),
+        )];
+        return Buffer.concat([
+          Buffer.from([0xef, 0xbb, 0xbf]),
+          Buffer.from(lines.join('\r\n'), 'utf8'),
+        ]);
+      }
+      imp.commit(
+        commitDtoFromPreview(
+          imp,
+          csvBufWithOrg('BB5099', '別組織', [
+            ['堀田　和彦', 'AFT', 'NIPPO', 'A2', 'BB001', months({ 4: '50' })],
+            ['新人　太郎', 'AFT', 'NIPPO', 'A2', 'BB001', months({ 4: '30' })],
+            ['堀田　和彦', '合計', '', '月基準時間', '', months({ 4: '160' })],
+            ['新人　太郎', '合計', '', '月基準時間', '', months({ 4: '160' })],
+          ]),
+          FY,
+          'b.csv',
+        ),
+      );
+      const orgB = db
+        .select()
+        .from(schema.organizations)
+        .all()
+        .find((o) => o.code === 'BB5099')!;
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      const newcomer = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '新人　太郎')!;
+      const batches = svc.listBatches(FY);
+      expect(batches.length).toBe(2);
+
+      // 未指定モード（"すべて"）→ org A と org B の最新バッチを集約。
+      // 堀田は両方の最新バッチに登場するので、堀田の cells は両バッチ合算（150h）。
+      // 西本 (org A) と 新人 (org B) もそれぞれ自分のバッチで登場する。
+      const all = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const ids = new Set(all.rows.map((r) => r.assigneeId));
+      expect(ids.has(horita.id)).toBe(true);
+      expect(ids.has(newcomer.id)).toBe(true);
+      expect(all.batchId).toBeNull(); // 複数バッチ集約時は単一 ID にならない
+
+      // 組織 A 指定 → A の最新バッチのみ。堀田の 4月 は org A 分の 100h。
+      const a = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+        organizationId: orgA.id,
+      });
+      const horitaInA = a.rows.find((r) => r.assigneeId === horita.id)!;
+      expect(horitaInA.cells['2026-04'].total).toBe(108); // 100 AFT + 8 zz休暇
+      expect(a.rows.find((r) => r.assigneeId === newcomer.id)).toBeUndefined();
+
+      // 組織 B 指定 → B の最新バッチのみ。堀田の 4月 は org B 分の 50h（リンクで入った）。
+      const b = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+        organizationId: orgB.id,
+      });
+      const horitaInB = b.rows.find((r) => r.assigneeId === horita.id)!;
+      expect(horitaInB.cells['2026-04'].total).toBe(50);
+      const newcomerInB = b.rows.find((r) => r.assigneeId === newcomer.id)!;
+      expect(newcomerInB.cells['2026-04'].total).toBe(30);
     } finally {
       close();
     }
