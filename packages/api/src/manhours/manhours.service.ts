@@ -31,6 +31,8 @@ export interface SummaryCell {
   imported: number;
   manual: number;
   total: number;
+  /** 月内の zz 休暇合計（label に「休」を含む）。36(残業) 算出用。 */
+  vacation: number;
   base: number | null;
   utilization: number | null;
   byProject: SummaryProjectBreak[];
@@ -344,6 +346,7 @@ export class ManhoursService {
           imported: 0,
           manual: 0,
           total: 0,
+          vacation: 0,
           base: null,
           utilization: null,
           byProject: [],
@@ -359,6 +362,10 @@ export class ManhoursService {
       if (e.source === 'manual') cell.manual += e.hours;
       else cell.imported += e.hours;
       cell.total += e.hours;
+      // zz の「休暇」（label に「休」を含む）は別途集計し、36(残業) 算出に使う。
+      if (e.workType === 'zz' && /休/.test(e.label ?? '')) {
+        cell.vacation += e.hours;
+      }
       row.totalHours += e.hours;
       cell.byProject.push({
         projectId: e.projectId,

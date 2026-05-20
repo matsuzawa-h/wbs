@@ -174,6 +174,8 @@ export interface SummaryCell {
   imported: number;
   manual: number;
   total: number;
+  /** 月内の zz 休暇合計。36(残業) = total − base − vacation で算出。 */
+  vacation: number;
   base: number | null;
   utilization: number | null;
   byProject: SummaryProjectBreak[];

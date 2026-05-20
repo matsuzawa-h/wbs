@@ -76,13 +76,23 @@ function fmt(n: number): string {
   return n === 0 ? '' : n.toFixed(1);
 }
 
-// 稼働率による色分け（>100% 逼迫 / 85%↑ 高 / それ以下 健全）。
+// 36(残業) = total − base − 休暇 による 4 段階色分け。
+//   ot < 0      → 余裕(青) 標準未達／余力あり
+//   0..30       → 健全(緑)
+//   31..59      → 注意(黄) 36協定 45h 接近
+//   60..        → 警告(赤) 36協定上限接近
+// base が無い／data が無いセルは無色（判定不可）。
+function overtimeOf(cell: SummaryCell | undefined): number | null {
+  if (!cell || cell.base === null) return null;
+  return cell.total - cell.base - cell.vacation;
+}
 function utilClass(cell: SummaryCell | undefined): string {
-  if (!cell || cell.base === null || cell.utilization === null) return '';
-  if (cell.utilization > 1.0) return 'u-over';
-  if (cell.utilization >= 0.85) return 'u-high';
-  if (cell.total > 0) return 'u-ok';
-  return '';
+  const ot = overtimeOf(cell);
+  if (ot === null) return '';
+  if (ot < 0) return 'u-under';
+  if (ot <= 30) return 'u-ok';
+  if (ot <= 59) return 'u-caution';
+  return 'u-warn';
 }
 
 function cellOf(
@@ -288,6 +298,14 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
     <p v-if="manhours.error" class="error">{{ manhours.error }}</p>
     <p v-if="manhours.loading" class="muted">読込中…</p>
 
+    <div class="legend" aria-label="セル色の判定基準（36協定/標準時間ベース）">
+      <span class="lg-title">セル色 = 36(残業) = 工数 − 標準時間 − 休暇：</span>
+      <span class="lg-item"><span class="lg-sw u-under"></span>余裕（標準未達）</span>
+      <span class="lg-item"><span class="lg-sw u-ok"></span>健全 (0–30h)</span>
+      <span class="lg-item"><span class="lg-sw u-caution"></span>注意 (31–59h)</span>
+      <span class="lg-item"><span class="lg-sw u-warn"></span>警告 (60h以上)</span>
+    </div>
+
     <div v-if="manhours.summary && manhours.summary.rows.length" class="grid-wrap">
       <table class="mh-grid">
         <colgroup>
@@ -324,7 +342,10 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                   cellOf(row, ym)
                     ? `工数 ${cellOf(row, ym)!.total.toFixed(1)}h / 基準 ${
                         cellOf(row, ym)!.base ?? '—'
-                      }h` +
+                      }h / 休暇 ${cellOf(row, ym)!.vacation.toFixed(1)}h` +
+                      (overtimeOf(cellOf(row, ym)) !== null
+                        ? ` / 36(残業) ${overtimeOf(cellOf(row, ym))!.toFixed(1)}h`
+                        : '') +
                       (cellOf(row, ym)!.utilization !== null
                         ? ` / 稼働率 ${(cellOf(row, ym)!.utilization! * 100).toFixed(0)}%`
                         : '')
@@ -589,9 +610,29 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name { font-weight: 600; }
 .cell { cursor: pointer; }
 .cell .u { display: block; font-size: 0.68rem; color: var(--c-text-faint); }
+/* 36(残業) ベースの 4 段階色分け。
+   - u-under (余裕)    : 標準未達。寒色で「余力あり・配置検討材料」を示す。
+   - u-ok    (健全)    : 残業 0-30h。緑系で問題なし。
+   - u-caution(注意)   : 残業 31-59h。36協定 45h 接近の黄色警告。
+   - u-warn  (警告)    : 残業 60h 以上。赤＋濃赤文字＋太字で強調。 */
+.cell.u-under { background: #dbeafe; }
 .cell.u-ok { background: var(--c-ok-bg); }
-.cell.u-high { background: var(--c-late-bg); }
-.cell.u-over { background: var(--c-danger-bg); color: var(--c-danger-fg); font-weight: 700; }
+.cell.u-caution { background: var(--c-late-bg); }
+.cell.u-warn { background: var(--c-danger-bg); color: var(--c-danger-fg); font-weight: 700; }
+.legend {
+  display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap;
+  font-size: 0.8rem; color: var(--c-text-muted); padding: 0.2rem 0.1rem;
+}
+.lg-title { color: var(--c-text); font-weight: 600; }
+.lg-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.lg-sw {
+  display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+.lg-sw.u-under { background: #dbeafe; }
+.lg-sw.u-ok { background: var(--c-ok-bg); }
+.lg-sw.u-caution { background: var(--c-late-bg); }
+.lg-sw.u-warn { background: var(--c-danger-bg); }
 .cell.total { font-weight: 700; background: var(--c-surface-2); }
 .cell.foot { font-weight: 600; background: var(--c-surface-3); }
 .detail-row td { background: var(--c-surface-2); text-align: left; }
