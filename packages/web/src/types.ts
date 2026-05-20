@@ -1,3 +1,25 @@
+// 組織マスタ（自己参照階層）。`parentId` で任意深さの親子。表示用の組織名は
+// organizations ストアの byId() から解決する（join せず単一ソースから引く）。
+export interface Organization {
+  id: number;
+  code: string | null;
+  name: string;
+  parentId: number | null;
+  isActive: number;
+  sortOrder: number;
+  note: string | null;
+  createdAt: number;
+}
+
+export interface OrganizationInput {
+  code?: string | null;
+  name: string;
+  parentId?: number | null;
+  isActive?: boolean;
+  sortOrder?: number;
+  note?: string | null;
+}
+
 export interface Customer {
   id: number;
   code: string | null;
@@ -9,6 +31,7 @@ export interface Customer {
   isActive: number;
   note: string | null;
   sortOrder: number;
+  organizationId: number | null;
   createdAt: number;
 }
 
@@ -22,6 +45,7 @@ export interface CustomerInput {
   isActive?: boolean;
   note?: string | null;
   sortOrder?: number;
+  organizationId?: number | null;
 }
 
 export interface Project {
@@ -29,6 +53,7 @@ export interface Project {
   customerId: number | null;
   customerName: string | null;
   customerIsActive: number | null;
+  organizationId: number | null;
   name: string;
   projectCode: string | null;
   isProvisional: number;
@@ -49,6 +74,7 @@ export interface Employee {
   isActive: number;
   note: string | null;
   sortOrder: number;
+  organizationId: number | null;
 }
 
 // Legacy alias retained while call sites still reference "Assignee".
@@ -67,6 +93,7 @@ export interface EmployeeInput {
   isActive?: boolean;
   note?: string | null;
   sortOrder?: number;
+  organizationId?: number | null;
 }
 
 export interface Holiday {
