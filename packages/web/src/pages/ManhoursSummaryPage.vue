@@ -487,7 +487,18 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 }
 .detail-grid .num { text-align: right; }
 .detail-grid input.edit {
-  width: 5rem; text-align: right; padding: 0.1rem 0.3rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  padding: 0.1rem 0.3rem;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.detail-grid input.edit::-webkit-outer-spin-button,
+.detail-grid input.edit::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .name.clickable { cursor: pointer; }
 .name.clickable:hover { color: var(--c-accent-strong); text-decoration: underline; }
