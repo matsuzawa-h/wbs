@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useManhoursStore } from '@/stores/manhours';
 import { useOrganizationsStore } from '@/stores/organizations';
-import type { BatchDiff, BatchStats, ManhourBatch } from '@/types';
+import type { BatchCellDiff, BatchDiff, BatchStats, ManhourBatch } from '@/types';
 
 const manhours = useManhoursStore();
 const orgs = useOrganizationsStore();
@@ -13,6 +13,21 @@ const loading = ref(false);
 
 // 展開中バッチ: id → { stats, diff }
 const expanded = ref<Record<number, { stats: BatchStats | null; diff: BatchDiff | null; loading: boolean }>>({});
+// 差分テーブル のフィルタ（バッチ毎）。
+//   name    : 担当者名の部分一致（toLowerCase）
+//   wt      : 区分セレクト ('all' | 'AFT' | 'MNT' | 'SY' | 'other' | '休暇' | '非稼働')
+//   code    : プロジェクトCD の部分一致
+//   subject : 件名/案件名 の部分一致
+interface CellFilters {
+  name: string;
+  wt: 'all' | 'AFT' | 'MNT' | 'SY' | 'other' | '休暇' | '非稼働';
+  code: string;
+  subject: string;
+}
+const cellFilters = ref<Record<number, CellFilters>>({});
+function emptyFilters(): CellFilters {
+  return { name: '', wt: 'all', code: '', subject: '' };
+}
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -51,12 +66,14 @@ const visibleBatches = computed<ManhourBatch[]>(() => manhours.batches);
 async function toggleExpand(b: ManhourBatch): Promise<void> {
   if (expanded.value[b.id]) {
     delete expanded.value[b.id];
+    delete cellFilters.value[b.id];
     return;
   }
   expanded.value = {
     ...expanded.value,
     [b.id]: { stats: null, diff: null, loading: true },
   };
+  cellFilters.value = { ...cellFilters.value, [b.id]: emptyFilters() };
   try {
     const [stats, diff] = await Promise.all([
       manhours.fetchBatchStats(b.id),
@@ -68,7 +85,40 @@ async function toggleExpand(b: ManhourBatch): Promise<void> {
     };
   } catch {
     delete expanded.value[b.id];
+    delete cellFilters.value[b.id];
   }
+}
+
+// 区分マッチ: 「AFT」「MNT」「SY」「その他=空文字 workType」「休暇」「非稼働」
+function matchesWt(
+  row: { workType: string; subject: string },
+  wt: CellFilters['wt'],
+): boolean {
+  if (wt === 'all') return true;
+  if (wt === '休暇') return row.workType === 'zz' && row.subject === '休暇';
+  if (wt === '非稼働') return row.workType === 'zz' && row.subject === '非稼働';
+  if (wt === 'other') return !['AFT', 'MNT', 'SY', 'zz'].includes(row.workType);
+  return row.workType === wt;
+}
+
+function filteredCellDiffs(batchId: number): BatchCellDiff[] {
+  const diff = expanded.value[batchId]?.diff;
+  if (!diff) return [];
+  const f = cellFilters.value[batchId] ?? emptyFilters();
+  const name = f.name.trim().toLowerCase();
+  const code = f.code.trim().toLowerCase();
+  const subject = f.subject.trim().toLowerCase();
+  return diff.cellDiffs.filter((c) => {
+    if (name && !c.assigneeName.toLowerCase().includes(name)) return false;
+    if (!matchesWt(c, f.wt)) return false;
+    if (code && !(c.projectCode ?? '').toLowerCase().includes(code)) return false;
+    if (subject && !c.subject.toLowerCase().includes(subject)) return false;
+    return true;
+  });
+}
+
+function clearFilters(batchId: number): void {
+  cellFilters.value = { ...cellFilters.value, [batchId]: emptyFilters() };
 }
 
 async function onDelete(b: ManhourBatch): Promise<void> {
@@ -325,6 +375,43 @@ function deltaClass(n: number): string {
                     <strong class="small">
                       担当者×プロジェクト×月 別差分（前回→今回。delta=0 セルは空欄）
                     </strong>
+                    <div class="cdt-filter">
+                      <input
+                        v-model="cellFilters[b.id]!.name"
+                        type="search"
+                        placeholder="担当者で絞込み"
+                        class="ft-input ft-name"
+                      />
+                      <select v-model="cellFilters[b.id]!.wt" class="ft-input ft-wt">
+                        <option value="all">区分: すべて</option>
+                        <option value="AFT">AFT</option>
+                        <option value="MNT">MNT</option>
+                        <option value="SY">SY</option>
+                        <option value="other">その他</option>
+                        <option value="非稼働">非稼働</option>
+                        <option value="休暇">休暇</option>
+                      </select>
+                      <input
+                        v-model="cellFilters[b.id]!.code"
+                        type="search"
+                        placeholder="CD で絞込み"
+                        class="ft-input ft-code"
+                      />
+                      <input
+                        v-model="cellFilters[b.id]!.subject"
+                        type="search"
+                        placeholder="案件 / 件名で絞込み"
+                        class="ft-input ft-subj"
+                      />
+                      <button
+                        type="button"
+                        class="btn small"
+                        @click="clearFilters(b.id)"
+                      >クリア</button>
+                      <span class="muted small">
+                        {{ filteredCellDiffs(b.id).length }} / {{ expanded[b.id]!.diff!.cellDiffs.length }} 件
+                      </span>
+                    </div>
                     <div class="cdt-scroll">
                       <table class="mini cdt">
                         <thead>
@@ -342,8 +429,13 @@ function deltaClass(n: number): string {
                           </tr>
                         </thead>
                         <tbody>
+                          <tr v-if="filteredCellDiffs(b.id).length === 0">
+                            <td :colspan="5 + expanded[b.id]!.diff!.months.length" class="muted">
+                              条件に一致する差分行がありません。
+                            </td>
+                          </tr>
                           <tr
-                            v-for="(c, i) in expanded[b.id]!.diff!.cellDiffs"
+                            v-for="(c, i) in filteredCellDiffs(b.id)"
                             :key="i"
                           >
                             <td class="cdt-name">{{ c.assigneeName }}</td>
@@ -423,6 +515,24 @@ function deltaClass(n: number): string {
 .diff-lists { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem; font-size: 0.83rem; }
 .lst { display: flex; gap: 0.4rem; align-items: baseline; }
 .cell-diffs { margin-top: 0.5rem; }
+.cdt-filter {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.4rem 0;
+}
+.ft-input {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.ft-name { width: 9rem; }
+.ft-wt { width: 9rem; }
+.ft-code { width: 7rem; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.78rem; }
+.ft-subj { width: 14rem; }
 .cdt-scroll { overflow-x: auto; max-width: 100%; }
 .cdt {
   border-collapse: collapse;
