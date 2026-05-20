@@ -279,6 +279,67 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('確定(imported)プロジェクトに negative manual overlay を保存して total を下げられる', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      const aap001 = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .find((p) => p.projectCode === 'AAP001')!;
+
+      // SAMPLE: AAP001 / 堀田 / 2026-04 = 100 (AFT)
+      // popup での編集相当: total を 100 → 80 に下げる → manual = -20 を保存
+      svc.upsertManualEntry({
+        assigneeId: horita.id,
+        projectId: aap001.id,
+        workType: '',
+        yearMonth: '2026-04',
+        hours: -20,
+      });
+
+      const mx = svc.getProjectMatrix(aap001.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const row = mx.rows.find((r) => r.assigneeId === horita.id)!;
+      const cell = row.cells['2026-04'];
+      expect(cell.imported).toBe(100);
+      expect(cell.manual).toBe(-20);
+      expect(cell.total).toBe(80);
+
+      // total を取込値に戻す（manual = 0 で削除）
+      svc.upsertManualEntry({
+        assigneeId: horita.id,
+        projectId: aap001.id,
+        workType: '',
+        yearMonth: '2026-04',
+        hours: 0,
+      });
+      const mx2 = svc.getProjectMatrix(aap001.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const cell2 = mx2.rows.find((r) => r.assigneeId === horita.id)!.cells[
+        '2026-04'
+      ];
+      expect(cell2.imported).toBe(100);
+      expect(cell2.manual).toBe(0);
+      expect(cell2.total).toBe(100);
+    } finally {
+      close();
+    }
+  });
+
   it('手入力(仮案件)と取込を結合し、確定/仮トグルで出し分ける', () => {
     const { db, close } = makeDb();
     try {

@@ -580,7 +580,10 @@ export class ManhoursService {
           ),
         )
         .run();
-      if (dto.hours <= 0) {
+      // hours === 0 は明示的な削除（manual を消す）。
+      // 取込(imported)分の上書き用に**負の値**も受け付ける：
+      // 確定プロジェクトの popup 編集で「total を下げる」を実現する。
+      if (dto.hours === 0) {
         return { assigneeId: dto.assigneeId, deleted: true };
       }
       const row = tx

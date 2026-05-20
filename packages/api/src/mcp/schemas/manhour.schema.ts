@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
 // ManualEntryDto と完全一致（mcp-schema-parity.spec で担保）。
+// hours は確定取込の上書き(overlay)を表現するため負値も許可。
+// 0 は manual の明示削除。
 export const ManualEntrySchema = z.object({
   assigneeId: z.number().int().positive(),
   projectId: z.number().int().positive().nullable().optional(),
   workType: z.string().max(8).optional(),
   yearMonth: z.string().regex(/^\d{4}-\d{2}$/, 'must be YYYY-MM'),
-  hours: z.number().min(0),
+  hours: z.number(),
 });
 
 // ManualProjectDto と完全一致。

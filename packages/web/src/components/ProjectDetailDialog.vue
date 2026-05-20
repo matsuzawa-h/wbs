@@ -17,7 +17,9 @@ const emit = defineEmits<{
 const manhours = useManhoursStore();
 const employees = useEmployeesStore();
 
-// 仮プロジェクトのみメンバー編集（担当者の追加/削除）と工数編集を許可。
+// 確定/仮どちらでもセル編集を許可。仮(provisional)は imported=0 なので
+// manual がそのまま total と一致。確定は manual を「overlay(差分)」として
+// 保存し、入力された total に揃える（newTotal - imported を manual に保存）。
 const isProvisional = computed(
   () => manhours.projectMatrix?.isProvisional ?? false,
 );
@@ -96,17 +98,33 @@ async function onEditCell(
   raw: string,
 ): Promise<void> {
   if (props.projectId === null) return;
-  const hours = Number(raw);
-  if (!Number.isFinite(hours) || hours < 0) return;
+  const newTotal = Number(raw);
+  if (!Number.isFinite(newTotal) || newTotal < 0) return;
+  // 既存セルの imported を差し引いて manual に上書きしたい差分を計算する。
+  // 仮(imported=0) の場合は manual === newTotal。
+  // 確定で newTotal < imported の場合は manual が負になる（バックエンドで許容）。
+  const mx = manhours.projectMatrix;
+  const cell = mx?.rows.find((r) => r.assigneeId === assigneeId)?.cells[ym];
+  const imported = cell?.imported ?? 0;
+  const manual = newTotal - imported;
   await manhours.saveManualEntry({
     assigneeId,
     projectId: props.projectId,
     workType: '',
     yearMonth: ym,
-    hours,
+    hours: manual,
   });
   dirty.value = true;
   await reload();
+}
+
+// 「削除」ボタンの可否。取込(imported)を含む行は削除不可（取込値は消せない）。
+// 仮のみで埋まっている行・追加直後で未保存の行のみ削除可能。
+function canRemoveRow(row: DisplayRow): boolean {
+  if (row.extra) return true;
+  const cells = Object.values(row.cells);
+  if (cells.length === 0) return true;
+  return cells.every((c) => c.imported === 0);
 }
 
 async function removeRow(assigneeId: number): Promise<void> {
@@ -128,7 +146,7 @@ async function removeRow(assigneeId: number): Promise<void> {
     return;
   for (const ym of mx.months) {
     const cell = row.cells[ym];
-    if (cell && cell.manual > 0) {
+    if (cell && cell.manual !== 0) {
       await manhours.saveManualEntry({
         assigneeId,
         projectId: props.projectId,
@@ -171,8 +189,9 @@ function onClose(): void {
         <p v-if="manhours.loading" class="muted">読込中…</p>
 
         <p v-if="!isProvisional" class="muted small">
-          このプロジェクトは <strong>確定（仮ではない）</strong>のため参照表示のみです。
-          編集は再取込、または仮プロジェクトを別途作成して手入力してください。
+          このプロジェクトは <strong>確定（取込）</strong>です。セルは <strong>total（取込＋仮）</strong>を表示し、
+          編集すると差分が <strong>仮（手入力 overlay）</strong>として保存されます（取込値は上書きされません。
+          total を取込値に戻せば overlay は自動削除）。
         </p>
 
         <div v-if="manhours.projectMatrix" class="grid-wrap">
@@ -184,7 +203,7 @@ function onClose(): void {
                   {{ monthLabel(ym) }}
                 </th>
                 <th class="num">合計</th>
-                <th v-if="isProvisional" class="op"></th>
+                <th class="op"></th>
               </tr>
             </thead>
             <tbody>
@@ -193,35 +212,41 @@ function onClose(): void {
                 <td
                   v-for="ym in manhours.projectMatrix.months"
                   :key="ym"
-                  class="num cell"
-                  :class="{ editable: isProvisional }"
+                  class="num cell editable"
+                  :title="
+                    row.cells[ym]
+                      ? `取込 ${row.cells[ym]!.imported.toFixed(1)}h + 仮 ${row.cells[ym]!.manual.toFixed(1)}h = ${row.cells[ym]!.total.toFixed(1)}h`
+                      : ''
+                  "
                 >
                   <input
-                    v-if="isProvisional"
                     type="number"
                     min="0"
                     step="0.5"
                     class="edit"
-                    :value="row.cells[ym]?.manual ?? ''"
+                    :value="row.cells[ym]?.total ?? ''"
                     @change="onEditCell(row.assigneeId, ym, ($event.target as HTMLInputElement).value)"
                   />
-                  <template v-else>
-                    {{ row.cells[ym]?.total ? row.cells[ym]!.total.toFixed(1) : '' }}
-                  </template>
                   <span
-                    v-if="!isProvisional && row.cells[ym] && row.cells[ym]!.imported > 0 && row.cells[ym]!.manual > 0"
-                    class="muted small"
+                    v-if="row.cells[ym] && row.cells[ym]!.imported > 0 && row.cells[ym]!.manual !== 0"
+                    class="muted small breakdown"
                   >
-                    （仮 {{ row.cells[ym]!.manual }}）
+                    取込 {{ row.cells[ym]!.imported.toFixed(1) }}
+                    / 仮 {{ row.cells[ym]!.manual >= 0 ? '+' : '' }}{{ row.cells[ym]!.manual.toFixed(1) }}
                   </span>
                 </td>
                 <td class="num total">{{ row.total.toFixed(1) }}</td>
-                <td v-if="isProvisional" class="op">
-                  <button class="btn small danger" type="button" @click="removeRow(row.assigneeId)">削除</button>
+                <td class="op">
+                  <button
+                    v-if="canRemoveRow(row)"
+                    class="btn small danger"
+                    type="button"
+                    @click="removeRow(row.assigneeId)"
+                  >削除</button>
                 </td>
               </tr>
               <tr v-if="!displayRows.length">
-                <td :colspan="manhours.projectMatrix.months.length + (isProvisional ? 3 : 2)" class="muted">
+                <td :colspan="manhours.projectMatrix.months.length + 3" class="muted">
                   この案件の明細はありません
                 </td>
               </tr>
@@ -233,20 +258,20 @@ function onClose(): void {
                   {{ (manhours.projectMatrix.monthTotals[ym] ?? 0).toFixed(1) }}
                 </td>
                 <td class="num foot">{{ manhours.projectMatrix.grandTotal.toFixed(1) }}</td>
-                <td v-if="isProvisional" class="op foot"></td>
+                <td class="op foot"></td>
               </tr>
             </tfoot>
           </table>
         </div>
 
-        <div v-if="isProvisional" class="add-row">
+        <div class="add-row">
           <span class="muted small">メンバー追加:</span>
           <select v-model.number="addAssigneeId">
             <option :value="null">（担当者を選択）</option>
             <option v-for="e in availableEmployees" :key="e.id" :value="e.id">{{ e.code ? `[${e.code}] ` : '' }}{{ e.name }}</option>
           </select>
           <button class="btn small" type="button" :disabled="addAssigneeId === null" @click="addRow">行追加</button>
-          <span class="muted small">追加後、月セルに工数を入れると保存されます（0 で削除）。</span>
+          <span class="muted small">月セルは total（取込＋仮）を表示。値を変えると差分が仮として保存されます。取込値に戻せば仮は削除。</span>
         </div>
       </div>
 
@@ -291,6 +316,7 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .num { text-align: right; }
 .cell.editable { background: var(--c-warn-bg); }
 .cell.editable input.edit { background: var(--c-surface); width: 4rem; text-align: right; padding: 0.1rem 0.3rem; }
+.breakdown { display: block; margin-top: 0.1rem; font-size: 0.7rem; color: var(--c-text-muted); }
 .total { font-weight: 700; background: var(--c-surface-2); }
 .foot { font-weight: 600; background: var(--c-surface-3); }
 .op { text-align: center; }
