@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useEmployeesStore } from '@/stores/employees';
 import type { Employee } from '@/types';
 
@@ -50,6 +50,18 @@ export const useCurrentUserStore = defineStore('currentUser', () => {
     currentId.value = null;
     saveToStorage(null);
   }
+
+  // 社員マスタが読込まれたあとで「自分」が存在しない場合は自動 logout。
+  // 例: ログイン中の社員が他で削除された／localStorage に古い id が残っている。
+  // employees.items が空の間（fetch 前）は無効化判定しない。
+  watch(
+    () => [employees.items.length, currentId.value] as const,
+    ([len, id]) => {
+      if (id === null || len === 0) return;
+      const exists = employees.items.some((e) => e.id === id);
+      if (!exists) logout();
+    },
+  );
 
   return { currentId, current, isLoggedIn, login, logout };
 });

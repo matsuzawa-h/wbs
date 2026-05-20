@@ -213,7 +213,8 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
     <tr><td>file_name</td><td>TEXT</td><td>NOT NULL 取込ファイル名</td></tr>
     <tr><td>fiscal_year</td><td>INTEGER</td><td>NOT NULL 対象会計年度（4月始まり。idx_mh_batches_fy）</td></tr>
-    <tr><td>org_code</td><td>TEXT</td><td>組織コード（CSV 由来）</td></tr>
+    <tr><td>org_code</td><td>TEXT</td><td>組織コード（CSV 由来。文字列のままで履歴保持）</td></tr>
+    <tr><td><span class="fk">organization_id</span></td><td>INTEGER</td><td>FK organizations.id（任意）/ ON DELETE SET NULL（idx_mh_batches_organization。0014 で追加）。「最新バッチ・履歴」を組織別に解決するために保持</td></tr>
     <tr><td>row_count</td><td>INTEGER / 0</td><td>NOT NULL 取込明細件数</td></tr>
     <tr><td>imported_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL 取込時刻（最新判定に使用）</td></tr>
   </tbody>
@@ -297,9 +298,11 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0011</td><td>add_manhour_entry_customer_label</td><td>manhour_entries.customer_label 追加（CSV顧客名を明細に保持）</td></tr>
     <tr><td>0012</td><td>add_organizations</td><td>organizations 追加（自己参照階層）＋ customers / projects / assignees に organization_id 追加（SET NULL）</td></tr>
     <tr><td>0013</td><td>add_manhour_entry_project_code_label</td><td>manhour_entries.project_code_label 追加（CSV プロジェクトCD を明細に保持。MNT 等で projects 化しない行も CD 表示）</td></tr>
+    <tr><td>0014</td><td>add_manhour_batch_organization</td><td>manhour_import_batches.organization_id 追加（FK organizations.id, SET NULL）＋ 既存バッチを org_code から backfill。「最新バッチ・履歴」を組織別に解決</td></tr>
   </tbody>
 </table>
-<div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>
+<div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。<br>
+<strong>0012 / 0013 / 0014</strong>（組織機能・MNT 等の CD 保持・バッチの組織別最新解決）は<strong>本リリースで初回必須</strong>。未適用だと組織関連のUIが <code>500</code> エラーとなり、稼働見通しの「最新バッチ」が組織を跨いでしまいます。</div>
 
 <h2 class="chapter" id="d4">4. CRUD 図（機能 × テーブル）</h2>
 <p>

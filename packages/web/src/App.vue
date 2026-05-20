@@ -10,6 +10,8 @@ const employees = useEmployeesStore();
 const currentUser = useCurrentUserStore();
 
 // ログインユーザの表示用に社員データを 1 度ロード（ヘッダーで名前を出す）。
+// fetch 完了後に currentUser store 側の watch で、存在しない currentId なら
+// 自動 logout がトリガーされる（社員削除済み・古い localStorage の救済）。
 onMounted(() => {
   if (currentUser.isLoggedIn) employees.fetchAll();
 });
