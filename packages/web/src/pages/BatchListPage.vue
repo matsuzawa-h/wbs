@@ -2,10 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useManhoursStore } from '@/stores/manhours';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useEmployeesStore } from '@/stores/employees';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import type { BatchCellDiff, BatchDiff, BatchStats, ManhourBatch } from '@/types';
 
 const manhours = useManhoursStore();
 const orgs = useOrganizationsStore();
+const employees = useEmployeesStore();
+const currentUser = useCurrentUserStore();
 
 const fiscalYear = ref<number | 'all'>('all');
 const orgFilter = ref<'all' | 'none' | number>('all');
@@ -55,7 +59,16 @@ async function reload(): Promise<void> {
 }
 
 onMounted(async () => {
-  await orgs.fetchAll();
+  await Promise.all([orgs.fetchAll(), employees.fetchAll()]);
+  // 初期表示はログイン社員の所属組織で絞り込み（あれば）。無ければ「すべて」のまま。
+  const myOrg = currentUser.current?.organizationId ?? null;
+  if (
+    orgFilter.value === 'all' &&
+    myOrg !== null &&
+    orgs.byCodeAsc.some((o) => o.id === myOrg)
+  ) {
+    orgFilter.value = myOrg;
+  }
   await reload();
 });
 
