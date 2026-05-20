@@ -531,6 +531,9 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(horitaAft!.delta).toBe(20);
       expect(horitaAft!.hoursCurrent).toBe(160);
       expect(horitaAft!.hoursPrevious).toBe(140);
+      // 月別差分: 4月 +20 (100→120)、5月 0 (省略)
+      expect(horitaAft!.monthlyDelta['2026-04']).toBe(20);
+      expect(horitaAft!.monthlyDelta['2026-05']).toBeUndefined();
       const nishiMnt = d.cellDiffs.find(
         (c) => c.assigneeName === '西本　拓真' && c.projectCode === 'AAP002',
       );
@@ -538,6 +541,12 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(nishiMnt!.delta).toBe(-20);
       expect(nishiMnt!.hoursCurrent).toBe(0);
       expect(nishiMnt!.hoursPrevious).toBe(20);
+      expect(nishiMnt!.monthlyDelta['2026-05']).toBe(-20);
+      // diff response に FY 12 ヶ月の months[] が入っている
+      expect(d.months).toEqual([
+        '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09',
+        '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03',
+      ]);
       // 差分 0 のセルは含まれない
       expect(
         d.cellDiffs.find(

@@ -181,6 +181,8 @@ export interface BatchStats {
 export interface BatchDiff {
   currentBatchId: number;
   previousBatchId: number | null;
+  /** バッチの年度に基づく FY 12 ヶ月（cellDiffs の月列ヘッダ用） */
+  months: string[];
   delta: {
     entryCount: number;
     assigneeCount: number;
@@ -206,6 +208,8 @@ export interface BatchCellDiff {
   hoursPrevious: number;
   hoursCurrent: number;
   delta: number;
+  /** 月別差分（0 でない月のみ。current - previous） */
+  monthlyDelta: Record<string, number>;
 }
 
 export interface SummaryProjectBreak {

@@ -323,39 +323,50 @@ function deltaClass(n: number): string {
                     class="cell-diffs"
                   >
                     <strong class="small">
-                      担当者×プロジェクト 別差分（前回 → 今回・delta 0 は省略）
+                      担当者×プロジェクト×月 別差分（前回→今回。delta=0 セルは空欄）
                     </strong>
-                    <table class="mini cdt">
-                      <thead>
-                        <tr>
-                          <th class="cdt-name">担当者</th>
-                          <th class="cdt-wt">区分</th>
-                          <th class="cdt-cust">顧客 / CD</th>
-                          <th class="cdt-subj">案件 / 件名</th>
-                          <th class="num">前回</th>
-                          <th class="num">今回</th>
-                          <th class="num">差分</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr
-                          v-for="(c, i) in expanded[b.id]!.diff!.cellDiffs"
-                          :key="i"
-                        >
-                          <td>{{ c.assigneeName }}</td>
-                          <td>
-                            {{ c.workType === 'zz' ? c.subject : (c.workType || '—') }}
-                          </td>
-                          <td class="muted small">{{ c.projectCode ?? '—' }}</td>
-                          <td :title="c.subject">{{ c.subject }}</td>
-                          <td class="num">{{ c.hoursPrevious.toFixed(1) }}</td>
-                          <td class="num">{{ c.hoursCurrent.toFixed(1) }}</td>
-                          <td class="num" :class="deltaClass(c.delta)">
-                            {{ fmtDelta(c.delta) }}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <div class="cdt-scroll">
+                      <table class="mini cdt">
+                        <thead>
+                          <tr>
+                            <th class="cdt-name">担当者</th>
+                            <th class="cdt-wt">区分</th>
+                            <th class="cdt-cust">CD</th>
+                            <th class="cdt-subj">案件 / 件名</th>
+                            <th
+                              v-for="ym in expanded[b.id]!.diff!.months"
+                              :key="ym"
+                              class="num cdt-mon"
+                            >{{ ymLabel(ym) }}</th>
+                            <th class="num cdt-tot">合計</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="(c, i) in expanded[b.id]!.diff!.cellDiffs"
+                            :key="i"
+                          >
+                            <td class="cdt-name">{{ c.assigneeName }}</td>
+                            <td class="cdt-wt">
+                              {{ c.workType === 'zz' ? c.subject : (c.workType || '—') }}
+                            </td>
+                            <td class="cdt-cust muted small">{{ c.projectCode ?? '—' }}</td>
+                            <td class="cdt-subj" :title="`前回 ${c.hoursPrevious.toFixed(1)}h → 今回 ${c.hoursCurrent.toFixed(1)}h`">
+                              {{ c.subject }}
+                            </td>
+                            <td
+                              v-for="ym in expanded[b.id]!.diff!.months"
+                              :key="ym"
+                              class="num cdt-mon"
+                              :class="deltaClass(c.monthlyDelta[ym] ?? 0)"
+                            >{{ c.monthlyDelta[ym] ? fmtDelta(c.monthlyDelta[ym]) : '' }}</td>
+                            <td class="num cdt-tot" :class="deltaClass(c.delta)">
+                              {{ fmtDelta(c.delta) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -412,10 +423,24 @@ function deltaClass(n: number): string {
 .diff-lists { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem; font-size: 0.83rem; }
 .lst { display: flex; gap: 0.4rem; align-items: baseline; }
 .cell-diffs { margin-top: 0.5rem; }
-.cdt { width: 100%; font-size: 0.82rem; }
-.cdt th, .cdt td { padding: 0.2rem 0.5rem; }
-.cdt-name { width: 8rem; }
-.cdt-wt { width: 4.5rem; }
-.cdt-cust { width: 5rem; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.78rem; color: #6b7280; }
-.cdt-subj { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdt-scroll { overflow-x: auto; max-width: 100%; }
+.cdt {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  table-layout: fixed;
+}
+.cdt th, .cdt td {
+  padding: 0.15rem 0.35rem;
+  border-right: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+.cdt th { background: #f1f5f9; color: #475569; font-weight: 600; position: sticky; top: 0; }
+.cdt-name { width: 7rem; }
+.cdt-wt { width: 4rem; }
+.cdt-cust { width: 4.5rem; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.74rem; color: #6b7280; }
+.cdt-subj { width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.cdt-mon { width: 3.3rem; font-variant-numeric: tabular-nums; }
+.cdt-tot { width: 4rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cdt tbody tr:hover td { background: #fffbeb; }
 </style>

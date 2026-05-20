@@ -138,6 +138,8 @@ export interface BatchDiff {
   currentBatchId: number;
   /** 同 org × 同年度の直前バッチ id。無ければ null */
   previousBatchId: number | null;
+  /** バッチの年度に基づく FY 12 ヶ月（cellDiffs の月列ヘッダ用） */
+  months: string[];
   /** 直前比のサマリ。previousBatchId=null の時は current の値そのもの。 */
   delta: {
     entryCount: number;
@@ -169,6 +171,8 @@ interface BatchCellAgg {
   workType: string;
   subject: string;
   hours: number;
+  /** 月別合計 (key = 'YYYY-MM') */
+  monthlyHours: Record<string, number>;
 }
 
 export interface BatchCellDiff {
@@ -185,6 +189,8 @@ export interface BatchCellDiff {
   hoursPrevious: number;
   hoursCurrent: number;
   delta: number;
+  /** 月別差分（0 でない月のみ）。current[ym] - previous[ym]。 */
+  monthlyDelta: Record<string, number>;
 }
 
 @Injectable()
@@ -390,6 +396,10 @@ export class ManhoursService {
       const cellDiffsNoPrev: BatchCellDiff[] = [];
       for (const c of curCells.values()) {
         if (c.hours === 0) continue;
+        const md: Record<string, number> = {};
+        for (const [ym, h] of Object.entries(c.monthlyHours)) {
+          if (h !== 0) md[ym] = h;
+        }
         cellDiffsNoPrev.push({
           assigneeId: c.assigneeId,
           assigneeName: c.assigneeName,
@@ -401,12 +411,14 @@ export class ManhoursService {
           hoursPrevious: 0,
           hoursCurrent: c.hours,
           delta: c.hours,
+          monthlyDelta: md,
         });
       }
       this.sortCellDiffs(cellDiffsNoPrev);
       return {
         currentBatchId: id,
         previousBatchId: null,
+        months: this.fiscalMonths(current.fiscalYear),
         delta: {
           entryCount: current.entryCount,
           assigneeCount: current.assigneeCount,
@@ -469,6 +481,17 @@ export class ManhoursService {
       if (delta === 0) continue;
       // 表示メタは current 優先、無ければ previous から
       const meta = cur ?? prv!;
+      // 月別差分: 両側の monthlyHours の和集合 で current - previous
+      const monthlyDelta: Record<string, number> = {};
+      const monthSet = new Set([
+        ...Object.keys(cur?.monthlyHours ?? {}),
+        ...Object.keys(prv?.monthlyHours ?? {}),
+      ]);
+      for (const m of monthSet) {
+        const d =
+          (cur?.monthlyHours[m] ?? 0) - (prv?.monthlyHours[m] ?? 0);
+        if (d !== 0) monthlyDelta[m] = d;
+      }
       cellDiffs.push({
         assigneeId: meta.assigneeId,
         assigneeName: meta.assigneeName,
@@ -480,6 +503,7 @@ export class ManhoursService {
         hoursPrevious,
         hoursCurrent,
         delta,
+        monthlyDelta,
       });
     }
     this.sortCellDiffs(cellDiffs);
@@ -487,6 +511,7 @@ export class ManhoursService {
     return {
       currentBatchId: id,
       previousBatchId: prevRow.id,
+      months: this.fiscalMonths(current.fiscalYear),
       delta: {
         entryCount: current.entryCount - previous.entryCount,
         assigneeCount: current.assigneeCount - previous.assigneeCount,
@@ -532,6 +557,7 @@ export class ManhoursService {
         projectCodeLabel: manhourEntries.projectCodeLabel,
         label: manhourEntries.label,
         workType: manhourEntries.workType,
+        yearMonth: manhourEntries.yearMonth,
         hours: manhourEntries.hours,
       })
       .from(manhourEntries)
@@ -567,10 +593,13 @@ export class ManhoursService {
           workType: r.workType,
           subject,
           hours: 0,
+          monthlyHours: {},
         };
         map.set(key, cell);
       }
       cell.hours += r.hours;
+      cell.monthlyHours[r.yearMonth] =
+        (cell.monthlyHours[r.yearMonth] ?? 0) + r.hours;
     }
     return map;
   }
