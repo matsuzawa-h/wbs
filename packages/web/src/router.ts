@@ -10,6 +10,7 @@ import DownloadsPage from './pages/DownloadsPage.vue';
 import HelpPage from './pages/HelpPage.vue';
 import ManhoursSummaryPage from './pages/ManhoursSummaryPage.vue';
 import ProjectManhoursPage from './pages/ProjectManhoursPage.vue';
+import BatchListPage from './pages/BatchListPage.vue';
 import LoginPage from './pages/LoginPage.vue';
 import { useCurrentUserStore } from './stores/currentUser';
 
@@ -23,6 +24,7 @@ const routes: RouteRecordRaw[] = [
     props: (route) => ({ projectId: Number(route.params.projectId) }),
   },
   { path: '/manhours', name: 'manhours', component: ManhoursSummaryPage },
+  { path: '/manhours/batches', name: 'manhour-batches', component: BatchListPage },
   {
     path: '/projects/:projectId/manhours',
     name: 'project-manhours',

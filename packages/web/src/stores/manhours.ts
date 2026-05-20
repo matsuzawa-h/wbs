@@ -3,6 +3,8 @@ import { ref } from 'vue';
 import { api } from '@/api/client';
 import type {
   AssigneeDetail,
+  BatchDiff,
+  BatchStats,
   CapacitySummary,
   ManhourBatch,
   ManualEntryInput,
@@ -163,6 +165,16 @@ export const useManhoursStore = defineStore('manhours', () => {
     batches.value = batches.value.filter((b) => b.id !== id);
   }
 
+  async function fetchBatchStats(id: number): Promise<BatchStats> {
+    const res = await api.get<BatchStats>(`/manhours/batches/${id}/stats`);
+    return res.data;
+  }
+
+  async function fetchBatchDiff(id: number): Promise<BatchDiff> {
+    const res = await api.get<BatchDiff>(`/manhours/batches/${id}/diff-previous`);
+    return res.data;
+  }
+
   return {
     batches,
     summary,
@@ -181,5 +193,7 @@ export const useManhoursStore = defineStore('manhours', () => {
     deleteManualEntry,
     createManualProject,
     deleteBatch,
+    fetchBatchStats,
+    fetchBatchDiff,
   };
 });

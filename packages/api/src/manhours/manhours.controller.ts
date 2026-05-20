@@ -115,4 +115,14 @@ export class ManhoursController {
   deleteBatch(@Param('id', ParseIntPipe) id: number): void {
     this.manhours.deleteBatch(id);
   }
+
+  @Get('batches/:id/stats')
+  batchStats(@Param('id', ParseIntPipe) id: number) {
+    return this.manhours.getBatchStats(id);
+  }
+
+  @Get('batches/:id/diff-previous')
+  batchDiff(@Param('id', ParseIntPipe) id: number) {
+    return this.manhours.getBatchDiffWithPrevious(id);
+  }
 }

@@ -161,6 +161,39 @@ export interface ManhourBatch {
   importedAt: number;
 }
 
+export interface BatchStats {
+  batchId: number;
+  fileName: string;
+  fiscalYear: number;
+  orgCode: string | null;
+  organizationId: number | null;
+  organizationName: string | null;
+  importedAt: number;
+  rowCount: number;
+  entryCount: number;
+  capacityCount: number;
+  assigneeCount: number;
+  projectCount: number;
+  totalHours: number;
+  monthlyTotals: Record<string, number>;
+}
+
+export interface BatchDiff {
+  currentBatchId: number;
+  previousBatchId: number | null;
+  delta: {
+    entryCount: number;
+    assigneeCount: number;
+    projectCount: number;
+    totalHours: number;
+    monthlyTotals: Record<string, number>;
+  };
+  addedAssignees: { id: number; name: string }[];
+  removedAssignees: { id: number; name: string }[];
+  addedProjects: { id: number; name: string }[];
+  removedProjects: { id: number; name: string }[];
+}
+
 export interface SummaryProjectBreak {
   projectId: number | null;
   projectName: string;

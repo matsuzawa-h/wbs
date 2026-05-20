@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import {
   AppDb,
   assignees,
@@ -7,6 +7,7 @@ import {
   manhourCapacities,
   manhourEntries,
   manhourImportBatches,
+  organizations,
   projects,
 } from '../db';
 import { DB_TOKEN } from '../db/db.module';
@@ -113,6 +114,46 @@ export interface AssigneeDetail {
   capacity: Record<string, number>;
 }
 
+// ---- 取込履歴ページ用 ------------------------------------------------------
+export interface BatchStats {
+  batchId: number;
+  fileName: string;
+  fiscalYear: number;
+  orgCode: string | null;
+  organizationId: number | null;
+  organizationName: string | null;
+  importedAt: number;
+  rowCount: number;
+  /** manhour_entries の行数 */
+  entryCount: number;
+  /** manhour_capacities の行数 */
+  capacityCount: number;
+  assigneeCount: number;
+  projectCount: number;
+  totalHours: number;
+  monthlyTotals: Record<string, number>;
+}
+
+export interface BatchDiff {
+  currentBatchId: number;
+  /** 同 org × 同年度の直前バッチ id。無ければ null */
+  previousBatchId: number | null;
+  /** 直前比のサマリ。previousBatchId=null の時は current の値そのもの。 */
+  delta: {
+    entryCount: number;
+    assigneeCount: number;
+    projectCount: number;
+    totalHours: number;
+    monthlyTotals: Record<string, number>;
+  };
+  /** 当バッチに居て直前バッチに居なかった担当者（新規登場） */
+  addedAssignees: { id: number; name: string }[];
+  /** 直前バッチに居て当バッチに居ない担当者（消えた） */
+  removedAssignees: { id: number; name: string }[];
+  addedProjects: { id: number; name: string }[];
+  removedProjects: { id: number; name: string }[];
+}
+
 @Injectable()
 export class ManhoursService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
@@ -124,10 +165,12 @@ export class ManhoursService {
    * organizationId: undefined=全組織 / null=組織未紐付け / number=その組織のバッチ。
    */
   listBatches(fiscalYear?: number, organizationId?: number | null) {
+    // importedAt は秒精度。同秒の連続取込で順序が不安定にならないよう
+    // 第二ソートキーで id desc を加える（id は単調増加）。
     const rows = this.db
       .select()
       .from(manhourImportBatches)
-      .orderBy(desc(manhourImportBatches.importedAt))
+      .orderBy(desc(manhourImportBatches.importedAt), desc(manhourImportBatches.id))
       .all();
     return rows.filter((r) => {
       if (fiscalYear !== undefined && r.fiscalYear !== fiscalYear) return false;
@@ -209,6 +252,197 @@ export class ManhoursService {
       .delete(manhourImportBatches)
       .where(eq(manhourImportBatches.id, id))
       .run();
+  }
+
+  // ---- batch stats / diff（取込履歴ページ用） ---------------------------
+
+  getBatchStats(id: number): BatchStats {
+    const batch = this.db
+      .select({
+        id: manhourImportBatches.id,
+        fileName: manhourImportBatches.fileName,
+        fiscalYear: manhourImportBatches.fiscalYear,
+        orgCode: manhourImportBatches.orgCode,
+        organizationId: manhourImportBatches.organizationId,
+        importedAt: manhourImportBatches.importedAt,
+        rowCount: manhourImportBatches.rowCount,
+      })
+      .from(manhourImportBatches)
+      .where(eq(manhourImportBatches.id, id))
+      .get();
+    if (!batch) throw new NotFoundException(`batch ${id} not found`);
+
+    const orgName =
+      batch.organizationId !== null
+        ? (this.db
+            .select({ name: organizations.name })
+            .from(organizations)
+            .where(eq(organizations.id, batch.organizationId))
+            .get()?.name ?? null)
+        : null;
+
+    const entries = this.db
+      .select({
+        assigneeId: manhourEntries.assigneeId,
+        projectId: manhourEntries.projectId,
+        yearMonth: manhourEntries.yearMonth,
+        hours: manhourEntries.hours,
+      })
+      .from(manhourEntries)
+      .where(eq(manhourEntries.batchId, id))
+      .all();
+    const capCount = this.db
+      .select({ c: manhourCapacities.id })
+      .from(manhourCapacities)
+      .where(eq(manhourCapacities.batchId, id))
+      .all().length;
+
+    const assigneeSet = new Set<number>();
+    const projectSet = new Set<number>();
+    const monthlyTotals: Record<string, number> = {};
+    let totalHours = 0;
+    for (const e of entries) {
+      assigneeSet.add(e.assigneeId);
+      if (e.projectId !== null) projectSet.add(e.projectId);
+      monthlyTotals[e.yearMonth] = (monthlyTotals[e.yearMonth] ?? 0) + e.hours;
+      totalHours += e.hours;
+    }
+    return {
+      batchId: batch.id,
+      fileName: batch.fileName,
+      fiscalYear: batch.fiscalYear,
+      orgCode: batch.orgCode,
+      organizationId: batch.organizationId,
+      organizationName: orgName,
+      importedAt: batch.importedAt,
+      rowCount: batch.rowCount,
+      entryCount: entries.length,
+      capacityCount: capCount,
+      assigneeCount: assigneeSet.size,
+      projectCount: projectSet.size,
+      totalHours,
+      monthlyTotals,
+    };
+  }
+
+  /**
+   * このバッチと「同じ組織×同じ年度の直前バッチ」を比較した簡易差分を返す。
+   * 直前が無ければ previousBatchId=null で空の delta を返す。
+   */
+  getBatchDiffWithPrevious(id: number): BatchDiff {
+    const current = this.getBatchStats(id);
+    // 直前 = 同じ org × 同じ年度で、id が current より小さい最新（id が
+    // 単調増加なので連続取込 (同秒) でも順序が安定する）。
+    let prevRow: { id: number } | undefined;
+    {
+      const q = this.db
+        .select({ id: manhourImportBatches.id })
+        .from(manhourImportBatches)
+        .where(
+          and(
+            eq(manhourImportBatches.fiscalYear, current.fiscalYear),
+            lt(manhourImportBatches.id, id),
+            current.organizationId === null
+              ? isNull(manhourImportBatches.organizationId)
+              : eq(manhourImportBatches.organizationId, current.organizationId),
+          ),
+        )
+        .orderBy(desc(manhourImportBatches.id))
+        .limit(1);
+      prevRow = q.get();
+    }
+    if (!prevRow) {
+      return {
+        currentBatchId: id,
+        previousBatchId: null,
+        delta: {
+          entryCount: current.entryCount,
+          assigneeCount: current.assigneeCount,
+          projectCount: current.projectCount,
+          totalHours: current.totalHours,
+          monthlyTotals: { ...current.monthlyTotals },
+        },
+        addedAssignees: [],
+        removedAssignees: [],
+        addedProjects: [],
+        removedProjects: [],
+      };
+    }
+    const previous = this.getBatchStats(prevRow.id);
+
+    // 月別差分（current - previous）
+    const months = new Set([
+      ...Object.keys(current.monthlyTotals),
+      ...Object.keys(previous.monthlyTotals),
+    ]);
+    const monthDelta: Record<string, number> = {};
+    for (const m of months) {
+      const diff =
+        (current.monthlyTotals[m] ?? 0) - (previous.monthlyTotals[m] ?? 0);
+      if (diff !== 0) monthDelta[m] = diff;
+    }
+
+    // 担当者集合の差分（current/previous バッチに登場した distinct assignee_id）
+    const curAssignees = this.assigneesOfBatch(id);
+    const prvAssignees = this.assigneesOfBatch(prevRow.id);
+    const added = curAssignees.filter(
+      (a) => !prvAssignees.some((p) => p.id === a.id),
+    );
+    const removed = prvAssignees.filter(
+      (p) => !curAssignees.some((c) => c.id === p.id),
+    );
+
+    // プロジェクト集合の差分
+    const curProjects = this.projectsOfBatch(id);
+    const prvProjects = this.projectsOfBatch(prevRow.id);
+    const addedProjects = curProjects.filter(
+      (a) => !prvProjects.some((p) => p.id === a.id),
+    );
+    const removedProjects = prvProjects.filter(
+      (p) => !curProjects.some((c) => c.id === p.id),
+    );
+
+    return {
+      currentBatchId: id,
+      previousBatchId: prevRow.id,
+      delta: {
+        entryCount: current.entryCount - previous.entryCount,
+        assigneeCount: current.assigneeCount - previous.assigneeCount,
+        projectCount: current.projectCount - previous.projectCount,
+        totalHours: current.totalHours - previous.totalHours,
+        monthlyTotals: monthDelta,
+      },
+      addedAssignees: added,
+      removedAssignees: removed,
+      addedProjects,
+      removedProjects,
+    };
+  }
+
+  private assigneesOfBatch(batchId: number): { id: number; name: string }[] {
+    const rows = this.db
+      .selectDistinct({
+        id: assignees.id,
+        name: assignees.name,
+      })
+      .from(manhourEntries)
+      .innerJoin(assignees, eq(manhourEntries.assigneeId, assignees.id))
+      .where(eq(manhourEntries.batchId, batchId))
+      .all();
+    return rows.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  }
+
+  private projectsOfBatch(batchId: number): { id: number; name: string }[] {
+    const rows = this.db
+      .selectDistinct({
+        id: projects.id,
+        name: projects.name,
+      })
+      .from(manhourEntries)
+      .innerJoin(projects, eq(manhourEntries.projectId, projects.id))
+      .where(eq(manhourEntries.batchId, batchId))
+      .all();
+    return rows.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }
 
   // ---- shared loaders ----------------------------------------------------

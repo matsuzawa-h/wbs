@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useManhoursStore } from '@/stores/manhours';
 import { useOrganizationsStore } from '@/stores/organizations';
 import { useEmployeesStore } from '@/stores/employees';
@@ -13,6 +14,7 @@ const manhours = useManhoursStore();
 const orgs = useOrganizationsStore();
 const employees = useEmployeesStore();
 const currentUser = useCurrentUserStore();
+const router = useRouter();
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -323,6 +325,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
           >仮（手入力）</button>
         </div>
         <button class="btn" type="button" @click="manualProjectOpen = true">＋ 仮案件</button>
+        <button class="btn" type="button" @click="router.push({ name: 'manhour-batches' })">取込履歴</button>
         <button class="btn primary" type="button" @click="importOpen = true">CSV 取込</button>
       </div>
     </header>

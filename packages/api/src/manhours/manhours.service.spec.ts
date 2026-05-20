@@ -442,6 +442,88 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
+  it('getBatchStats: 取込バッチの統計（担当者数/案件数/明細件数/合計工数/月別）', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+      const b = svc.listBatches()[0];
+
+      const stats = svc.getBatchStats(b.id);
+      expect(stats.batchId).toBe(b.id);
+      expect(stats.fiscalYear).toBe(FY);
+      // SAMPLE: 堀田/西本 の 2 名、AFT の AAP001 のみプロジェクト化 = 1 件、
+      // 堀田の zz 休暇 + AFT 2 月 + 西本 MNT = entries 4 件
+      expect(stats.assigneeCount).toBe(2);
+      expect(stats.projectCount).toBe(1); // AAP001 のみ
+      expect(stats.entryCount).toBe(4);
+      // 100(AFT 4月) + 40(AFT 5月) + 8(zz 4月) + 20(MNT 5月) = 168
+      expect(stats.totalHours).toBe(168);
+      expect(stats.monthlyTotals['2026-04']).toBe(108);
+      expect(stats.monthlyTotals['2026-05']).toBe(60);
+      expect(stats.capacityCount).toBe(2); // 堀田 4月+5月 = 2
+    } finally {
+      close();
+    }
+  });
+
+  it('getBatchDiffWithPrevious: 直前バッチが無い場合は previousBatchId=null', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+      const b = svc.listBatches()[0];
+      const d = svc.getBatchDiffWithPrevious(b.id);
+      expect(d.currentBatchId).toBe(b.id);
+      expect(d.previousBatchId).toBeNull();
+      // delta は current の値そのもの
+      expect(d.delta.totalHours).toBe(168);
+    } finally {
+      close();
+    }
+  });
+
+  it('getBatchDiffWithPrevious: 同 org+年度の直前バッチと比較し追加/消失/月別差分を返す', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      // 1 回目: SAMPLE そのまま
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+
+      // 2 回目: 西本（MNT）を削除し、堀田の 4月を 100→120 に増やす
+      const rows2: string[][] = [
+        ['堀田　和彦', 'AFT', 'NIPPO', 'A案件', 'AAP001', months({ 4: '120', 5: '40' })],
+        ['堀田　和彦', 'zz', '休暇系', '休暇', '-', months({ 4: '8' })],
+        ['堀田　和彦', '合計', '', '月基準時間', '', months({ 4: '160', 5: '160' })],
+      ];
+      imp.commit(commitDtoFromPreview(imp, csvBuf(rows2), FY, 'b.csv'));
+
+      const batches = svc.listBatches();
+      // listBatches は importedAt desc。最新が b.csv 側
+      const latest = batches[0];
+      const previous = batches[1];
+      const d = svc.getBatchDiffWithPrevious(latest.id);
+
+      expect(d.previousBatchId).toBe(previous.id);
+      // 全体工数の差分: 1回目=168, 2回目=120+40+8=168 → 同じ？ 違う、計算しなおし。
+      // 2回目: 120(AFT 4月) + 40(AFT 5月) + 8(zz 4月) = 168
+      // 1回目: 100(AFT 4月) + 40(AFT 5月) + 8(zz 4月) + 20(MNT 5月 西本) = 168
+      // → totalHours は同じだが、内訳が違う。assignee_count は 2→1（-1）
+      expect(d.delta.assigneeCount).toBe(-1);
+      // 4月の合計差分: (120+8) - (100+8) = +20、5月: 40 - (40+20) = -20
+      expect(d.delta.monthlyTotals['2026-04']).toBe(20);
+      expect(d.delta.monthlyTotals['2026-05']).toBe(-20);
+      // 西本は消えた
+      expect(d.removedAssignees.map((a) => a.name)).toContain('西本　拓真');
+      expect(d.addedAssignees).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
   it('確定(imported)プロジェクトに negative manual overlay を保存して total を下げられる', () => {
     const { db, close } = makeDb();
     try {
