@@ -315,7 +315,22 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name { font-weight: 600; }
 .num { text-align: right; }
 .cell.editable { background: var(--c-warn-bg); }
-.cell.editable input.edit { background: var(--c-surface); width: 4rem; text-align: right; padding: 0.1rem 0.3rem; }
+.cell.editable input.edit {
+  background: var(--c-surface);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  padding: 0.1rem 0.3rem;
+  font-variant-numeric: tabular-nums;
+  /* type="number" のスピナーで右端が圧迫されるので非表示にする */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.cell.editable input.edit::-webkit-outer-spin-button,
+.cell.editable input.edit::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 .breakdown { display: block; margin-top: 0.1rem; font-size: 0.7rem; color: var(--c-text-muted); }
 .total { font-weight: 700; background: var(--c-surface-2); }
 .foot { font-weight: 600; background: var(--c-surface-3); }
