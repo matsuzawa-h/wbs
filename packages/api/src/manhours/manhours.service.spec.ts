@@ -122,6 +122,7 @@ function commitDtoFromPreview(
       hours: e.hours,
       label: e.label,
       customerLabel: e.customerLabel,
+      projectCode: e.projectCode,
     })),
     capacities: p.capacities.map((c) => ({
       assigneeName: c.assigneeName,
@@ -528,6 +529,23 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(
         d.rows.some((r) => r.workType === 'zz' && r.projectId === null),
       ).toBe(true);
+
+      // SAMPLE の MNT 行（AAP002, projects 化されない）の CD は
+      // entries.project_code_label にフォールバックして表示される
+      const nishimoto = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '西本　拓真')!;
+      const dn = svc.getAssigneeDetail(nishimoto.id, {
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      const mnt = dn.rows.find(
+        (r) => r.workType === 'MNT' && r.projectId === null,
+      )!;
+      expect(mnt).toBeTruthy();
+      expect(mnt.projectCode).toBe('AAP002'); // projects 化しないが CD は表示
 
       // 仮の手入力を足すと manual 行として出る
       svc.upsertManualEntry({

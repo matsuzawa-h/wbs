@@ -92,6 +92,13 @@
       "when": 1759000000000,
       "tag": "0012_add_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1760000000000,
+      "tag": "0013_add_manhour_entry_project_code_label",
+      "breakpoints": true
     }
   ]
 }

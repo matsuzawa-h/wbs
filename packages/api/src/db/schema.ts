@@ -329,6 +329,9 @@ export const manhourEntries = sqliteTable(
     // CSV「顧客名」(E列) の生値。MNT 等の非プロジェクト行でも顧客名を
     // 担当者別明細に出すため、顧客マスタに依存せず明細に保持する。
     customerLabel: text('customer_label'),
+    // CSV「プロジェクトCD」の生値。MNT 等で projects 化しない行でも担当者別
+    // 明細に CD を出すため、projects マスタに依存せず明細に保持する（0013）。
+    projectCodeLabel: text('project_code_label'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),

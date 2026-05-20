@@ -176,6 +176,12 @@ export class ManhourEntryRowDto {
   @IsString()
   @MaxLength(200)
   customerLabel?: string | null;
+
+  /** CSV プロジェクトCD の生値（projects 化されない MNT 等でも明細に出す）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  projectCode?: string | null;
 }
 
 export class ManhourCapacityRowDto {

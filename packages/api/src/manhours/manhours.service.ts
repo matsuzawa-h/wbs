@@ -444,6 +444,8 @@ export class ManhoursService {
         projectId: manhourEntries.projectId,
         projectName: projects.name,
         projectCode: projects.projectCode,
+        // CSV CD の生値。MNT/CD無AFT/zz など projects 化しない行のフォールバック。
+        projectCodeLabel: manhourEntries.projectCodeLabel,
         // 顧客名は CSV顧客名(E列)の生値を使う（顧客マスタ非依存。MNT等も出る）
         customerLabel: manhourEntries.customerLabel,
         label: manhourEntries.label,
@@ -485,7 +487,11 @@ export class ManhoursService {
           workType: r.workType,
           customerName: isZz ? null : (r.customerLabel ?? null),
           subject,
-          projectCode: isZz ? null : (r.projectCode ?? null),
+          // projects 化された行は projects.project_code が正本。projects 化
+          // されない MNT 等は entries.project_code_label をフォールバック表示。
+          projectCode: isZz
+            ? null
+            : (r.projectCode ?? r.projectCodeLabel ?? null),
           projectId: isZz ? null : r.projectId,
           source,
           cells: {},

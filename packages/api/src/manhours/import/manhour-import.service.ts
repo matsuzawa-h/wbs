@@ -478,6 +478,8 @@ export class ManhourImportService {
             hours: e.hours,
             label,
             customerLabel: e.customerLabel ?? null,
+            // projects 化しない MNT 等でも CSV の CD を保持し明細で表示する。
+            projectCodeLabel: e.projectCode ?? null,
           })
           .run();
         entriesInserted += 1;
