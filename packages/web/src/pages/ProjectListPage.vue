@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '@/stores/projects';
 import { useCustomersStore } from '@/stores/customers';
 import { useOrganizationsStore } from '@/stores/organizations';
 import ProjectImportDialog from '@/components/ProjectImportDialog.vue';
-import type { Project } from '@/types';
+import type { Customer, Project } from '@/types';
 
 const projects = useProjectsStore();
 const customers = useCustomersStore();
@@ -21,6 +21,35 @@ const orgFilter = ref<'all' | 'none' | number>('all');
 
 onMounted(async () => {
   await Promise.all([projects.fetchAll(), customers.fetchAll(), orgs.fetchAll()]);
+  // 取込は組織単位で運用するので、新規作成も「先頭の組織」を既定にする。
+  if (orgs.byCodeAsc.length > 0 && newOrganizationId.value === null) {
+    newOrganizationId.value = orgs.byCodeAsc[0].id;
+  }
+});
+
+// 新規プロジェクト作成: 選択中組織で顧客を絞り込む（未指定なら全顧客）。
+const newCustomerOptions = computed<Customer[]>(() => {
+  const orgId = newOrganizationId.value;
+  if (orgId === null) return customers.activeItems;
+  return customers.activeItems.filter((c) => c.organizationId === orgId);
+});
+
+// 組織を切替えたら、選択中顧客が新組織に属さない場合はリセット。
+watch(newOrganizationId, (orgId) => {
+  if (orgId === null || newCustomerId.value === null) return;
+  const c = customers.items.find((x) => x.id === newCustomerId.value);
+  if (!c || c.organizationId !== orgId) {
+    newCustomerId.value = null;
+  }
+});
+
+// 顧客を選んだら、その顧客が属する組織に追従して合わせる（任意・利便性向上）。
+watch(newCustomerId, (custId) => {
+  if (custId === null) return;
+  const c = customers.items.find((x) => x.id === custId);
+  if (c && c.organizationId !== null && c.organizationId !== newOrganizationId.value) {
+    newOrganizationId.value = c.organizationId;
+  }
 });
 
 const filteredProjects = computed(() =>
@@ -149,16 +178,16 @@ function formatCreatedAt(ts: number): string {
     <section class="card">
       <h2>新規プロジェクト</h2>
       <form class="create-form" @submit.prevent="onCreate">
-        <select v-model.number="newCustomerId" class="customer-select">
-          <option :value="null">（顧客未指定）</option>
-          <option v-for="c in customers.activeItems" :key="c.id" :value="c.id">
-            {{ c.code ? `[${c.code}] ` : '' }}{{ c.name }}
-          </option>
-        </select>
         <select v-model.number="newOrganizationId" class="customer-select" title="組織">
           <option :value="null">（組織未指定）</option>
           <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
             {{ orgs.pathOf(o.id) }}
+          </option>
+        </select>
+        <select v-model.number="newCustomerId" class="customer-select" title="顧客">
+          <option :value="null">（顧客未指定）</option>
+          <option v-for="c in newCustomerOptions" :key="c.id" :value="c.id">
+            {{ c.code ? `[${c.code}] ` : '' }}{{ c.name }}
           </option>
         </select>
         <input
@@ -172,7 +201,15 @@ function formatCreatedAt(ts: number): string {
           作成して開く
         </button>
       </form>
-      <p v-if="customers.activeItems.length === 0" class="hint">
+      <p
+        v-if="newOrganizationId !== null && newCustomerOptions.length === 0"
+        class="hint"
+      >
+        この組織に紐づく顧客がまだ登録されていません。
+        <RouterLink to="/customers" class="link">顧客マスタ</RouterLink>
+        で組織を割当てるか、新規登録してください（組織を「未指定」にすると全顧客が選べます）。
+      </p>
+      <p v-else-if="customers.activeItems.length === 0" class="hint">
         まだ顧客が登録されていません。
         <RouterLink to="/customers" class="link">顧客マスタ</RouterLink>
         から先に登録すると一覧がグループ表示されます。
