@@ -5,6 +5,7 @@ import { api } from '@/api/client';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
 import { useHolidaysStore } from '@/stores/holidays';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import { computeStatus, STATUS_BUCKETS, type StatusBucket, todayUtc } from '@/utils/status';
 import ColumnFilter, { type FilterOption } from '@/components/ColumnFilter.vue';
 import TaskNoteDialog from '@/components/TaskNoteDialog.vue';
@@ -27,6 +28,7 @@ const router = useRouter();
 const employees = useEmployeesStore();
 const projects = useProjectsStore();
 const holidays = useHolidaysStore();
+const currentUser = useCurrentUserStore();
 
 const viewMode = ref<'list' | 'calendar'>('calendar');
 const selectedId = ref<number | null>(null);
@@ -85,8 +87,15 @@ onMounted(async () => {
     projects.fetchAll(),
     holidays.fetchAll(),
   ]);
-  if (selectedId.value === null && employees.activeItems.length > 0) {
-    selectedId.value = employees.activeItems[0].id;
+  // 初期表示は「ログイン中の社員」を選ぶ。未ログインや該当社員が無い場合は
+  // 先頭の有効社員にフォールバック。
+  if (selectedId.value === null) {
+    const myId = currentUser.currentId;
+    const myMatch =
+      myId !== null && employees.items.some((e) => e.id === myId) ? myId : null;
+    selectedId.value =
+      myMatch ??
+      (employees.activeItems.length > 0 ? employees.activeItems[0].id : null);
   }
 });
 

@@ -10,8 +10,11 @@ import DownloadsPage from './pages/DownloadsPage.vue';
 import HelpPage from './pages/HelpPage.vue';
 import ManhoursSummaryPage from './pages/ManhoursSummaryPage.vue';
 import ProjectManhoursPage from './pages/ProjectManhoursPage.vue';
+import LoginPage from './pages/LoginPage.vue';
+import { useCurrentUserStore } from './stores/currentUser';
 
 const routes: RouteRecordRaw[] = [
+  { path: '/login', name: 'login', component: LoginPage, meta: { public: true } },
   { path: '/', name: 'projects', component: ProjectListPage },
   {
     path: '/projects/:projectId/gantt',
@@ -38,4 +41,14 @@ const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+});
+
+// ログイン未済みなら /login にリダイレクト。public meta が付いているルート
+// (/login 自身) は通す。社内 LAN 前提なので「自分は誰か」を選んでもらうだけ。
+router.beforeEach((to) => {
+  const isPublic = to.matched.some((r) => r.meta.public);
+  if (isPublic) return true;
+  const currentUser = useCurrentUserStore();
+  if (currentUser.isLoggedIn) return true;
+  return { name: 'login', query: { redirect: to.fullPath } };
 });
