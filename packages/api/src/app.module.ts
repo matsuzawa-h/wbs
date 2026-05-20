@@ -7,6 +7,7 @@ import { PersonalTasksModule } from './personal-tasks/personal-tasks.module';
 import { EmployeesModule } from './employees/employees.module';
 import { HolidaysModule } from './holidays/holidays.module';
 import { CustomersModule } from './customers/customers.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { McpModule } from './mcp/mcp.module';
 import { ExcelModule } from './excel/excel.module';
 import { ExcelImportModule } from './excel/import/excel-import.module';
@@ -22,6 +23,7 @@ import { HelpModule } from './help/help.module';
     TasksModule,
     PersonalTasksModule,
     EmployeesModule,
+    OrganizationsModule,
     CustomersModule,
     ExcelModule,
     ExcelImportModule,

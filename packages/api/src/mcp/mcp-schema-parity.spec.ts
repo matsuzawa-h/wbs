@@ -4,6 +4,8 @@ import type { ZodObject, ZodRawShape } from 'zod';
 
 import { CreateCustomerDto } from '../customers/dto/create-customer.dto';
 import { UpdateCustomerDto } from '../customers/dto/update-customer.dto';
+import { CreateOrganizationDto } from '../organizations/dto/create-organization.dto';
+import { UpdateOrganizationDto } from '../organizations/dto/update-organization.dto';
 import { CreateProjectDto } from '../projects/dto/create-project.dto';
 import { UpdateProjectDto } from '../projects/dto/update-project.dto';
 import { SetMembersDto } from '../projects/dto/set-members.dto';
@@ -25,6 +27,10 @@ import {
   CreateCustomerSchema,
   UpdateCustomerSchema,
 } from './schemas/customer.schema';
+import {
+  CreateOrganizationSchema,
+  UpdateOrganizationSchema,
+} from './schemas/organization.schema';
 import {
   CreateProjectSchema,
   SetMembersSchema,
@@ -91,6 +97,20 @@ describe('MCP Zod / class-validator DTO parity', () => {
   it('customers', () => {
     assertParity('CreateCustomer', CreateCustomerSchema, CreateCustomerDto);
     assertParity('UpdateCustomer', UpdateCustomerSchema, UpdateCustomerDto, ['id']);
+  });
+
+  it('organizations', () => {
+    assertParity(
+      'CreateOrganization',
+      CreateOrganizationSchema,
+      CreateOrganizationDto,
+    );
+    assertParity(
+      'UpdateOrganization',
+      UpdateOrganizationSchema,
+      UpdateOrganizationDto,
+      ['id'],
+    );
   });
 
   it('projects', () => {
