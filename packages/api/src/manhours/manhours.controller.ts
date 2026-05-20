@@ -67,11 +67,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getProjectMatrix(projectId, {
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 
@@ -82,11 +84,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getAssigneeDetail(assigneeId, {
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 

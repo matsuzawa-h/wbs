@@ -494,7 +494,12 @@ export class ManhoursService {
 
   getProjectMatrix(
     projectId: number,
-    opts: { fiscalYear?: number; batchId?: number; filter: SourceFilter },
+    opts: {
+      fiscalYear?: number;
+      batchId?: number;
+      filter: SourceFilter;
+      organizationId?: number | null;
+    },
   ): ProjectMatrix {
     const project = this.db
       .select({
@@ -502,15 +507,25 @@ export class ManhoursService {
         name: projects.name,
         projectCode: projects.projectCode,
         isProvisional: projects.isProvisional,
+        organizationId: projects.organizationId,
       })
       .from(projects)
       .where(eq(projects.id, projectId))
       .get();
     if (!project) throw new NotFoundException(`project ${projectId} not found`);
 
-    // 案件画面は組織絞り込みを持たないため、組織未指定（=組織別最新の和）として
-    // バッチを解決する。明示 batchId はそのまま使う。
-    const batchIds = this.resolveImportedBatchIds(opts.fiscalYear, opts.batchId);
+    // orgId 明示 → その組織の最新。未指定 → プロジェクトの organization_id を
+    // 既定の組織コンテキストとして使う（プロジェクトが組織に紐づく場合）。
+    // それでも無ければ組織別最新の和。
+    const effectiveOrgId =
+      opts.organizationId !== undefined
+        ? opts.organizationId
+        : project.organizationId;
+    const batchIds = this.resolveImportedBatchIds(
+      opts.fiscalYear,
+      opts.batchId,
+      effectiveOrgId ?? undefined,
+    );
     const batchId = batchIds.size === 1 ? [...batchIds][0]! : null;
     const entries = this.loadEntries(batchIds, opts.filter, null, projectId);
 
@@ -569,7 +584,12 @@ export class ManhoursService {
 
   getAssigneeDetail(
     assigneeId: number,
-    opts: { fiscalYear?: number; batchId?: number; filter: SourceFilter },
+    opts: {
+      fiscalYear?: number;
+      batchId?: number;
+      filter: SourceFilter;
+      organizationId?: number | null;
+    },
   ): AssigneeDetail {
     const a = this.db
       .select({ id: assignees.id, name: assignees.name })
@@ -578,9 +598,16 @@ export class ManhoursService {
       .get();
     if (!a) throw new NotFoundException(`assignee ${assigneeId} not found`);
 
-    // 担当者明細は assignee.id で絞るので、組織ベースのバッチ集合は使わず、
-    // 該当担当者の取込分はすべて参照する（ただし最新バッチに限定）。
-    const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
+    // 組織コンテキストを尊重してバッチ集合を解決する。
+    // - orgId 指定 → その組織の最新バッチ
+    // - 未指定     → 組織別最新バッチを集約（複数組織混在）
+    // 担当者明細はその担当者の行のみ表示するが、参照するバッチは組織で決める。
+    const batchIds = this.resolveImportedBatchIds(
+      opts.fiscalYear,
+      opts.batchId,
+      opts.organizationId,
+    );
+    const batchId = batchIds.size === 1 ? [...batchIds][0]! : null;
     const all = this.db
       .select({
         projectId: manhourEntries.projectId,
@@ -612,7 +639,7 @@ export class ManhoursService {
         if (!opts.filter.manual) continue;
       } else {
         if (!opts.filter.imported) continue;
-        if (batchId === null || r.batchId !== batchId) continue;
+        if (r.batchId === null || !batchIds.has(r.batchId)) continue;
       }
       const source: 'imported' | 'manual' = isManual ? 'manual' : 'imported';
       const isZz = r.workType === 'zz';
@@ -685,12 +712,8 @@ export class ManhoursService {
     );
 
     // 月別の基準時間（フッターの「標準時間」「36(残業)」算出に使う）。
-    // この担当者の capacities を、選択バッチ＋手動上書きで揃える。
-    const capMap = this.loadCapacityMap(
-      batchId !== null ? new Set([batchId]) : new Set(),
-      opts.filter,
-      null,
-    );
+    // この担当者の capacities を、解決バッチ集合＋手動上書きで揃える。
+    const capMap = this.loadCapacityMap(batchIds, opts.filter, null);
     const capacity: Record<string, number> = {};
     for (const [key, base] of capMap) {
       const [idStr, ym] = key.split(' ');

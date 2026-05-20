@@ -172,6 +172,7 @@ async function toggleAssignee(assigneeId: number): Promise<void> {
   await manhours.fetchAssigneeDetail(assigneeId, {
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
 }
 
@@ -195,6 +196,7 @@ async function onEditAssigneeManual(
   await manhours.fetchAssigneeDetail(d.assigneeId, {
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
   await reload(); // サマリー側も最新化
 }
@@ -569,7 +571,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
       :project-id="projectDialogId"
       :fiscal-year="fiscalYear"
       @close="projectDialogOpen = false"
-      @saved="async () => { if (openAssignee !== null) { await manhours.fetchAssigneeDetail(openAssignee, { fiscalYear, batchId: manhours.selectedBatchId }); } await reload(); }"
+      @saved="async () => { if (openAssignee !== null) { await manhours.fetchAssigneeDetail(openAssignee, { fiscalYear, batchId: manhours.selectedBatchId, organizationId: orgIdParam() }); } await reload(); }"
     />
   </div>
 </template>

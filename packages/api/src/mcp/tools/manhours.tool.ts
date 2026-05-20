@@ -64,6 +64,7 @@ export class ManhoursTool {
         fiscalYear: q.fiscalYear,
         batchId: q.batchId,
         filter: { imported: q.imported ?? true, manual: q.manual ?? true },
+        organizationId: q.organizationId,
       }),
     );
   }

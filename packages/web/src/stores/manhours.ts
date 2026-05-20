@@ -83,7 +83,11 @@ export const useManhoursStore = defineStore('manhours', () => {
 
   async function fetchProjectMatrix(
     projectId: number,
-    opts: { fiscalYear?: number; batchId?: number | null } = {},
+    opts: {
+      fiscalYear?: number;
+      batchId?: number | null;
+      organizationId?: number | null;
+    } = {},
   ): Promise<void> {
     loading.value = true;
     error.value = null;
@@ -92,6 +96,9 @@ export const useManhoursStore = defineStore('manhours', () => {
       if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
       if (opts.batchId !== null && opts.batchId !== undefined)
         params.batchId = opts.batchId;
+      if (opts.organizationId !== undefined) {
+        params.organizationId = opts.organizationId === null ? 'null' : opts.organizationId;
+      }
       const res = await api.get<ProjectMatrix>(
         `/manhours/projects/${projectId}/matrix`,
         { params },
@@ -106,7 +113,11 @@ export const useManhoursStore = defineStore('manhours', () => {
 
   async function fetchAssigneeDetail(
     assigneeId: number,
-    opts: { fiscalYear?: number; batchId?: number | null } = {},
+    opts: {
+      fiscalYear?: number;
+      batchId?: number | null;
+      organizationId?: number | null;
+    } = {},
   ): Promise<void> {
     loading.value = true;
     error.value = null;
@@ -115,6 +126,9 @@ export const useManhoursStore = defineStore('manhours', () => {
       if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
       if (opts.batchId !== null && opts.batchId !== undefined)
         params.batchId = opts.batchId;
+      if (opts.organizationId !== undefined) {
+        params.organizationId = opts.organizationId === null ? 'null' : opts.organizationId;
+      }
       const res = await api.get<AssigneeDetail>(
         `/manhours/assignees/${assigneeId}/detail`,
         { params },
