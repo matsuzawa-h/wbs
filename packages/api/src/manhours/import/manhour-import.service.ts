@@ -406,10 +406,13 @@ export class ManhourImportService {
           const customerId = r.customerName
             ? (customerNameToId.get(r.customerName) ?? null)
             : null;
+          // 同名の「CSV取込で作成済（確定）」プロジェクトがあれば再利用。
+          // 仮 (isProvisional=1) はユーザがこのシステム内で手動作成した
+          // プロジェクトのみで、CSV取込で作るのは全て 確定 (isProvisional=0)。
           const dupe = tx
             .select({ id: projects.id })
             .from(projects)
-            .where(and(eq(projects.name, name), eq(projects.isProvisional, 1)))
+            .where(and(eq(projects.name, name), eq(projects.isProvisional, 0)))
             .get();
           if (dupe) {
             pid = dupe.id;
@@ -420,7 +423,7 @@ export class ManhourImportService {
                 name,
                 customerId,
                 projectCode: code,
-                isProvisional: 1,
+                isProvisional: 0,
                 organizationId: resolvedOrgId,
               })
               .returning()

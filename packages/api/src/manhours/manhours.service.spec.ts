@@ -246,14 +246,16 @@ describe('ManhourImportService + ManhoursService', () => {
         commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'),
       );
       expect(b2.assigneesCreated).toBe(0); // 既存に link
-      expect(b2.projectsCreated).toBe(0); // 仮案件は CD で再利用
+      expect(b2.projectsCreated).toBe(0); // 同 CD のプロジェクトは再利用
 
-      const projectCount = db
+      // CSV 取込で作成されるプロジェクトは 確定 (isProvisional=0)。
+      // 仮 (isProvisional=1) は手動作成 (createManualProject) されたものだけ。
+      const importedProjects = db
         .select()
         .from(schema.projects)
         .all()
-        .filter((p) => p.isProvisional === 1).length;
-      expect(projectCount).toBe(1); // AFT の AAP001 のみ
+        .filter((p) => p.isProvisional === 0);
+      expect(importedProjects.length).toBe(1); // AFT の AAP001 のみ
 
       const batches = svc.listBatches(FY);
       expect(batches.length).toBe(2);
