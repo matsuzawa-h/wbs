@@ -2,11 +2,13 @@
 import { computed, onMounted, ref } from 'vue';
 import { useEmployeesStore } from '@/stores/employees';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import EmployeeEditDialog from '@/components/EmployeeEditDialog.vue';
 import type { Employee, EmployeeInput } from '@/types';
 
 const employees = useEmployeesStore();
 const orgs = useOrganizationsStore();
+const currentUser = useCurrentUserStore();
 
 const showActiveOnly = ref(true);
 const searchText = ref('');
@@ -17,9 +19,13 @@ const statusMessage = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const dialogRef = ref<InstanceType<typeof EmployeeEditDialog> | null>(null);
 
-onMounted(() => {
-  employees.fetchAll(true);
-  orgs.fetchAll();
+onMounted(async () => {
+  await Promise.all([employees.fetchAll(true), orgs.fetchAll()]);
+  // 初期表示はログイン中の社員の所属組織で絞り込み（あれば）。
+  const myOrg = currentUser.current?.organizationId ?? null;
+  if (orgFilter.value === 'all' && myOrg !== null && orgs.byCodeAsc.some((o) => o.id === myOrg)) {
+    orgFilter.value = myOrg;
+  }
 });
 
 const visible = computed(() => {
