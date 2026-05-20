@@ -34,8 +34,14 @@ export class ManhoursController {
   constructor(private readonly manhours: ManhoursService) {}
 
   @Get('batches')
-  listBatches(@Query('fiscalYear') fiscalYear?: string) {
-    return this.manhours.listBatches(toInt(fiscalYear));
+  listBatches(
+    @Query('fiscalYear') fiscalYear?: string,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return this.manhours.listBatches(
+      toInt(fiscalYear),
+      parseOrgQuery(organizationId),
+    );
   }
 
   @Get('summary')

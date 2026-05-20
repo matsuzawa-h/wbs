@@ -156,6 +156,7 @@ export interface ManhourBatch {
   fileName: string;
   fiscalYear: number;
   orgCode: string | null;
+  organizationId: number | null;
   rowCount: number;
   importedAt: number;
 }

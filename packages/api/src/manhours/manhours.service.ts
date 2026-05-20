@@ -115,21 +115,32 @@ export class ManhoursService {
 
   // ---- batches -----------------------------------------------------------
 
-  listBatches(fiscalYear?: number) {
+  /**
+   * 取込バッチ一覧。年度／組織で絞り込み可能。
+   * organizationId: undefined=全組織 / null=組織未紐付け / number=その組織のバッチ。
+   */
+  listBatches(fiscalYear?: number, organizationId?: number | null) {
     const rows = this.db
       .select()
       .from(manhourImportBatches)
       .orderBy(desc(manhourImportBatches.importedAt))
       .all();
-    return fiscalYear === undefined
-      ? rows
-      : rows.filter((r) => r.fiscalYear === fiscalYear);
+    return rows.filter((r) => {
+      if (fiscalYear !== undefined && r.fiscalYear !== fiscalYear) return false;
+      if (organizationId === undefined) return true;
+      if (organizationId === null) return r.organizationId === null;
+      return r.organizationId === organizationId;
+    });
   }
 
-  /** 明示 batchId 優先。無ければ年度（または全体）の最新バッチ。 */
+  /**
+   * 明示 batchId 優先。無ければ年度＋組織の最新バッチ（履歴＝組織別）。
+   * 「組織未指定」と「組織NULL指定」は別物として扱う。
+   */
   resolveImportedBatchId(
     fiscalYear?: number,
     batchId?: number,
+    organizationId?: number | null,
   ): number | null {
     if (batchId !== undefined) {
       const b = this.db
@@ -139,7 +150,7 @@ export class ManhoursService {
         .get();
       return b ? b.id : null;
     }
-    const list = this.listBatches(fiscalYear);
+    const list = this.listBatches(fiscalYear, organizationId);
     return list.length > 0 ? list[0].id : null;
   }
 
@@ -293,10 +304,17 @@ export class ManhoursService {
     fiscalYear?: number;
     batchId?: number;
     filter: SourceFilter;
-    /** 未指定=絞り込まない / null=未設定の社員のみ / number=その組織所属の社員のみ */
+    /**
+     * 未指定=絞り込まない（全組織の社員＋バッチ） / null=未設定 / number=その組織。
+     * 指定時は「その組織所属の社員」＋「その組織の最新バッチ」で集計する。
+     */
     organizationId?: number | null;
   }): CapacitySummary {
-    const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
+    const batchId = this.resolveImportedBatchId(
+      opts.fiscalYear,
+      opts.batchId,
+      opts.organizationId,
+    );
     const entries = this.loadEntries(batchId, opts.filter);
     const capMap = this.loadCapacityMap(batchId, opts.filter);
     const orgAssigneeIds = this.assigneeIdsByOrg(opts.organizationId);

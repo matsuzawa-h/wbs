@@ -280,33 +280,37 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
-  it('getSummary は organizationId で社員行を絞り込める（未設定=null も指定可）', () => {
+  it('getSummary は organizationId で「その組織のバッチ＋所属社員」に揃う', () => {
     const { db, close } = makeDb();
     try {
       const imp = new ManhourImportService(db);
       const svc = new ManhoursService(db);
       imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
 
-      // 取込で 2 名（堀田/西本）作成、両方とも組織 AA5054 に紐付く
+      // 取込で 2 名（堀田/西本）作成、両方とも組織 AA5054 に紐付く。
+      // バッチも organization_id = org.id で記録される。
       const org = db.select().from(schema.organizations).all()[0];
       expect(org.code).toBe('AA5054');
+      const batches = svc.listBatches();
+      expect(batches[0].organizationId).toBe(org.id);
+
       const horita = db
         .select()
         .from(schema.assignees)
         .all()
         .find((a) => a.name === '堀田　和彦')!;
-      // 西本だけ組織を外す（手動付け替え相当）
       const nishi = db
         .select()
         .from(schema.assignees)
         .all()
         .find((a) => a.name === '西本　拓真')!;
+      // 西本だけ組織を外して「未設定」グループへ（手動付け替え相当）
       db.update(schema.assignees)
         .set({ organizationId: null })
         .where(eq(schema.assignees.id, nishi.id))
         .run();
 
-      // organizationId 指定無し → 全員
+      // organizationId 指定無し → グローバル最新バッチで集計、社員フィルタ無し
       const all = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
@@ -315,21 +319,30 @@ describe('ManhourImportService + ManhoursService', () => {
         [horita.id, nishi.id].sort(),
       );
 
-      // 組織 AA5054 指定 → 堀田のみ
+      // 組織 AA5054 指定 → AA5054 のバッチを集計、社員も AA5054 所属のみ
       const inOrg = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
         organizationId: org.id,
       });
+      expect(inOrg.batchId).toBe(batches[0].id);
       expect(inOrg.rows.map((r) => r.assigneeId)).toEqual([horita.id]);
 
-      // 組織 null（未設定）指定 → 西本のみ
+      // 組織 null（未設定）指定 → 「組織未紐付バッチ」が無いので空
+      // （取込はすべて組織ごとに行うので、null=履歴なし＝表示なし）
       const noOrg = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
         organizationId: null,
       });
-      expect(noOrg.rows.map((r) => r.assigneeId)).toEqual([nishi.id]);
+      expect(noOrg.batchId).toBeNull();
+      expect(noOrg.rows).toEqual([]);
+
+      // listBatches も organizationId で絞れる
+      expect(svc.listBatches(FY, org.id).map((b) => b.id)).toEqual([
+        batches[0].id,
+      ]);
+      expect(svc.listBatches(FY, null)).toEqual([]);
     } finally {
       close();
     }

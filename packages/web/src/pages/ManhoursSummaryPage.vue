@@ -34,7 +34,7 @@ function orgIdParam(): number | null | undefined {
 }
 
 async function reload(): Promise<void> {
-  await manhours.fetchBatches(fiscalYear.value);
+  await manhours.fetchBatches(fiscalYear.value, orgIdParam());
   await manhours.fetchSummary({
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
@@ -44,6 +44,11 @@ async function reload(): Promise<void> {
 
 onMounted(async () => {
   await orgs.fetchAll();
+  // CSV取込は組織ごとに行うので、初期表示は「先頭の組織」を選択した状態にする。
+  // ユーザの操作で「すべて／未設定」へ切替可能。
+  if (orgs.byCodeAsc.length > 0 && orgFilter.value === 'all') {
+    orgFilter.value = orgs.byCodeAsc[0].id;
+  }
   await reload();
 });
 watch(
@@ -52,10 +57,15 @@ watch(
     manhours.selectedBatchId,
     manhours.showImported,
     manhours.showProvisional,
-    orgFilter.value,
   ],
   reload,
 );
+// 組織の切替は「その組織の最新バッチ」に追従させたいので selectedBatchId を
+// クリアしてから reload する（取込履歴も組織別になる）。
+watch(orgFilter, async () => {
+  manhours.selectedBatchId = null;
+  await reload();
+});
 
 function ymLabel(ym: string): string {
   const [, m] = ym.split('-');

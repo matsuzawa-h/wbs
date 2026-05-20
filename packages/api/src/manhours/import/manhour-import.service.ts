@@ -434,13 +434,14 @@ export class ManhourImportService {
         ensureCode(pid, code);
       }
 
-      // 3) 取込バッチ
+      // 3) 取込バッチ（最新バッチ・履歴を組織別に管理するため organizationId も保持）
       const batch = tx
         .insert(manhourImportBatches)
         .values({
           fileName: dto.fileName.trim(),
           fiscalYear: dto.fiscalYear,
           orgCode: dto.orgCode ?? null,
+          organizationId: resolvedOrgId,
           rowCount: dto.entries.length,
         })
         .returning()

@@ -34,11 +34,19 @@ export const useManhoursStore = defineStore('manhours', () => {
     return p;
   }
 
-  async function fetchBatches(fiscalYear?: number): Promise<void> {
+  async function fetchBatches(
+    fiscalYear?: number,
+    organizationId?: number | null,
+  ): Promise<void> {
     error.value = null;
     try {
+      const params: Record<string, unknown> = {};
+      if (fiscalYear !== undefined) params.fiscalYear = fiscalYear;
+      if (organizationId !== undefined) {
+        params.organizationId = organizationId === null ? 'null' : organizationId;
+      }
       const res = await api.get<ManhourBatch[]>('/manhours/batches', {
-        params: fiscalYear !== undefined ? { fiscalYear } : {},
+        params,
       });
       batches.value = res.data;
     } catch (e: any) {

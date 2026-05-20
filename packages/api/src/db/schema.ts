@@ -294,6 +294,11 @@ export const manhourImportBatches = sqliteTable(
     fileName: text('file_name').notNull(),
     fiscalYear: integer('fiscal_year').notNull(),
     orgCode: text('org_code'),
+    // 取込元組織。null=「組織なしで取込」「組織削除後」（0014 で追加）。
+    // 履歴・最新バッチの解決を組織別に行うために保持する。
+    organizationId: integer('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
     rowCount: integer('row_count').notNull().default(0),
     importedAt: integer('imported_at')
       .notNull()
@@ -301,6 +306,7 @@ export const manhourImportBatches = sqliteTable(
   },
   (table) => ({
     fyIdx: index('idx_mh_batches_fy').on(table.fiscalYear),
+    orgIdx: index('idx_mh_batches_organization').on(table.organizationId),
   }),
 );
 

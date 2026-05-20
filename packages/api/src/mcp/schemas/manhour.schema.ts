@@ -21,6 +21,7 @@ export const ManualProjectSchema = z.object({
 // 以下はクエリ系（class-validator DTO を持たないため parity 対象外）。
 export const BatchListQuerySchema = z.object({
   fiscalYear: z.number().int().optional(),
+  organizationId: z.number().int().nullable().optional(),
 });
 
 export const CapacitySummaryQuerySchema = z.object({
