@@ -239,6 +239,31 @@ export class ManhoursService {
     return out;
   }
 
+  /**
+   * 組織絞り込み用に、organization_id が一致する担当者 ID 集合を返す。
+   * `undefined` → 絞り込み無し（戻り値 null）
+   * `null`      → organization_id IS NULL の担当者
+   * `number`    → その組織に所属する担当者
+   */
+  private assigneeIdsByOrg(
+    organizationId: number | null | undefined,
+  ): Set<number> | null {
+    if (organizationId === undefined) return null;
+    const rows = this.db
+      .select({ id: assignees.id, orgId: assignees.organizationId })
+      .from(assignees)
+      .all();
+    const ids = new Set<number>();
+    for (const r of rows) {
+      if (organizationId === null) {
+        if (r.orgId === null) ids.add(r.id);
+      } else if (r.orgId === organizationId) {
+        ids.add(r.id);
+      }
+    }
+    return ids;
+  }
+
   // 担当者を「コード昇順（NULL/空は末尾）」で並べるための比較器を返す。
   private codeAscSorter(): (a: number, b: number) => number {
     const idToCode = new Map<number, string | null>();
@@ -268,10 +293,13 @@ export class ManhoursService {
     fiscalYear?: number;
     batchId?: number;
     filter: SourceFilter;
+    /** 未指定=絞り込まない / null=未設定の社員のみ / number=その組織所属の社員のみ */
+    organizationId?: number | null;
   }): CapacitySummary {
     const batchId = this.resolveImportedBatchId(opts.fiscalYear, opts.batchId);
     const entries = this.loadEntries(batchId, opts.filter);
     const capMap = this.loadCapacityMap(batchId, opts.filter);
+    const orgAssigneeIds = this.assigneeIdsByOrg(opts.organizationId);
 
     const monthSet = new Set<string>(
       opts.fiscalYear !== undefined ? this.fiscalMonths(opts.fiscalYear) : [],
@@ -347,9 +375,11 @@ export class ManhoursService {
     }
 
     const sortByCode = this.codeAscSorter();
-    const rows = [...rowMap.values()].sort((a, b) =>
-      sortByCode(a.assigneeId, b.assigneeId),
-    );
+    let rows = [...rowMap.values()];
+    if (orgAssigneeIds !== null) {
+      rows = rows.filter((r) => orgAssigneeIds.has(r.assigneeId));
+    }
+    rows.sort((a, b) => sortByCode(a.assigneeId, b.assigneeId));
     return { fiscalYear: opts.fiscalYear ?? null, batchId, months, rows };
   }
 

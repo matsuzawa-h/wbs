@@ -28,6 +28,7 @@ export const CapacitySummaryQuerySchema = z.object({
   batchId: z.number().int().positive().optional(),
   imported: z.boolean().optional(),
   manual: z.boolean().optional(),
+  organizationId: z.number().int().nullable().optional(),
 });
 
 export const ProjectMatrixQuerySchema = z.object({

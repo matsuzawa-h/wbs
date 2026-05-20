@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useManhoursStore } from '@/stores/manhours';
+import { useOrganizationsStore } from '@/stores/organizations';
 import ManhourImportDialog from '@/components/ManhourImportDialog.vue';
 import ManualProjectDialog from '@/components/ManualProjectDialog.vue';
 import ProjectDetailDialog from '@/components/ProjectDetailDialog.vue';
 import type { Project, SummaryCell } from '@/types';
 
 const manhours = useManhoursStore();
+const orgs = useOrganizationsStore();
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -15,6 +17,8 @@ function currentFiscalYear(): number {
 const fiscalYear = ref<number>(currentFiscalYear());
 const importOpen = ref(false);
 const manualProjectOpen = ref(false);
+// 組織で絞込み（社員ベース）。'all' | 'none' | 組織ID
+const orgFilter = ref<'all' | 'none' | number>('all');
 // 展開中セル `${assigneeId}:${ym}`
 const expanded = ref<string | null>(null);
 
@@ -23,21 +27,32 @@ const fyOptions = computed<number[]>(() => {
   return [b + 1, b, b - 1, b - 2];
 });
 
+function orgIdParam(): number | null | undefined {
+  if (orgFilter.value === 'all') return undefined;
+  if (orgFilter.value === 'none') return null;
+  return orgFilter.value;
+}
+
 async function reload(): Promise<void> {
   await manhours.fetchBatches(fiscalYear.value);
   await manhours.fetchSummary({
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
 }
 
-onMounted(reload);
+onMounted(async () => {
+  await orgs.fetchAll();
+  await reload();
+});
 watch(
   () => [
     fiscalYear.value,
     manhours.selectedBatchId,
     manhours.showImported,
     manhours.showProvisional,
+    orgFilter.value,
   ],
   reload,
 );
@@ -181,6 +196,16 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
             <option :value="null">最新</option>
             <option v-for="b in manhours.batches" :key="b.id" :value="b.id">
               #{{ b.id }} {{ b.fileName }}
+            </option>
+          </select>
+        </label>
+        <label class="fld">
+          <span>組織</span>
+          <select v-model="orgFilter">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
             </option>
           </select>
         </label>

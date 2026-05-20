@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { AppDb } from '../db';
 import { ManhoursService } from './manhours.service';
@@ -274,6 +275,61 @@ describe('ManhourImportService + ManhoursService', () => {
         filter: { imported: true, manual: false },
       });
       expect(old.rows.length).toBeGreaterThan(0);
+    } finally {
+      close();
+    }
+  });
+
+  it('getSummary は organizationId で社員行を絞り込める（未設定=null も指定可）', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      const svc = new ManhoursService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+
+      // 取込で 2 名（堀田/西本）作成、両方とも組織 AA5054 に紐付く
+      const org = db.select().from(schema.organizations).all()[0];
+      expect(org.code).toBe('AA5054');
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      // 西本だけ組織を外す（手動付け替え相当）
+      const nishi = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '西本　拓真')!;
+      db.update(schema.assignees)
+        .set({ organizationId: null })
+        .where(eq(schema.assignees.id, nishi.id))
+        .run();
+
+      // organizationId 指定無し → 全員
+      const all = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+      });
+      expect(all.rows.map((r) => r.assigneeId).sort()).toEqual(
+        [horita.id, nishi.id].sort(),
+      );
+
+      // 組織 AA5054 指定 → 堀田のみ
+      const inOrg = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+        organizationId: org.id,
+      });
+      expect(inOrg.rows.map((r) => r.assigneeId)).toEqual([horita.id]);
+
+      // 組織 null（未設定）指定 → 西本のみ
+      const noOrg = svc.getSummary({
+        fiscalYear: FY,
+        filter: { imported: true, manual: true },
+        organizationId: null,
+      });
+      expect(noOrg.rows.map((r) => r.assigneeId)).toEqual([nishi.id]);
     } finally {
       close();
     }

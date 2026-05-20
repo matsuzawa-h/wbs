@@ -13,6 +13,7 @@ import {
 import { ManualEntryDto } from './dto/manual-entry.dto';
 import { ManualProjectDto } from './dto/manual-project.dto';
 import { ManhoursService, SourceFilter } from './manhours.service';
+import { parseOrgQuery } from '../customers/customers.controller';
 
 function toInt(v: string | undefined): number | undefined {
   if (v === undefined || v === '') return undefined;
@@ -43,11 +44,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getSummary({
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 

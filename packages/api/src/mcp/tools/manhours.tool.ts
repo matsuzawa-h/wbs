@@ -46,6 +46,7 @@ export class ManhoursTool {
           imported: input.imported ?? true,
           manual: input.manual ?? true,
         },
+        organizationId: input.organizationId,
       }),
     );
   }
