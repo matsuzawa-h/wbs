@@ -871,6 +871,7 @@ function exportXls(): void {
     <ProjectMembersDialog
       :open="membersDialogOpen"
       :project-name="(projects.items.find((p) => p.id === projectId) || { name: '' }).name"
+      :project-organization-id="projects.items.find((p) => p.id === projectId)?.organizationId ?? null"
       :all-employees="assignees.items"
       :current-member-ids="projectMembers.map((m) => m.id)"
       :assigned-employee-ids="assignedEmployeeIds"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import type { Employee } from '@/types';
+import { useOrganizationsStore } from '@/stores/organizations';
 
 const props = defineProps<{
   open: boolean;
@@ -10,7 +11,12 @@ const props = defineProps<{
   // All employees referenced by any task in this project — used to warn
   // when an assigned employee is being unchecked.
   assignedEmployeeIds: number[];
+  /** プロジェクトの組織。指定時は初期表示でその組織にフィルタを合わせる。 */
+  projectOrganizationId?: number | null;
 }>();
+
+const orgs = useOrganizationsStore();
+onMounted(() => orgs.fetchAll());
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -20,16 +26,24 @@ const emit = defineEmits<{
 const selected = ref<Set<number>>(new Set());
 const searchText = ref('');
 const showActiveOnly = ref(true);
+const orgFilter = ref<'all' | 'none' | number>('all');
 const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 
 watch(
-  () => [props.open, props.currentMemberIds],
+  () => [props.open, props.currentMemberIds, props.projectOrganizationId],
   ([open]) => {
     if (!open) return;
     selected.value = new Set(props.currentMemberIds);
     searchText.value = '';
     showActiveOnly.value = true;
+    // プロジェクトに組織がある場合は初期表示でその組織に絞る。
+    // 無い場合は「すべて」のまま。
+    orgFilter.value =
+      props.projectOrganizationId !== undefined &&
+      props.projectOrganizationId !== null
+        ? props.projectOrganizationId
+        : 'all';
     errorMessage.value = null;
   },
   { immediate: true },
@@ -42,6 +56,15 @@ const visible = computed(() => {
       // Keep inactive employees visible if they are already selected,
       // so the user can see and uncheck them.
       if (!selected.value.has(e.id)) return false;
+    }
+    // 組織フィルタ。選択中の社員は常に表示（外せるように）。
+    if (!selected.value.has(e.id)) {
+      if (orgFilter.value === 'none' && e.organizationId !== null) return false;
+      if (
+        typeof orgFilter.value === 'number' &&
+        e.organizationId !== orgFilter.value
+      )
+        return false;
     }
     if (!q) return true;
     return (
@@ -101,6 +124,16 @@ const selectedCount = computed(() => selected.value.size);
           type="search"
           placeholder="検索（コード / 氏名 / フリガナ / 所属）"
         />
+        <label class="check">
+          <span>組織</span>
+          <select v-model="orgFilter" class="org-select">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
+            </option>
+          </select>
+        </label>
         <label class="check">
           <input v-model="showActiveOnly" type="checkbox" />
           <span>有効社員のみ</span>
@@ -211,6 +244,13 @@ const selectedCount = computed(() => selected.value.size);
   align-items: center;
   gap: 0.3rem;
   font-size: 0.85rem;
+}
+.org-select {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font: inherit;
+  max-width: 16rem;
 }
 .spacer {
   flex: 1;
