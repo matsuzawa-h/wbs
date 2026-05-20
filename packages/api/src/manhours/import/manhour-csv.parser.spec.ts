@@ -85,9 +85,10 @@ describe('parseManhourCsv', () => {
     row('西本　拓真', 'MNT', '顧客X', '保守', 'AAP002', { 1: '8.00' }),
   ]);
 
-  it('組織コード・担当者順を抽出する', () => {
+  it('組織コード・組織名称・担当者順を抽出する', () => {
     const p = parseManhourCsv(csv, fy);
     expect(p.orgCode).toBe('AA5054');
+    expect(p.orgName).toBe('組織A');
     expect(p.assigneeNames).toEqual(['堀田　和彦', '堤　昇太朗', '西本　拓真']);
   });
 

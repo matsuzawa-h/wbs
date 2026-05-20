@@ -7,6 +7,7 @@ import {
   manhourCapacities,
   manhourEntries,
   manhourImportBatches,
+  organizations,
   projectCodes,
   projects,
 } from '../../db';
@@ -47,6 +48,16 @@ export interface ManhourCustomerMatch {
   suggestedCustomerName: string | null;
 }
 
+export interface ManhourOrganizationMatch {
+  /** CSV A列の組織コード（無ければ null）。 */
+  orgCode: string | null;
+  /** CSV B列の組織名称（無ければ null）。 */
+  orgName: string | null;
+  /** code 一致で見つかった既存 organization。新規作成提案時は null。 */
+  suggestedOrganizationId: number | null;
+  suggestedOrganizationName: string | null;
+}
+
 /**
  * 顧客名の表記揺れ吸収用キー。NFKC（全角→半角・互換文字）＋空白除去＋
  * 会社表記（株式会社/(株)/㈱ 等）除去＋小文字化。**安全側**：見た目だけ
@@ -63,6 +74,8 @@ export function normalizeCustomerName(s: string): string {
 export interface ManhourPreviewResult {
   fiscalYear: number;
   orgCode: string | null;
+  orgName: string | null;
+  organizationMatch: ManhourOrganizationMatch | null;
   assigneeMatches: ManhourAssigneeMatch[];
   customerMatches: ManhourCustomerMatch[];
   projectMatches: ManhourProjectMatch[];
@@ -167,10 +180,30 @@ export class ManhourImportService {
       };
     });
 
+    // 組織解決の提案: code が既存 organizations にあればそれ、無ければ新規作成提案。
+    let organizationMatch: ManhourOrganizationMatch | null = null;
+    if (parsed.orgCode || parsed.orgName) {
+      const hit = parsed.orgCode
+        ? (this.db
+            .select({ id: organizations.id, name: organizations.name })
+            .from(organizations)
+            .where(eq(organizations.code, parsed.orgCode))
+            .get() ?? null)
+        : null;
+      organizationMatch = {
+        orgCode: parsed.orgCode,
+        orgName: parsed.orgName,
+        suggestedOrganizationId: hit ? hit.id : null,
+        suggestedOrganizationName: hit ? hit.name : null,
+      };
+    }
+
     const totalHours = parsed.entries.reduce((s, e) => s + e.hours, 0);
     return {
       fiscalYear,
       orgCode: parsed.orgCode,
+      orgName: parsed.orgName,
+      organizationMatch,
       assigneeMatches,
       customerMatches,
       projectMatches,
@@ -200,6 +233,47 @@ export class ManhourImportService {
     }
 
     return this.db.transaction((tx) => {
+      // 0) 組織の解決（取込で作成される担当者/顧客/プロジェクトに紐付けるため最初に確定）。
+      //    指定無し / skip → null（紐付けなし、既存エンティティは touched しない）。
+      let resolvedOrgId: number | null = null;
+      const orgRes = dto.organizationResolution;
+      if (orgRes) {
+        if (orgRes.action === 'link' && orgRes.organizationId !== undefined) {
+          const exists = tx
+            .select({ id: organizations.id })
+            .from(organizations)
+            .where(eq(organizations.id, orgRes.organizationId))
+            .get();
+          if (exists) resolvedOrgId = exists.id;
+        } else if (orgRes.action === 'create' && orgRes.newOrganization) {
+          const code = orgRes.newOrganization.code?.trim() || null;
+          // code 既存なら再利用（再取込で重複組織を作らない）
+          const existing = code
+            ? (tx
+                .select({ id: organizations.id })
+                .from(organizations)
+                .where(eq(organizations.code, code))
+                .get() ?? null)
+            : null;
+          if (existing) {
+            resolvedOrgId = existing.id;
+          } else {
+            const created = tx
+              .insert(organizations)
+              .values({
+                code,
+                name: orgRes.newOrganization.name.trim(),
+                parentId: null,
+                isActive: 1,
+                sortOrder: 0,
+              })
+              .returning()
+              .get();
+            resolvedOrgId = created.id;
+          }
+        }
+      }
+
       // 1) 担当者の名寄せ
       let assigneesCreated = 0;
       const nameToAssigneeId = new Map<string, number>();
@@ -222,6 +296,7 @@ export class ManhourImportService {
               isActive: 1,
               note: null,
               sortOrder: 0,
+              organizationId: resolvedOrgId,
             })
             .returning()
             .get();
@@ -262,6 +337,7 @@ export class ManhourImportService {
               name: r.newCustomer.name.trim(),
               isActive: 1,
               sortOrder: 0,
+              organizationId: resolvedOrgId,
             })
             .returning()
             .get();
@@ -340,7 +416,13 @@ export class ManhourImportService {
           } else {
             const created = tx
               .insert(projects)
-              .values({ name, customerId, projectCode: code, isProvisional: 1 })
+              .values({
+                name,
+                customerId,
+                projectCode: code,
+                isProvisional: 1,
+                organizationId: resolvedOrgId,
+              })
               .returning()
               .get();
             pid = created.id;

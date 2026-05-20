@@ -69,6 +69,20 @@ function commitDtoFromPreview(
     fileName,
     fiscalYear: fy,
     orgCode: p.orgCode,
+    organizationResolution: p.organizationMatch
+      ? p.organizationMatch.suggestedOrganizationId !== null
+        ? {
+            action: 'link' as const,
+            organizationId: p.organizationMatch.suggestedOrganizationId,
+          }
+        : {
+            action: 'create' as const,
+            newOrganization: {
+              code: p.organizationMatch.orgCode ?? undefined,
+              name: p.organizationMatch.orgName ?? p.organizationMatch.orgCode ?? '組織',
+            },
+          }
+      : undefined,
     assigneeResolution: p.assigneeMatches.map((m) =>
       m.suggestedAssigneeId !== null
         ? { name: m.name, action: 'link', assigneeId: m.suggestedAssigneeId }
@@ -174,6 +188,47 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(apr.utilization).toBeCloseTo(108 / 160, 5);
       // zz は project なしで内訳に出る
       expect(apr.byProject.some((b) => b.workType === 'zz')).toBe(true);
+    } finally {
+      close();
+    }
+  });
+
+  it('取込時に組織を自動解決し、作成された担当者/顧客/仮案件を同じ組織に紐付ける', () => {
+    const { db, close } = makeDb();
+    try {
+      const imp = new ManhourImportService(db);
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'a.csv'));
+
+      // 組織は AA5054 / 組織A で 1 件作成される
+      const orgs = db.select().from(schema.organizations).all();
+      expect(orgs.length).toBe(1);
+      expect(orgs[0].code).toBe('AA5054');
+      expect(orgs[0].name).toBe('組織A');
+      const orgId = orgs[0].id;
+
+      // 取込で作成された担当者/顧客/プロジェクトはすべて同じ組織を持つ
+      const horita = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      expect(horita.organizationId).toBe(orgId);
+      const nippo = db
+        .select()
+        .from(schema.customers)
+        .all()
+        .find((c) => c.name === 'NIPPO')!;
+      expect(nippo.organizationId).toBe(orgId);
+      const aap001 = db
+        .select()
+        .from(schema.projects)
+        .all()
+        .find((p) => p.projectCode === 'AAP001')!;
+      expect(aap001.organizationId).toBe(orgId);
+
+      // 再取込しても組織は重複作成しない（code 一致で再利用）
+      imp.commit(commitDtoFromPreview(imp, csvBuf(SAMPLE()), FY, 'b.csv'));
+      expect(db.select().from(schema.organizations).all().length).toBe(1);
     } finally {
       close();
     }
