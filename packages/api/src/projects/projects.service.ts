@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, isNull } from 'drizzle-orm';
 import { AppDb, customers, projects, Project } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -17,8 +17,8 @@ export interface ProjectWithCustomer extends Project {
 export class ProjectsService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
-  list(): ProjectWithCustomer[] {
-    return this.db
+  list(organizationId?: number | null): ProjectWithCustomer[] {
+    const base = this.db
       .select({
         id: projects.id,
         customerId: projects.customerId,
@@ -31,7 +31,14 @@ export class ProjectsService {
         customerIsActive: customers.isActive,
       })
       .from(projects)
-      .leftJoin(customers, eq(projects.customerId, customers.id))
+      .leftJoin(customers, eq(projects.customerId, customers.id));
+    const filtered =
+      organizationId === null
+        ? base.where(isNull(projects.organizationId))
+        : typeof organizationId === 'number'
+          ? base.where(eq(projects.organizationId, organizationId))
+          : base;
+    return filtered
       .orderBy(asc(customers.sortOrder), asc(customers.id), asc(projects.id))
       .all();
   }
@@ -65,7 +72,11 @@ export class ProjectsService {
     }
     const inserted = this.db
       .insert(projects)
-      .values({ name: dto.name, customerId: dto.customerId ?? null })
+      .values({
+        name: dto.name,
+        customerId: dto.customerId ?? null,
+        organizationId: dto.organizationId ?? null,
+      })
       .returning()
       .get();
     return this.findById(inserted.id);
@@ -79,6 +90,7 @@ export class ProjectsService {
       if (dto.customerId !== null) this.assertCustomerExists(dto.customerId);
       patch.customerId = dto.customerId;
     }
+    if (dto.organizationId !== undefined) patch.organizationId = dto.organizationId;
     this.db.update(projects).set(patch).where(eq(projects.id, id)).run();
     return this.findById(id);
   }

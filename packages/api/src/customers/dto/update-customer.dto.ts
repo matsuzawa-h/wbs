@@ -50,4 +50,8 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
 }

@@ -10,12 +10,14 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { SetMembersDto } from './dto/set-members.dto';
 import { ProjectMembersService } from './project-members.service';
 import { ProjectsService } from './projects.service';
+import { parseOrgQuery } from '../customers/customers.controller';
 
 @Controller('projects')
 export class ProjectsController {
@@ -25,8 +27,8 @@ export class ProjectsController {
   ) {}
 
   @Get()
-  list() {
-    return this.projects.list();
+  list(@Query('organizationId') organizationId?: string) {
+    return this.projects.list(parseOrgQuery(organizationId));
   }
 
   @Get(':id')

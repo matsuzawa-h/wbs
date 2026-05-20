@@ -65,4 +65,8 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
 }

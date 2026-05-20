@@ -14,6 +14,7 @@ export const CreateEmployeeSchema = z.object({
   isActive: z.boolean().optional(),
   note: z.string().max(500).optional(),
   sortOrder: z.number().int().optional(),
+  organizationId: z.number().int().nullable().optional(),
 });
 
 export const UpdateEmployeeSchema = z.object({
@@ -30,6 +31,7 @@ export const UpdateEmployeeSchema = z.object({
   isActive: z.boolean().optional(),
   note: z.string().max(500).optional(),
   sortOrder: z.number().int().optional(),
+  organizationId: z.number().int().nullable().optional(),
 });
 
 export const ListAssignmentsSchema = z.object({

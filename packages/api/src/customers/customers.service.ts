@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, isNull } from 'drizzle-orm';
 import { AppDb, customers, Customer } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -9,10 +9,16 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 export class CustomersService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
-  list(): Customer[] {
-    return this.db
-      .select()
-      .from(customers)
+  // organizationId: 数値=その組織のみ / null=未設定 / undefined=絞り込みなし
+  list(organizationId?: number | null): Customer[] {
+    const base = this.db.select().from(customers);
+    const filtered =
+      organizationId === null
+        ? base.where(isNull(customers.organizationId))
+        : typeof organizationId === 'number'
+          ? base.where(eq(customers.organizationId, organizationId))
+          : base;
+    return filtered
       .orderBy(asc(customers.sortOrder), asc(customers.code), asc(customers.id))
       .all();
   }
@@ -38,6 +44,7 @@ export class CustomersService {
         isActive: dto.isActive === false ? 0 : 1,
         note: dto.note ?? null,
         sortOrder: dto.sortOrder ?? 0,
+        organizationId: dto.organizationId ?? null,
       })
       .returning()
       .get();
@@ -59,6 +66,7 @@ export class CustomersService {
     if (dto.isActive !== undefined) patch.isActive = dto.isActive ? 1 : 0;
     if (dto.note !== undefined) patch.note = dto.note || null;
     if (dto.sortOrder !== undefined) patch.sortOrder = dto.sortOrder;
+    if (dto.organizationId !== undefined) patch.organizationId = dto.organizationId;
     return this.db
       .update(customers)
       .set(patch)

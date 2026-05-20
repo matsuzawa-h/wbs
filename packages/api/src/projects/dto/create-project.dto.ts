@@ -9,4 +9,8 @@ export class CreateProjectDto {
   @IsOptional()
   @IsInt()
   customerId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
 }

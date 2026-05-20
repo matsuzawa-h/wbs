@@ -15,14 +15,15 @@ import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { ListAssignmentsDto } from './dto/list-assignments.dto';
+import { parseOrgQuery } from '../customers/customers.controller';
 
 @Controller('employees')
 export class EmployeesController {
   constructor(private readonly employees: EmployeesService) {}
 
   @Get()
-  list() {
-    return this.employees.list();
+  list(@Query('organizationId') organizationId?: string) {
+    return this.employees.list(parseOrgQuery(organizationId));
   }
 
   @Get(':id')
