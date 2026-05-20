@@ -8,11 +8,17 @@ export const useProjectsStore = defineStore('projects', () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function fetchAll(): Promise<void> {
+  async function fetchAll(
+    opts: { memberEmployeeId?: number | null } = {},
+  ): Promise<void> {
     loading.value = true;
     error.value = null;
     try {
-      const res = await api.get<Project[]>('/projects');
+      const params: Record<string, unknown> = {};
+      if (opts.memberEmployeeId !== undefined && opts.memberEmployeeId !== null) {
+        params.memberEmployeeId = opts.memberEmployeeId;
+      }
+      const res = await api.get<Project[]>('/projects', { params });
       items.value = res.data;
     } catch (e: any) {
       error.value = e?.message ?? 'failed to load projects';

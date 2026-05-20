@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useManhoursStore } from '@/stores/manhours';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useEmployeesStore } from '@/stores/employees';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import ManhourImportDialog from '@/components/ManhourImportDialog.vue';
 import ManualProjectDialog from '@/components/ManualProjectDialog.vue';
 import ProjectDetailDialog from '@/components/ProjectDetailDialog.vue';
@@ -9,6 +11,8 @@ import type { Project, SummaryCell } from '@/types';
 
 const manhours = useManhoursStore();
 const orgs = useOrganizationsStore();
+const employees = useEmployeesStore();
+const currentUser = useCurrentUserStore();
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -62,11 +66,18 @@ async function onImportCommitted(): Promise<void> {
 }
 
 onMounted(async () => {
-  await orgs.fetchAll();
-  // CSV取込は組織ごとに行うので、初期表示は「先頭の組織」を選択した状態にする。
-  // ユーザの操作で「すべて／未設定」へ切替可能。
-  if (orgs.byCodeAsc.length > 0 && orgFilter.value === 'all') {
-    orgFilter.value = orgs.byCodeAsc[0].id;
+  await Promise.all([orgs.fetchAll(), employees.fetchAll()]);
+  // 初期表示の組織選択:
+  //   1. ログイン中の社員に組織が設定されていればそれを既定
+  //   2. それ以外は先頭の組織
+  //   ユーザ操作で「すべて／未設定」へ切替可能
+  if (orgFilter.value === 'all') {
+    const myOrg = currentUser.current?.organizationId ?? null;
+    if (myOrg !== null && orgs.byCodeAsc.some((o) => o.id === myOrg)) {
+      orgFilter.value = myOrg;
+    } else if (orgs.byCodeAsc.length > 0) {
+      orgFilter.value = orgs.byCodeAsc[0].id;
+    }
   }
   await reload();
 });

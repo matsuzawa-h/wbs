@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq, isNull } from 'drizzle-orm';
-import { AppDb, customers, projects, Project } from '../db';
+import { and, asc, eq, inArray, isNull, SQL } from 'drizzle-orm';
+import { AppDb, customers, projectMembers, projects, Project } from '../db';
 import { DB_TOKEN } from '../db/db.module';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -17,7 +17,35 @@ export interface ProjectWithCustomer extends Project {
 export class ProjectsService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
-  list(organizationId?: number | null): ProjectWithCustomer[] {
+  /**
+   * @param organizationId undefined=絞り込み無し / null=未設定 / number=該当組織
+   * @param memberEmployeeId 指定時はその社員が project_members に居る案件のみ
+   *   （ログインユーザの「自分の担当のみ」表示用）
+   */
+  list(opts: {
+    organizationId?: number | null;
+    memberEmployeeId?: number;
+  } = {}): ProjectWithCustomer[] {
+    let memberProjectIds: number[] | null = null;
+    if (opts.memberEmployeeId !== undefined) {
+      const ids = this.db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.employeeId, opts.memberEmployeeId))
+        .all()
+        .map((r) => r.projectId);
+      if (ids.length === 0) return [];
+      memberProjectIds = ids;
+    }
+    const conds: SQL[] = [];
+    if (opts.organizationId === null) {
+      conds.push(isNull(projects.organizationId));
+    } else if (typeof opts.organizationId === 'number') {
+      conds.push(eq(projects.organizationId, opts.organizationId));
+    }
+    if (memberProjectIds !== null) {
+      conds.push(inArray(projects.id, memberProjectIds));
+    }
     const base = this.db
       .select({
         id: projects.id,
@@ -32,12 +60,7 @@ export class ProjectsService {
       })
       .from(projects)
       .leftJoin(customers, eq(projects.customerId, customers.id));
-    const filtered =
-      organizationId === null
-        ? base.where(isNull(projects.organizationId))
-        : typeof organizationId === 'number'
-          ? base.where(eq(projects.organizationId, organizationId))
-          : base;
+    const filtered = conds.length > 0 ? base.where(and(...conds)) : base;
     return filtered
       .orderBy(asc(customers.sortOrder), asc(customers.id), asc(projects.id))
       .all();

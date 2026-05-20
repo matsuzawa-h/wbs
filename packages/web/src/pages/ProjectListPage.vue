@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router';
 import { useProjectsStore } from '@/stores/projects';
 import { useCustomersStore } from '@/stores/customers';
 import { useOrganizationsStore } from '@/stores/organizations';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import ProjectImportDialog from '@/components/ProjectImportDialog.vue';
 import type { Customer, Project } from '@/types';
 
 const projects = useProjectsStore();
 const customers = useCustomersStore();
 const orgs = useOrganizationsStore();
+const currentUser = useCurrentUserStore();
 const router = useRouter();
 const newName = ref('');
 const newCustomerId = ref<number | null>(null);
@@ -18,14 +20,25 @@ const submitting = ref(false);
 const collapsedCustomers = ref<Set<string>>(new Set());
 const importDialogOpen = ref(false);
 const orgFilter = ref<'all' | 'none' | number>('all');
+// 「自分の担当のみ」: ログイン中の社員が project_members に含まれる案件のみ表示。
+// ログイン中ならデフォルト ON。
+const myOnly = ref<boolean>(currentUser.isLoggedIn);
+
+async function fetchProjects(): Promise<void> {
+  const memberId = myOnly.value ? currentUser.currentId : null;
+  await projects.fetchAll({ memberEmployeeId: memberId });
+}
 
 onMounted(async () => {
-  await Promise.all([projects.fetchAll(), customers.fetchAll(), orgs.fetchAll()]);
+  await Promise.all([fetchProjects(), customers.fetchAll(), orgs.fetchAll()]);
   // 取込は組織単位で運用するので、新規作成も「先頭の組織」を既定にする。
   if (orgs.byCodeAsc.length > 0 && newOrganizationId.value === null) {
     newOrganizationId.value = orgs.byCodeAsc[0].id;
   }
 });
+
+// トグル切替・ログインユーザ切替で再取得
+watch([myOnly, () => currentUser.currentId], fetchProjects);
 
 // 新規プロジェクト作成: 選択中組織で顧客を絞り込む（未指定なら全顧客）。
 const newCustomerOptions = computed<Customer[]>(() => {
@@ -226,6 +239,10 @@ function formatCreatedAt(ts: number): string {
     <section class="card">
       <header class="list-header">
         <h2>プロジェクト一覧</h2>
+        <label v-if="currentUser.isLoggedIn" class="filter check">
+          <input v-model="myOnly" type="checkbox" />
+          <span>自分の担当のみ</span>
+        </label>
         <label class="filter">
           <span>組織で絞込み</span>
           <select v-model="orgFilter">
@@ -239,6 +256,10 @@ function formatCreatedAt(ts: number): string {
       </header>
       <p v-if="projects.loading" class="muted">読込中…</p>
       <p v-else-if="projects.error" class="error">{{ projects.error }}</p>
+      <p v-else-if="projects.items.length === 0 && myOnly" class="muted">
+        あなたが担当に登録されているプロジェクトはありません。「自分の担当のみ」を外すか、
+        ガント画面の「メンバー管理」で自分を担当に追加してください。
+      </p>
       <p v-else-if="projects.items.length === 0" class="muted">
         まだプロジェクトがありません。上のフォームから作成してください。
       </p>

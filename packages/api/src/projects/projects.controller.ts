@@ -27,8 +27,19 @@ export class ProjectsController {
   ) {}
 
   @Get()
-  list(@Query('organizationId') organizationId?: string) {
-    return this.projects.list(parseOrgQuery(organizationId));
+  list(
+    @Query('organizationId') organizationId?: string,
+    @Query('memberEmployeeId') memberEmployeeId?: string,
+  ) {
+    const memberId =
+      memberEmployeeId !== undefined && memberEmployeeId !== ''
+        ? Number(memberEmployeeId)
+        : undefined;
+    return this.projects.list({
+      organizationId: parseOrgQuery(organizationId),
+      memberEmployeeId:
+        memberId !== undefined && Number.isFinite(memberId) ? memberId : undefined,
+    });
   }
 
   @Get(':id')
