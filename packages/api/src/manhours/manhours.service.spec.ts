@@ -655,10 +655,15 @@ describe('ManhourImportService + ManhoursService', () => {
       expect(aft.source).toBe('imported');
       expect(aft.cells['2026-04']).toBe(100);
       expect(aft.total).toBe(140);
-      // zz はラベル行（project なし）
-      expect(
-        d.rows.some((r) => r.workType === 'zz' && r.projectId === null),
-      ).toBe(true);
+      // zz はラベル行（project なし）。SAMPLE の zz は「休暇」なので 休暇 行になる。
+      const vac = d.rows.find(
+        (r) => r.workType === 'zz' && r.subject === '休暇',
+      );
+      expect(vac).toBeTruthy();
+      expect(vac!.cells['2026-04']).toBe(8);
+      // 月別の基準時間（標準時間）が response に含まれる
+      expect(d.capacity['2026-04']).toBe(160);
+      expect(d.capacity['2026-05']).toBe(160);
 
       // SAMPLE の MNT 行（AAP002, projects 化されない）の CD は
       // entries.project_code_label にフォールバックして表示される
@@ -698,7 +703,7 @@ describe('ManhourImportService + ManhoursService', () => {
     }
   });
 
-  it('明細の行順: AFT(顧客名→CD,NULL末尾) → MNT等 → 非稼働', () => {
+  it('明細の行順: AFT(顧客名→CD,NULL末尾) → MNT等 → 非稼働 → 休暇', () => {
     const { db, close } = makeDb();
     try {
       const imp = new ManhourImportService(db);
@@ -708,6 +713,7 @@ describe('ManhourImportService + ManhoursService', () => {
         ['堀田　和彦', 'AFT', '顧客A', 'Aproj', 'AAP100', months({ 4: '3' })],
         ['堀田　和彦', 'AFT', '', 'CD無しAFT', '', months({ 4: '2' })],
         ['堀田　和彦', 'MNT', '顧客X', '保守', 'AAPMNT', months({ 4: '9' })],
+        ['堀田　和彦', 'zz', '事務系', '事務処理', '-', months({ 4: '5' })],
         ['堀田　和彦', 'zz', '休暇系', '休暇', '-', months({ 4: '8' })],
       ];
       imp.commit(commitDtoFromPreview(imp, csvBuf(rows), FY, 'a.csv'));
@@ -726,13 +732,19 @@ describe('ManhourImportService + ManhoursService', () => {
         code: r.projectCode,
         subj: r.subject,
       }));
-      // AFT(顧客A) → AFT(顧客B) → AFT(顧客空=末尾) → MNT → 非稼働(zz)
+      // AFT(顧客A) → AFT(顧客B) → AFT(顧客空=末尾) → MNT → 非稼働(zz) → 休暇(zz)
       expect(seq[0]).toMatchObject({ wt: 'AFT', cust: '顧客A' });
       expect(seq[1]).toMatchObject({ wt: 'AFT', cust: '顧客B' });
       expect(seq[2].wt).toBe('AFT');
       expect(seq[2].cust === null || seq[2].cust === '').toBe(true);
       expect(seq[3].wt).toBe('MNT');
       expect(seq[4]).toMatchObject({ wt: 'zz', subj: '非稼働' });
+      expect(seq[5]).toMatchObject({ wt: 'zz', subj: '休暇' });
+      // 件名ごとに合算（マージされない）
+      expect(d.rows.find((r) => r.subject === '休暇')!.cells['2026-04']).toBe(8);
+      expect(
+        d.rows.find((r) => r.subject === '非稼働')!.cells['2026-04'],
+      ).toBe(5);
     } finally {
       close();
     }

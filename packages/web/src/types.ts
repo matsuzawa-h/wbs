@@ -236,6 +236,8 @@ export interface AssigneeDetail {
   batchId: number | null;
   months: string[];
   rows: AssigneeDetailRow[];
+  /** 月別の基準時間（標準時間）。36(残業) = 全体の工数 − 標準時間 − 休暇。 */
+  capacity: Record<string, number>;
 }
 
 export interface ManualEntryInput {

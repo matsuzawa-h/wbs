@@ -286,8 +286,11 @@ export function parseManhourCsv(
     // --- 明細 / zz ---
     const isZz = workTypeRaw === 'zz';
     const workType = isZz ? 'zz' : workTypeRaw; // '' / AFT / MNT / SY
+    // zz は同月でも「休暇」「会議」「事務処理」等が複数行に分かれる。件名を
+    // キーに含めないと entryMap で全部マージされて区別がつかなくなるため、
+    // 件名込みでキーを作る。projects 化は元から対象外なので影響なし。
     const projectKey = isZz
-      ? `zz:${assignee}`
+      ? `zz:${assignee}:${subject || '非稼働'}`
       : projectCode
         ? `cd:${projectCode}`
         : `nm:${subject || '(名称未設定)'}`;

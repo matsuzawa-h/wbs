@@ -107,6 +107,8 @@ export interface AssigneeDetail {
   batchId: number | null;
   months: string[];
   rows: AssigneeDetailRow[];
+  /** 月別の基準時間（標準時間）。36(残業) = 全体の工数 − 標準時間 − 休暇。 */
+  capacity: Record<string, number>;
 }
 
 @Injectable()
@@ -522,12 +524,16 @@ export class ManhoursService {
       }
       const source: 'imported' | 'manual' = isManual ? 'manual' : 'imported';
       const isZz = r.workType === 'zz';
-      // zz は「非稼働」1行に集約（source 別）。顧客/CD/件名は持たない。
+      // zz は「休暇」と「非稼働」を分けて 2 行（source 別）に集約。
+      // 休暇判定は CSV件名(label) に「休」を含むかどうか（休暇/有給休暇/休日等）。
+      const isVacation = isZz && /休/.test(r.label ?? '');
       const subject = isZz
-        ? '非稼働'
+        ? isVacation
+          ? '休暇'
+          : '非稼働'
         : (r.projectName ?? r.label ?? '(未割当)');
       const key = isZz
-        ? `${source}|zz`
+        ? `${source}|${isVacation ? 'vac' : 'zz'}`
         : [source, r.workType, r.projectId ?? `L:${subject}`].join('|');
       let row = rowMap.get(key);
       if (!row) {
@@ -553,10 +559,14 @@ export class ManhoursService {
     }
 
     const months = [...monthSet].sort();
-    // 行順: 作業区分ランク（AFT→その他(MNT等)→非稼働(zz)）、
+    // 行順: 作業区分ランク（AFT→その他(MNT等)→非稼働(zz)→休暇(zz)）、
     // 同ランク内は 顧客名 → プロジェクトCD（各 NULL/空 は末尾）→ 件名。
-    const wtRank = (wt: string): number =>
-      wt === 'AFT' ? 0 : wt === 'zz' ? 2 : 1;
+    const wtRank = (row: { workType: string; subject: string }): number => {
+      if (row.workType === 'AFT') return 0;
+      if (row.workType !== 'zz') return 1;
+      // zz: 非稼働 → 休暇 の順で末尾に並べる
+      return row.subject === '休暇' ? 3 : 2;
+    };
     const nullLast = (
       a: string | null,
       b: string | null,
@@ -571,7 +581,7 @@ export class ManhoursService {
     };
     const rows = [...rowMap.values()].sort(
       (x, y) =>
-        wtRank(x.workType) - wtRank(y.workType) ||
+        wtRank(x) - wtRank(y) ||
         nullLast(x.customerName, y.customerName, (a, b) =>
           a.localeCompare(b, 'ja'),
         ) ||
@@ -581,6 +591,15 @@ export class ManhoursService {
         x.subject.localeCompare(y.subject, 'ja') ||
         x.source.localeCompare(y.source),
     );
+
+    // 月別の基準時間（フッターの「標準時間」「36(残業)」算出に使う）。
+    // この担当者の capacities を、選択バッチ＋手動上書きで揃える。
+    const capMap = this.loadCapacityMap(batchId, opts.filter);
+    const capacity: Record<string, number> = {};
+    for (const [key, base] of capMap) {
+      const [idStr, ym] = key.split(' ');
+      if (Number(idStr) === a.id) capacity[ym] = base;
+    }
     return {
       assigneeId: a.id,
       assigneeName: a.name,
@@ -588,6 +607,7 @@ export class ManhoursService {
       batchId,
       months,
       rows,
+      capacity,
     };
   }
 

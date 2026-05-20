@@ -170,6 +170,53 @@ async function onEditAssigneeManual(
   await reload(); // サマリー側も最新化
 }
 
+// 担当者明細フッター: 月別の「全体の工数 / 標準時間 / 休暇 / 36(残業)」。
+// 36 = 全体の工数 − 標準時間 − 休暇。標準時間は API の capacity（基準時間）。
+interface DetailFooterCol {
+  total: number;
+  capacity: number;
+  vacation: number;
+  overtime: number;
+}
+const detailFooter = computed<{
+  byMonth: Record<string, DetailFooterCol>;
+  grand: DetailFooterCol;
+}>(() => {
+  const d = manhours.assigneeDetail;
+  const empty: DetailFooterCol = {
+    total: 0,
+    capacity: 0,
+    vacation: 0,
+    overtime: 0,
+  };
+  if (!d) return { byMonth: {}, grand: { ...empty } };
+  const byMonth: Record<string, DetailFooterCol> = {};
+  for (const ym of d.months) {
+    byMonth[ym] = { ...empty };
+  }
+  for (const row of d.rows) {
+    const isVacation = row.workType === 'zz' && row.subject === '休暇';
+    for (const ym of d.months) {
+      const h = row.cells[ym] ?? 0;
+      if (h === 0) continue;
+      byMonth[ym].total += h;
+      if (isVacation) byMonth[ym].vacation += h;
+    }
+  }
+  const grand: DetailFooterCol = { ...empty };
+  for (const ym of d.months) {
+    const cap = d.capacity[ym] ?? 0;
+    byMonth[ym].capacity = cap;
+    byMonth[ym].overtime =
+      byMonth[ym].total - byMonth[ym].capacity - byMonth[ym].vacation;
+    grand.total += byMonth[ym].total;
+    grand.capacity += byMonth[ym].capacity;
+    grand.vacation += byMonth[ym].vacation;
+    grand.overtime += byMonth[ym].overtime;
+  }
+  return { byMonth, grand };
+});
+
 const monthTotals = computed<Record<string, { total: number; base: number }>>(
   () => {
     const acc: Record<string, { total: number; base: number }> = {};
@@ -381,7 +428,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           <td :title="d.projectCode || ''">{{ d.projectCode || '—' }}</td>
                           <td :title="d.subject">{{ d.subject }}</td>
                           <td>
-                            {{ d.workType === 'zz' ? '非稼働' : (d.workType || '—') }}
+                            {{ d.workType === 'zz' ? d.subject : (d.workType || '—') }}
                             <span class="tag" :class="d.source">{{ d.source === 'manual' ? '仮' : '確定' }}</span>
                           </td>
                           <td
@@ -409,6 +456,46 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           </td>
                         </tr>
                       </tbody>
+                      <tfoot>
+                        <tr class="ft-row ft-total">
+                          <td colspan="4" class="ft-label">全体の工数</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.total ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.total.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-base">
+                          <td colspan="4" class="ft-label">標準時間</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.capacity ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.capacity.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-vac">
+                          <td colspan="4" class="ft-label">休暇</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.vacation ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.vacation.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-ot">
+                          <td colspan="4" class="ft-label">36(残業)</td>
+                          <td
+                            v-for="ym in manhours.summary.months"
+                            :key="ym"
+                            class="num"
+                            :class="{ negative: (detailFooter.byMonth[ym]?.overtime ?? 0) < 0 }"
+                          >
+                            {{ (detailFooter.byMonth[ym]?.overtime ?? 0).toFixed(1) }}
+                          </td>
+                          <td
+                            class="num total"
+                            :class="{ negative: detailFooter.grand.overtime < 0 }"
+                          >
+                            {{ detailFooter.grand.overtime.toFixed(1) }}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                 </div>
               </td>
@@ -552,6 +639,17 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .detail-grid tr.is-manual input.edit { background: var(--c-surface); }
 .detail-grid tr.row-link { cursor: pointer; }
 .detail-grid tr.row-link:hover td { background: var(--c-accent-weak); }
+.detail-grid tfoot .ft-row td {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--c-border-strong);
+  background: var(--c-surface-2);
+}
+.detail-grid tfoot .ft-label { text-align: right; color: var(--c-text-muted); }
+.detail-grid tfoot .ft-total td { background: var(--c-surface-3); }
+.detail-grid tfoot .ft-ot td.num { color: var(--c-accent-strong); }
+.detail-grid tfoot .ft-ot td.negative { color: var(--c-text-muted); }
+.detail-grid tfoot td.total { background: var(--c-surface-3); }
 .tag {
   display: inline-block; font-size: 0.7rem; padding: 0.02rem 0.35rem;
   border-radius: 3px; margin-right: 0.25rem;

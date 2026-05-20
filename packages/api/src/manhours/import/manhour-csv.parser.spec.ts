@@ -138,7 +138,8 @@ describe('parseManhourCsv', () => {
     const zz = p.entries.find((e) => e.workType === 'zz');
     expect(zz).toBeTruthy();
     expect(zz!.projectCode).toBeNull();
-    expect(zz!.projectKey).toBe('zz:堀田　和彦');
+    // zz は件名込みでキー化（休暇/会議/事務処理 を区別するため）
+    expect(zz!.projectKey).toBe('zz:堀田　和彦:休暇');
     // zz も、空区分の「お助けサポート」も projects 同一性に出ない
     expect(p.projects.some((x) => x.projectKey.startsWith('zz:'))).toBe(false);
     expect(
