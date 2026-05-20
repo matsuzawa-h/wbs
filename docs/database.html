@@ -61,7 +61,12 @@
 </nav>
 
 <h2 class="chapter" id="d1">1. エンティティ関連（ER 概要）</h2>
-<pre class="diagram">customers ──&lt; projects ──&lt; wbs_tasks &gt;── assignees
+<pre class="diagram">organizations ↺ self (parent_id 自己参照、ON DELETE SET NULL)
+        ├──&lt; customers (organization_id, SET NULL)
+        ├──&lt; projects  (organization_id, SET NULL)
+        └──&lt; assignees (organization_id, SET NULL)
+
+customers ──&lt; projects ──&lt; wbs_tasks &gt;── assignees
                  │   │            (assignee_id, ON DELETE SET NULL)
                  │   └─&lt; (parent_id 自己参照: 大1 / 中2 / 項目3)
                  │
@@ -86,6 +91,8 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>manhour_import_batches → manhour_entries / _capacities</td><td>1 : N（batch_id NULL=手入力）</td><td>バッチ削除 → 子を <code>CASCADE</code> 削除（仮案件は残す）</td></tr>
     <tr><td>assignees → manhour_entries / _capacities</td><td>1 : N</td><td>社員削除 → <code>CASCADE</code> 削除</td></tr>
     <tr><td>projects → manhour_entries</td><td>0..1 : N（zz は project なし）</td><td>project 削除 → manhour_entries を <code>CASCADE</code> 削除</td></tr>
+    <tr><td>organizations ↺ organizations</td><td>1 : N（自己参照・任意深さ）</td><td>親削除 → <code>parent_id</code> を <code>SET NULL</code>（子は最上位へ）</td></tr>
+    <tr><td>organizations → customers / projects / assignees</td><td>1 : N（任意）</td><td>組織削除 → 各 <code>organization_id</code> を <code>SET NULL</code></td></tr>
   </tbody>
 </table>
 
@@ -103,6 +110,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>is_active</td><td>INTEGER / 1</td><td>NOT NULL 有効フラグ</td></tr>
     <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
     <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 表示順（idx_customers_sort）</td></tr>
+    <tr><td><span class="fk">organization_id</span></td><td>INTEGER</td><td>FK organizations.id（任意）/ ON DELETE SET NULL（idx_customers_organization。0012 で追加）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL 作成時刻</td></tr>
   </tbody>
 </table>
@@ -116,6 +124,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>name</td><td>TEXT</td><td>NOT NULL プロジェクト名</td></tr>
     <tr><td>project_code</td><td>TEXT</td><td>代表プロジェクトCD（表示用。実際の突合は project_codes が正本。idx_projects_code）</td></tr>
     <tr><td>is_provisional</td><td>INTEGER / 0</td><td>NOT NULL 仮プロジェクトフラグ（1=仮。稼働見通しで確定/仮を区別）</td></tr>
+    <tr><td><span class="fk">organization_id</span></td><td>INTEGER</td><td>FK organizations.id（任意）/ ON DELETE SET NULL（idx_projects_organization。0012 で追加）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
 </table>
@@ -133,6 +142,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>is_active</td><td>INTEGER / 1</td><td>NOT NULL 有効フラグ</td></tr>
     <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
     <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 表示順（idx_assignees_sort）</td></tr>
+    <tr><td><span class="fk">organization_id</span></td><td>INTEGER</td><td>FK organizations.id（任意）/ ON DELETE SET NULL（idx_assignees_organization。0012 で追加）</td></tr>
   </tbody>
 </table>
 
@@ -252,6 +262,21 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
   </tbody>
 </table>
 
+<table class="def">
+  <caption>2.12 organizations（組織マスタ・階層）</caption>
+  <thead><tr><th>列</th><th>型 / 既定</th><th>制約・説明</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pk">id</span></td><td>INTEGER</td><td>PK / AUTOINCREMENT</td></tr>
+    <tr><td>code</td><td>TEXT</td><td>組織コード（任意。<strong>部分 UNIQUE</strong>: code IS NOT NULL のみ。uniq_organizations_code）</td></tr>
+    <tr><td>name</td><td>TEXT</td><td>NOT NULL 組織名</td></tr>
+    <tr><td><span class="fk">parent_id</span></td><td>INTEGER</td><td>自己参照 FK organizations.id（任意深さ）/ ON DELETE SET NULL（idx_organizations_parent）。アプリ層で循環チェック</td></tr>
+    <tr><td>is_active</td><td>INTEGER / 1</td><td>NOT NULL 有効フラグ</td></tr>
+    <tr><td>sort_order</td><td>INTEGER / 0</td><td>NOT NULL 表示順（idx_organizations_sort）</td></tr>
+    <tr><td>note</td><td>TEXT</td><td>備考</td></tr>
+    <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
+  </tbody>
+</table>
+
 <h2 class="chapter" id="d3">3. マイグレーション一覧</h2>
 <p>適用状況は <code>src/db/migrations/meta/_journal.json</code> で管理（冪等。本番は <code>release.html</code> 8.0／8.2 の <code>migrate</code> で適用）。</p>
 <table>
@@ -269,6 +294,7 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0009</td><td>add_manhour_entry_label</td><td>manhour_entries.label 追加（CD無し/zz をマスタ化せず件名ラベルで計上）</td></tr>
     <tr><td>0010</td><td>add_project_codes</td><td>project_codes 追加（1プロジェクト×複数CD）。既存 projects.project_code を backfill</td></tr>
     <tr><td>0011</td><td>add_manhour_entry_customer_label</td><td>manhour_entries.customer_label 追加（CSV顧客名を明細に保持）</td></tr>
+    <tr><td>0012</td><td>add_organizations</td><td>organizations 追加（自己参照階層）＋ customers / projects / assignees に organization_id 追加（SET NULL）</td></tr>
   </tbody>
 </table>
 <div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。</div>
@@ -328,7 +354,8 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
   <li>（ ）= FK の <code>CASCADE</code>/<code>SET NULL</code> または連動による副作用（その機能が直接操作しないが結果的に変化）。</li>
   <li>担当別予定※：割当取得 API は wbs_tasks が対象。個人タスクは別 API（個人タスク行）で取得し画面で統合。</li>
   <li>Excel 取込※：確定時、対象プロジェクトの wbs_tasks を解析結果で<strong>置き換え</strong>（既存 D ＋ 新規 C／既存 U）。</li>
-  <li>MCP ツール（customer_*/project_*/task_*/personal_task_*/employee_*/holiday_*）は対応機能行と同一の CRUD。</li>
+  <li>MCP ツール（customer_*/project_*/task_*/personal_task_*/employee_*/holiday_*/<strong>organization_*</strong>）は対応機能行と同一の CRUD。</li>
+  <li>組織マスタ <code>/api/organizations</code>（0012 で追加）：<code>organizations</code> を <strong>CRUD</strong>。削除時は customers/projects/assignees の <code>organization_id</code> を SET NULL（副作用 U）。稼働管理表 CSV 取込時、新規作成エンティティに自動紐付け（§5.11）。</li>
 </ul>
 
 <h2 class="chapter" id="d5">5. 主要処理設計</h2>
@@ -425,6 +452,18 @@ projects マスタを作らず <code>project_id=NULL</code>＋<code>label</code>
 <strong>毎回新規バッチ</strong>として明細・月基準時間を投入（履歴保持）。
 集計は「選択/最新の取込バッチ ∪ 手入力(<code>batch_id NULL</code>)」で行い、
 稼働率は <code>Σhours / base_hours</code> を都度算出（CSV 稼働率行は不使用）。
+</p>
+
+<h3 class="section"><span class="num">5.11</span>組織の自動解決（取込で作成エンティティに自動紐付け）</h3>
+<p>
+CSV の <strong>A列「組織コード」</strong>と <strong>B列「組織名称」</strong>を <code>preview</code> で抽出し、<code>code</code> 一致で既存 <code>organizations</code>
+を探す。プレビュー応答 <code>organizationMatch</code> で「既存に紐付け／新規作成／紐付けない（skip）」を選択でき、
+<code>commit</code> は最初に <code>resolvedOrgId</code> を確定し、その取込で<strong>新規作成される担当者・顧客・仮案件</strong>の
+<code>organization_id</code> に設定する（既存エンティティの <code>organization_id</code> は <strong>変更しない</strong>＝touched しない）。
+新規作成時は <code>code</code> 重複（再取込）を防ぐため、code 一致の既存組織があれば再利用。
+組織は任意深さの自己参照階層（<code>parent_id</code>）で、循環はアプリ層で防止する。
+過去取込（0011 以前）の既存エンティティは <code>organization_id=NULL</code> のまま残るため、必要であれば
+組織マスタ画面（<code>/organizations</code>）と各マスタ画面のフィルタ／編集ダイアログから手動で割当する。
 </p>
 
 <footer>
