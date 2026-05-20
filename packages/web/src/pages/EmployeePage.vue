@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useEmployeesStore } from '@/stores/employees';
+import { useOrganizationsStore } from '@/stores/organizations';
 import EmployeeEditDialog from '@/components/EmployeeEditDialog.vue';
 import type { Employee, EmployeeInput } from '@/types';
 
 const employees = useEmployeesStore();
+const orgs = useOrganizationsStore();
 
 const showActiveOnly = ref(true);
 const searchText = ref('');
+const orgFilter = ref<'all' | 'none' | number>('all');
 const dialogOpen = ref(false);
 const editing = ref<Employee | null>(null);
 const statusMessage = ref<string | null>(null);
@@ -16,12 +19,15 @@ const dialogRef = ref<InstanceType<typeof EmployeeEditDialog> | null>(null);
 
 onMounted(() => {
   employees.fetchAll(true);
+  orgs.fetchAll();
 });
 
 const visible = computed(() => {
   const q = searchText.value.trim().toLowerCase();
   return employees.items.filter((e) => {
     if (showActiveOnly.value && e.isActive !== 1) return false;
+    if (orgFilter.value === 'none' && e.organizationId !== null) return false;
+    if (typeof orgFilter.value === 'number' && e.organizationId !== orgFilter.value) return false;
     if (!q) return true;
     return (
       (e.code ?? '').toLowerCase().includes(q) ||
@@ -107,6 +113,16 @@ function extractMessage(e: unknown): string | null {
           placeholder="検索（コード / 氏名 / フリガナ / 所属）"
         />
         <label class="check">
+          <span>組織</span>
+          <select v-model="orgFilter">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
+            </option>
+          </select>
+        </label>
+        <label class="check">
           <input v-model="showActiveOnly" type="checkbox" />
           <span>有効のみ</span>
         </label>
@@ -128,6 +144,7 @@ function extractMessage(e: unknown): string | null {
         <tr>
           <th class="col-code">コード</th>
           <th class="col-name">氏名</th>
+          <th class="col-org">組織</th>
           <th class="col-kana">フリガナ</th>
           <th class="col-dept">所属</th>
           <th class="col-role">役職</th>
@@ -141,6 +158,10 @@ function extractMessage(e: unknown): string | null {
         <tr v-for="e in visible" :key="e.id" :class="{ inactive: e.isActive !== 1 }">
           <td class="col-code">{{ e.code ?? '—' }}</td>
           <td class="col-name">{{ e.name }}</td>
+          <td class="col-org">
+            <span v-if="e.organizationId !== null">{{ orgs.pathOf(e.organizationId) }}</span>
+            <span v-else class="muted">—</span>
+          </td>
           <td class="col-kana">{{ e.nameKana ?? '' }}</td>
           <td class="col-dept">{{ e.department ?? '' }}</td>
           <td class="col-role">{{ e.role ?? '' }}</td>
@@ -203,6 +224,12 @@ function extractMessage(e: unknown): string | null {
   align-items: center;
   font-size: 0.88rem;
 }
+.check select {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font: inherit;
+}
 .btn {
   border: 1px solid #d1d5db;
   background: #fff;
@@ -263,6 +290,10 @@ function extractMessage(e: unknown): string | null {
 }
 .col-name {
   font-weight: 600;
+}
+.col-org {
+  width: 180px;
+  color: #475569;
 }
 .col-flag {
   width: 56px;

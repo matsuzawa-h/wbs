@@ -3,27 +3,39 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '@/stores/projects';
 import { useCustomersStore } from '@/stores/customers';
+import { useOrganizationsStore } from '@/stores/organizations';
 import ProjectImportDialog from '@/components/ProjectImportDialog.vue';
 import type { Project } from '@/types';
 
 const projects = useProjectsStore();
 const customers = useCustomersStore();
+const orgs = useOrganizationsStore();
 const router = useRouter();
 const newName = ref('');
 const newCustomerId = ref<number | null>(null);
+const newOrganizationId = ref<number | null>(null);
 const submitting = ref(false);
 const collapsedCustomers = ref<Set<string>>(new Set());
 const importDialogOpen = ref(false);
+const orgFilter = ref<'all' | 'none' | number>('all');
 
 onMounted(async () => {
-  await Promise.all([projects.fetchAll(), customers.fetchAll()]);
+  await Promise.all([projects.fetchAll(), customers.fetchAll(), orgs.fetchAll()]);
 });
+
+const filteredProjects = computed(() =>
+  projects.items.filter((p) => {
+    if (orgFilter.value === 'all') return true;
+    if (orgFilter.value === 'none') return p.organizationId === null;
+    return p.organizationId === orgFilter.value;
+  }),
+);
 
 // Groups projects by customer, preserving customers list order then putting
 // the "未紐付" bucket at the end.
 const grouped = computed<Array<{ key: string; label: string; customerId: number | null; isInactive: boolean; projects: Project[] }>>(() => {
   const byCustomer = new Map<string, Project[]>();
-  for (const p of projects.items) {
+  for (const p of filteredProjects.value) {
     const key = p.customerId === null ? '__none' : String(p.customerId);
     const arr = byCustomer.get(key) ?? [];
     arr.push(p);
@@ -74,9 +86,9 @@ async function onCreate(): Promise<void> {
   if (!name) return;
   submitting.value = true;
   try {
-    const created = await projects.create(name, newCustomerId.value);
+    const created = await projects.create(name, newCustomerId.value, newOrganizationId.value);
     newName.value = '';
-    // keep newCustomerId so multiple projects for the same customer flow fast
+    // keep newCustomerId / newOrganizationId so multiple projects flow fast
     router.push({ name: 'gantt', params: { projectId: created.id } });
   } finally {
     submitting.value = false;
@@ -143,6 +155,12 @@ function formatCreatedAt(ts: number): string {
             {{ c.code ? `[${c.code}] ` : '' }}{{ c.name }}
           </option>
         </select>
+        <select v-model.number="newOrganizationId" class="customer-select" title="組織">
+          <option :value="null">（組織未指定）</option>
+          <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+            {{ orgs.pathOf(o.id) }}
+          </option>
+        </select>
         <input
           v-model="newName"
           type="text"
@@ -169,13 +187,28 @@ function formatCreatedAt(ts: number): string {
     </section>
 
     <section class="card">
-      <h2>プロジェクト一覧</h2>
+      <header class="list-header">
+        <h2>プロジェクト一覧</h2>
+        <label class="filter">
+          <span>組織で絞込み</span>
+          <select v-model="orgFilter">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
+            </option>
+          </select>
+        </label>
+      </header>
       <p v-if="projects.loading" class="muted">読込中…</p>
       <p v-else-if="projects.error" class="error">{{ projects.error }}</p>
       <p v-else-if="projects.items.length === 0" class="muted">
         まだプロジェクトがありません。上のフォームから作成してください。
       </p>
-      <div v-else class="groups">
+      <p v-else-if="filteredProjects.length === 0" class="muted">
+        条件に一致するプロジェクトがありません。
+      </p>
+      <div v-else-if="grouped.length > 0" class="groups">
         <section v-for="g in grouped" :key="g.key" class="group">
           <header class="group-header" @click="toggleGroup(g.key)">
             <button class="caret" type="button" :aria-expanded="!isCollapsed(g.key)">
@@ -190,7 +223,12 @@ function formatCreatedAt(ts: number): string {
             <li v-for="p in g.projects" :key="p.id">
               <button class="row-main" type="button" @click="open(p.id)">
                 <span class="row-name">{{ p.name }}</span>
-                <span class="row-meta">作成: {{ formatCreatedAt(p.createdAt) }}</span>
+                <span class="row-meta">
+                  <span v-if="p.organizationId !== null" class="org-tag">
+                    🏢 {{ orgs.pathOf(p.organizationId) }}
+                  </span>
+                  <span>作成: {{ formatCreatedAt(p.createdAt) }}</span>
+                </span>
               </button>
               <span class="row-actions">
                 <button class="btn small" type="button" @click="onRename(p.id, p.name)">名前変更</button>
@@ -350,6 +388,40 @@ function formatCreatedAt(ts: number): string {
 .row-meta {
   font-size: 0.78rem;
   color: #6b7280;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.org-tag {
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.list-header h2 {
+  margin: 0;
+}
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+.filter select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font: inherit;
 }
 .row-actions {
   display: flex;
