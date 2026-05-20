@@ -192,6 +192,20 @@ export interface BatchDiff {
   removedAssignees: { id: number; name: string }[];
   addedProjects: { id: number; name: string }[];
   removedProjects: { id: number; name: string }[];
+  cellDiffs: BatchCellDiff[];
+}
+
+export interface BatchCellDiff {
+  assigneeId: number;
+  assigneeName: string;
+  projectId: number | null;
+  projectName: string | null;
+  projectCode: string | null;
+  workType: string;
+  subject: string;
+  hoursPrevious: number;
+  hoursCurrent: number;
+  delta: number;
 }
 
 export interface SummaryProjectBreak {

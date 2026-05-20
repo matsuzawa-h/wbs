@@ -519,6 +519,31 @@ describe('ManhourImportService + ManhoursService', () => {
       // 西本は消えた
       expect(d.removedAssignees.map((a) => a.name)).toContain('西本　拓真');
       expect(d.addedAssignees).toEqual([]);
+
+      // cellDiffs: 担当者×プロジェクト 別の差分
+      // - 堀田 / AFT / AAP001 : 前回 140 (100+40) → 今回 160 (120+40) = +20
+      // - 西本 / MNT / AAP002 : 前回 20 → 今回 0 = -20 (消えた)
+      // - 堀田 / 休暇 : 前回 8 → 今回 8 = 0 (差分なし → 含まれない)
+      const horitaAft = d.cellDiffs.find(
+        (c) => c.assigneeName === '堀田　和彦' && c.projectCode === 'AAP001',
+      );
+      expect(horitaAft).toBeTruthy();
+      expect(horitaAft!.delta).toBe(20);
+      expect(horitaAft!.hoursCurrent).toBe(160);
+      expect(horitaAft!.hoursPrevious).toBe(140);
+      const nishiMnt = d.cellDiffs.find(
+        (c) => c.assigneeName === '西本　拓真' && c.projectCode === 'AAP002',
+      );
+      expect(nishiMnt).toBeTruthy();
+      expect(nishiMnt!.delta).toBe(-20);
+      expect(nishiMnt!.hoursCurrent).toBe(0);
+      expect(nishiMnt!.hoursPrevious).toBe(20);
+      // 差分 0 のセルは含まれない
+      expect(
+        d.cellDiffs.find(
+          (c) => c.assigneeName === '堀田　和彦' && c.subject === '休暇',
+        ),
+      ).toBeUndefined();
     } finally {
       close();
     }

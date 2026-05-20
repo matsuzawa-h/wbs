@@ -152,6 +152,39 @@ export interface BatchDiff {
   removedAssignees: { id: number; name: string }[];
   addedProjects: { id: number; name: string }[];
   removedProjects: { id: number; name: string }[];
+  /**
+   * 担当者×プロジェクト（または zz休暇/非稼働 等のラベル）別の工数差分。
+   * delta = current - previous。0 以外のみ返す。
+   */
+  cellDiffs: BatchCellDiff[];
+}
+
+// 内部集約用（cellsOfBatch → map value）
+interface BatchCellAgg {
+  assigneeId: number;
+  assigneeName: string;
+  projectId: number | null;
+  projectName: string | null;
+  projectCode: string | null;
+  workType: string;
+  subject: string;
+  hours: number;
+}
+
+export interface BatchCellDiff {
+  assigneeId: number;
+  assigneeName: string;
+  /** プロジェクト化された行は projects.id。zz/CD無しラベル行は null。 */
+  projectId: number | null;
+  projectName: string | null;
+  projectCode: string | null;
+  /** AFT/MNT/SY/''/zz など */
+  workType: string;
+  /** zz は '休暇'/'非稼働'、それ以外は projectName/label/件名相当 */
+  subject: string;
+  hoursPrevious: number;
+  hoursCurrent: number;
+  delta: number;
 }
 
 @Injectable()
@@ -352,6 +385,25 @@ export class ManhoursService {
       prevRow = q.get();
     }
     if (!prevRow) {
+      // 直前無し → 全 cell を「新規」として返す（hoursPrevious=0）
+      const curCells = this.cellsOfBatch(id);
+      const cellDiffsNoPrev: BatchCellDiff[] = [];
+      for (const c of curCells.values()) {
+        if (c.hours === 0) continue;
+        cellDiffsNoPrev.push({
+          assigneeId: c.assigneeId,
+          assigneeName: c.assigneeName,
+          projectId: c.projectId,
+          projectName: c.projectName,
+          projectCode: c.projectCode,
+          workType: c.workType,
+          subject: c.subject,
+          hoursPrevious: 0,
+          hoursCurrent: c.hours,
+          delta: c.hours,
+        });
+      }
+      this.sortCellDiffs(cellDiffsNoPrev);
       return {
         currentBatchId: id,
         previousBatchId: null,
@@ -366,6 +418,7 @@ export class ManhoursService {
         removedAssignees: [],
         addedProjects: [],
         removedProjects: [],
+        cellDiffs: cellDiffsNoPrev,
       };
     }
     const previous = this.getBatchStats(prevRow.id);
@@ -402,6 +455,35 @@ export class ManhoursService {
       (p) => !curProjects.some((c) => c.id === p.id),
     );
 
+    // 担当者×プロジェクト 別の差分（hours 集約後）
+    const curCells = this.cellsOfBatch(id);
+    const prvCells = this.cellsOfBatch(prevRow.id);
+    const allKeys = new Set([...curCells.keys(), ...prvCells.keys()]);
+    const cellDiffs: BatchCellDiff[] = [];
+    for (const k of allKeys) {
+      const cur = curCells.get(k);
+      const prv = prvCells.get(k);
+      const hoursCurrent = cur?.hours ?? 0;
+      const hoursPrevious = prv?.hours ?? 0;
+      const delta = hoursCurrent - hoursPrevious;
+      if (delta === 0) continue;
+      // 表示メタは current 優先、無ければ previous から
+      const meta = cur ?? prv!;
+      cellDiffs.push({
+        assigneeId: meta.assigneeId,
+        assigneeName: meta.assigneeName,
+        projectId: meta.projectId,
+        projectName: meta.projectName,
+        projectCode: meta.projectCode,
+        workType: meta.workType,
+        subject: meta.subject,
+        hoursPrevious,
+        hoursCurrent,
+        delta,
+      });
+    }
+    this.sortCellDiffs(cellDiffs);
+
     return {
       currentBatchId: id,
       previousBatchId: prevRow.id,
@@ -416,7 +498,81 @@ export class ManhoursService {
       removedAssignees: removed,
       addedProjects,
       removedProjects,
+      cellDiffs,
     };
+  }
+
+  /** 担当者名 asc → 区分ランク(AFT→他→zz) → 件名 asc で並べる。 */
+  private sortCellDiffs(diffs: BatchCellDiff[]): void {
+    const wtRank = (wt: string, subj: string): number => {
+      if (wt === 'AFT') return 0;
+      if (wt !== 'zz') return 1;
+      return subj === '休暇' ? 3 : 2;
+    };
+    diffs.sort(
+      (x, y) =>
+        x.assigneeName.localeCompare(y.assigneeName, 'ja') ||
+        wtRank(x.workType, x.subject) - wtRank(y.workType, y.subject) ||
+        x.subject.localeCompare(y.subject, 'ja'),
+    );
+  }
+
+  /**
+   * バッチ内の entries を「担当者×プロジェクト（または zz種別/ラベル）」で
+   * 集約して返す。月は全て合算した hours と meta を持つ。
+   */
+  private cellsOfBatch(batchId: number): Map<string, BatchCellAgg> {
+    const rows = this.db
+      .select({
+        assigneeId: manhourEntries.assigneeId,
+        assigneeName: assignees.name,
+        projectId: manhourEntries.projectId,
+        projectName: projects.name,
+        projectCode: projects.projectCode,
+        projectCodeLabel: manhourEntries.projectCodeLabel,
+        label: manhourEntries.label,
+        workType: manhourEntries.workType,
+        hours: manhourEntries.hours,
+      })
+      .from(manhourEntries)
+      .leftJoin(assignees, eq(manhourEntries.assigneeId, assignees.id))
+      .leftJoin(projects, eq(manhourEntries.projectId, projects.id))
+      .where(eq(manhourEntries.batchId, batchId))
+      .all();
+
+    const map = new Map<string, BatchCellAgg>();
+    for (const r of rows) {
+      const isZz = r.workType === 'zz';
+      const isVacation = isZz && /休/.test(r.label ?? '');
+      const subject = isZz
+        ? isVacation
+          ? '休暇'
+          : '非稼働'
+        : (r.projectName ?? r.label ?? '(未割当)');
+      // 同じ workType×projectId（zz は 休暇/非稼働）で集約
+      const subKey = isZz
+        ? (isVacation ? 'vac' : 'zz')
+        : (r.projectId !== null ? `p:${r.projectId}` : `L:${subject}`);
+      const key = `${r.assigneeId}|${r.workType}|${subKey}`;
+      let cell = map.get(key);
+      if (!cell) {
+        cell = {
+          assigneeId: r.assigneeId,
+          assigneeName: r.assigneeName ?? '(不明)',
+          projectId: isZz ? null : r.projectId,
+          projectName: isZz ? null : r.projectName,
+          projectCode: isZz
+            ? null
+            : (r.projectCode ?? r.projectCodeLabel ?? null),
+          workType: r.workType,
+          subject,
+          hours: 0,
+        };
+        map.set(key, cell);
+      }
+      cell.hours += r.hours;
+    }
+    return map;
   }
 
   private assigneesOfBatch(batchId: number): { id: number; name: string }[] {

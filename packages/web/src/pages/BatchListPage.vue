@@ -317,6 +317,46 @@ function deltaClass(n: number): string {
                       <span>{{ expanded[b.id]!.diff!.removedProjects.map((p) => p.name).join('、') }}</span>
                     </div>
                   </div>
+
+                  <div
+                    v-if="expanded[b.id]!.diff!.cellDiffs.length > 0"
+                    class="cell-diffs"
+                  >
+                    <strong class="small">
+                      担当者×プロジェクト 別差分（前回 → 今回・delta 0 は省略）
+                    </strong>
+                    <table class="mini cdt">
+                      <thead>
+                        <tr>
+                          <th class="cdt-name">担当者</th>
+                          <th class="cdt-wt">区分</th>
+                          <th class="cdt-cust">顧客 / CD</th>
+                          <th class="cdt-subj">案件 / 件名</th>
+                          <th class="num">前回</th>
+                          <th class="num">今回</th>
+                          <th class="num">差分</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="(c, i) in expanded[b.id]!.diff!.cellDiffs"
+                          :key="i"
+                        >
+                          <td>{{ c.assigneeName }}</td>
+                          <td>
+                            {{ c.workType === 'zz' ? c.subject : (c.workType || '—') }}
+                          </td>
+                          <td class="muted small">{{ c.projectCode ?? '—' }}</td>
+                          <td :title="c.subject">{{ c.subject }}</td>
+                          <td class="num">{{ c.hoursPrevious.toFixed(1) }}</td>
+                          <td class="num">{{ c.hoursCurrent.toFixed(1) }}</td>
+                          <td class="num" :class="deltaClass(c.delta)">
+                            {{ fmtDelta(c.delta) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </td>
@@ -371,4 +411,11 @@ function deltaClass(n: number): string {
 
 .diff-lists { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.4rem; font-size: 0.83rem; }
 .lst { display: flex; gap: 0.4rem; align-items: baseline; }
+.cell-diffs { margin-top: 0.5rem; }
+.cdt { width: 100%; font-size: 0.82rem; }
+.cdt th, .cdt td { padding: 0.2rem 0.5rem; }
+.cdt-name { width: 8rem; }
+.cdt-wt { width: 4.5rem; }
+.cdt-cust { width: 5rem; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.78rem; color: #6b7280; }
+.cdt-subj { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
