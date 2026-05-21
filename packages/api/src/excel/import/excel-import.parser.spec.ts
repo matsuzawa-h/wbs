@@ -112,4 +112,45 @@ describe('Excel import parser', () => {
     expect(yamada.employmentStart).toBe('2024-04-01');
     expect(yamada.worksOnHolidays).toBe(true);
   });
+
+  // テンプレ拡張 (45→1004行) と biff-writer の FAT セクタ拡張を同時に検証する。
+  // 旧容量(41行)を遥かに超える 200 葉項目 + 1大 + 1中 = 202 ノードを出力 →
+  // 取り込み → 全ノードと末尾行データが一致することを確認。
+  it('round-trips a large WBS (>41 leaves) that requires workbook stream growth', () => {
+    const LEAF_COUNT = 200;
+    const tasks: WbsExportTask[] = [
+      { id: 1, level: 1, parentId: null, name: '大1', startDate: null, duration: null, endDate: null, actualStartDate: null, actualEndDate: null, plannedHours: null, actualHours: null, progress: 0, assigneeName: null, status: '', sortOrder: 0 },
+      { id: 2, level: 2, parentId: 1, name: '中1', startDate: null, duration: null, endDate: null, actualStartDate: null, actualEndDate: null, plannedHours: null, actualHours: null, progress: 0, assigneeName: null, status: '', sortOrder: 1 },
+    ];
+    for (let i = 0; i < LEAF_COUNT; i++) {
+      tasks.push({
+        id: 100 + i,
+        level: 3,
+        parentId: 2,
+        name: `項${i + 1}`,
+        startDate: '2026-05-01',
+        duration: 1,
+        endDate: '2026-05-01',
+        actualStartDate: null,
+        actualEndDate: null,
+        plannedHours: null,
+        actualHours: null,
+        progress: 0,
+        assigneeName: null,
+        status: '',
+        sortOrder: 2 + i,
+      });
+    }
+
+    const buffer = buildExportedBuffer(tasks);
+    const parsed = parseExcelImport(buffer);
+
+    expect(parsed.schedule).toHaveLength(2 + LEAF_COUNT);
+    const leaves = parsed.schedule.filter((t) => t.level === 3);
+    expect(leaves).toHaveLength(LEAF_COUNT);
+    expect(leaves[0].name).toBe('項1');
+    expect(leaves[LEAF_COUNT - 1].name).toBe(`項${LEAF_COUNT}`);
+    expect(leaves[LEAF_COUNT - 1].startDate).toBe('2026-05-01');
+    expect(leaves[LEAF_COUNT - 1].duration).toBe(1);
+  });
 });

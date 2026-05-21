@@ -33,7 +33,11 @@ export const SETTINGS_BASE_DATE_ROW = 24;
 export const SETTINGS_VALUE_COL = 2;
 
 export const TEMPLATE_DATA_START_ROW = 5;
-export const TEMPLATE_DATA_END_ROW = 45;
+// テンプレ `テンプレートファイル.xls` はデータ行 5〜1004（計 1000 行）を保持。
+// プロジェクトのレベル3項目はこの上限まで出力可能。テンプレ側で行数を更に
+// 変えた場合のみここを合わせて更新する。書き込み時のワークブックストリーム
+// 拡張は biff-writer の FAT セクタ拡張対応に依存する。
+export const TEMPLATE_DATA_END_ROW = 1004;
 export const TEMPLATE_FORMATTED_BLANK_ROW = 46;
 
 // 担当者一覧 sheet (0-indexed) — row 2 is the header, data starts at row 3.
