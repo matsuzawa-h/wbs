@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import ProjectListPage from './pages/ProjectListPage.vue';
+import ProjectOverviewPage from './pages/ProjectOverviewPage.vue';
 import GanttPage from './pages/GanttPage.vue';
 import HolidayPage from './pages/HolidayPage.vue';
 import EmployeePage from './pages/EmployeePage.vue';
@@ -17,6 +18,12 @@ import { useCurrentUserStore } from './stores/currentUser';
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginPage, meta: { public: true } },
   { path: '/', name: 'projects', component: ProjectListPage },
+  {
+    path: '/projects/:projectId',
+    name: 'project-overview',
+    component: ProjectOverviewPage,
+    props: (route) => ({ projectId: Number(route.params.projectId) }),
+  },
   {
     path: '/projects/:projectId/gantt',
     name: 'gantt',

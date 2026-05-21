@@ -48,6 +48,13 @@ export interface CustomerInput {
   organizationId?: number | null;
 }
 
+export type ProjectStatus =
+  | 'planning'
+  | 'active'
+  | 'on_hold'
+  | 'completed'
+  | 'cancelled';
+
 export interface Project {
   id: number;
   customerId: number | null;
@@ -57,7 +64,39 @@ export interface Project {
   name: string;
   projectCode: string | null;
   isProvisional: number;
+  description: string | null;
+  status: ProjectStatus;
   createdAt: number;
+}
+
+export interface UpcomingTask {
+  id: number;
+  name: string;
+  endDate: string | null;
+  progress: number;
+  status: string;
+  assigneeName: string | null;
+}
+
+export interface ProjectDashboard {
+  projectId: number;
+  taskCounts: {
+    total: number;
+    completed: number;
+    inProgress: number;
+    late: number;
+    notStarted: number;
+  };
+  averageProgress: number;
+  hours: {
+    planned: number;
+    actual: number;
+    remaining: number;
+  };
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  memberCount: number;
+  upcomingTasks: UpcomingTask[];
 }
 
 export interface Employee {

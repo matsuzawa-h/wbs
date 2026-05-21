@@ -47,6 +47,11 @@ export class ProjectsController {
     return this.projects.findById(id);
   }
 
+  @Get(':id/dashboard')
+  dashboard(@Param('id', ParseIntPipe) id: number) {
+    return this.projects.getProjectDashboard(id);
+  }
+
   @Post()
   create(@Body() dto: CreateProjectDto) {
     return this.projects.create(dto);

@@ -130,14 +130,17 @@ async function onCreate(): Promise<void> {
   try {
     const created = await projects.create(name, newCustomerId.value, newOrganizationId.value);
     newName.value = '';
-    // keep newCustomerId / newOrganizationId so multiple projects flow fast
-    router.push({ name: 'gantt', params: { projectId: created.id } });
+    // 作成直後は概要画面へ。そこから「ガント／WBS」ボタンで遷移できる。
+    router.push({ name: 'project-overview', params: { projectId: created.id } });
   } finally {
     submitting.value = false;
   }
 }
 
 function open(id: number): void {
+  router.push({ name: 'project-overview', params: { projectId: id } });
+}
+function openGantt(id: number): void {
   router.push({ name: 'gantt', params: { projectId: id } });
 }
 
@@ -289,6 +292,7 @@ function formatCreatedAt(ts: number): string {
                 </span>
               </button>
               <span class="row-actions">
+                <button class="btn small" type="button" @click="openGantt(p.id)">ガント</button>
                 <button class="btn small" type="button" @click="onRename(p.id, p.name)">名前変更</button>
                 <button class="btn small" type="button" @click="onChangeCustomer(p)">顧客変更</button>
                 <button class="btn small danger" type="button" @click="onDelete(p.id, p.name)">削除</button>

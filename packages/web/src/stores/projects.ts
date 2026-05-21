@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '@/api/client';
-import type { Project } from '@/types';
+import type { Project, ProjectDashboard, ProjectStatus } from '@/types';
 
 export const useProjectsStore = defineStore('projects', () => {
   const items = ref<Project[]>([]);
@@ -60,6 +60,28 @@ export const useProjectsStore = defineStore('projects', () => {
     return res.data;
   }
 
+  async function fetchById(id: number): Promise<Project> {
+    const res = await api.get<Project>(`/projects/${id}`);
+    items.value = items.value.some((p) => p.id === id)
+      ? items.value.map((p) => (p.id === id ? res.data : p))
+      : [...items.value, res.data];
+    return res.data;
+  }
+
+  async function updateOverview(
+    id: number,
+    payload: { description?: string | null; status?: ProjectStatus },
+  ): Promise<Project> {
+    const res = await api.patch<Project>(`/projects/${id}`, payload);
+    items.value = items.value.map((p) => (p.id === id ? res.data : p));
+    return res.data;
+  }
+
+  async function fetchDashboard(id: number): Promise<ProjectDashboard> {
+    const res = await api.get<ProjectDashboard>(`/projects/${id}/dashboard`);
+    return res.data;
+  }
+
   return {
     items,
     loading,
@@ -70,5 +92,8 @@ export const useProjectsStore = defineStore('projects', () => {
     rename,
     setCustomer,
     setOrganization,
+    fetchById,
+    updateOverview,
+    fetchDashboard,
   };
 });

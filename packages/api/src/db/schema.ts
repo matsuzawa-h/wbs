@@ -88,6 +88,11 @@ export const projects = sqliteTable(
     organizationId: integer('organization_id').references(() => organizations.id, {
       onDelete: 'set null',
     }),
+    // プロジェクト概要画面用 (0015 で追加)。フリーテキスト（簡易 markdown 想定）。
+    description: text('description'),
+    // 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled'。
+    // バリデーションはアプリ層で。既定は 'active'。
+    status: text('status').notNull().default('active'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
