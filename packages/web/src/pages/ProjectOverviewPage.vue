@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectsStore } from '@/stores/projects';
 import { useOrganizationsStore } from '@/stores/organizations';
+import MarkdownView from '@/components/MarkdownView.vue';
+import MarkdownEditor from '@/components/MarkdownEditor.vue';
 import type { Project, ProjectDashboard, ProjectStatus } from '@/types';
 
 const props = defineProps<{ projectId: number }>();
@@ -198,15 +200,15 @@ const orgPath = computed(() => {
             <button v-if="!editing" class="btn small" type="button" @click="startEdit">編集</button>
           </header>
           <div v-if="!editing" class="desc">
-            <p v-if="project.description" class="desc-text">{{ project.description }}</p>
+            <MarkdownView v-if="project.description" :source="project.description" />
             <p v-else class="muted">概要はまだ登録されていません。「編集」で記入できます。</p>
           </div>
           <div v-else class="desc-edit">
-            <textarea
+            <MarkdownEditor
               v-model="descDraft"
-              maxlength="4000"
-              rows="8"
-              placeholder="このプロジェクトの目的・スコープ・前提条件・関係者などを記述してください。"
+              :maxlength="4000"
+              :rows="12"
+              placeholder="このプロジェクトの目的・スコープ・前提条件・関係者などを Markdown で記述できます。&#10;# 見出し / - 箇条書き / **太字** / `code` / [リンク](url)"
             />
             <div class="desc-actions">
               <span class="muted small">{{ descDraft.length }} / 4000</span>
