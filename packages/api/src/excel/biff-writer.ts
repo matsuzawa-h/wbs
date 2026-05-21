@@ -14,6 +14,11 @@ import { SCHEDULE_SHEET_NAME } from './column-map';
 const BIFF_MAX_RECORD_DATA = 8224;
 const FREESECT = 0xffffffff;
 const ENDOFCHAIN = 0xfffffffe;
+const FATSECT = 0xfffffffd;
+// CFB header reserves 109 DIFAT slots inline. Beyond that, additional
+// DIFAT sectors would be needed; not implemented (we throw with a clear
+// message — current scale needs at most a handful of FAT sectors).
+const DIFAT_HEADER_CAPACITY = 109;
 
 export interface CellUpdate {
   row: number;
@@ -293,26 +298,49 @@ function writeWorkbookStream(
   }
 
   const fat = [...cfb.fat];
+  const difat = [...cfb.difat];
   const chain = [...workbookSectorChain];
+  const oldDifatLen = difat.length;
+  let newFatSectorIds: number[] = [];
+  let totalAppendedSectors = 0;
   if (neededSectors > chain.length) {
-    appendSectors(fileBuffer, sectorSize, cfb.difat, fat, chain, neededSectors - chain.length);
+    const result = appendSectors(
+      fileBuffer,
+      sectorSize,
+      difat,
+      fat,
+      chain,
+      neededSectors - chain.length,
+    );
+    newFatSectorIds = result.newFatSectorIds;
+    totalAppendedSectors = result.totalAppendedSectors;
   }
 
-  const currentSectorCount = Math.ceil((fileBuffer.length - sectorSize) / sectorSize);
-  const appendedSectorCount = Math.max(0, chain.length - workbookSectorChain.length);
-  const output = Buffer.alloc(fileBuffer.length + appendedSectorCount * sectorSize);
+  const output = Buffer.alloc(fileBuffer.length + totalAppendedSectors * sectorSize);
   fileBuffer.copy(output);
 
-  patchFat(output, cfb.difat, fat, cfb.fat, sectorSize);
+  // Newly-allocated FAT sectors start as all-FREESECT (4-byte 0xFF runs); the
+  // subsequent patchFat() overwrites only the entries that actually changed.
+  for (const fatSectorId of newFatSectorIds) {
+    const offset = sectorOffset(fatSectorId, sectorSize);
+    output.fill(0xff, offset, offset + sectorSize);
+  }
+
+  patchFat(output, difat, fat, cfb.fat, sectorSize);
+
+  // Persist new FAT sector locations to the header so subsequent reads
+  // (including chained applyCellUpdates calls) can find them.
+  if (newFatSectorIds.length > 0) {
+    for (let i = 0; i < newFatSectorIds.length; i += 1) {
+      output.writeUInt32LE(newFatSectorIds[i], 76 + (oldDifatLen + i) * 4);
+    }
+    output.writeUInt32LE(difat.length, 44); // header.fatSectorCount
+  }
 
   for (let i = 0; i < chain.length; i += 1) {
     const sectorId = chain[i];
     const offset = sectorOffset(sectorId, sectorSize);
-    if (sectorId >= currentSectorCount) {
-      output.fill(0, offset, offset + sectorSize);
-    } else {
-      output.fill(0, offset, offset + sectorSize);
-    }
+    output.fill(0, offset, offset + sectorSize);
     const sourceStart = i * sectorSize;
     const sourceEnd = Math.min(sourceStart + sectorSize, workbookData.length);
     if (sourceStart < workbookData.length) {
@@ -324,6 +352,11 @@ function writeWorkbookStream(
   return output;
 }
 
+interface AppendSectorsResult {
+  newFatSectorIds: number[];
+  totalAppendedSectors: number;
+}
+
 function appendSectors(
   fileBuffer: Buffer,
   sectorSize: number,
@@ -331,27 +364,65 @@ function appendSectors(
   fat: number[],
   chain: number[],
   count: number,
-): void {
-  const currentSectorCount = Math.ceil((fileBuffer.length - sectorSize) / sectorSize);
-  const entriesPerFatSector = sectorSize / 4;
-  const fatCapacity = difat.length * entriesPerFatSector;
-  const firstNewSector = currentSectorCount;
-  const lastNewSector = firstNewSector + count - 1;
-  if (lastNewSector >= fatCapacity) {
-    throw new Error('Workbook stream growth requires adding a FAT sector, which is not implemented');
-  }
+): AppendSectorsResult {
   if (chain.length === 0) {
     throw new Error('Workbook stream has an empty sector chain');
   }
+  const currentSectorCount = Math.ceil((fileBuffer.length - sectorSize) / sectorSize);
+  const entriesPerFatSector = sectorSize / 4;
 
+  // We allocate `count` new data sectors plus, if necessary, additional FAT
+  // sectors so the total FAT can index every new entry (including the new
+  // FAT sectors themselves). Solving:
+  //   (difat.length + newFat) * entriesPerFatSector
+  //     >= currentSectorCount + count + newFat
+  // gives newFat = ceil( (need - fatCapacity) / (entriesPerFatSector - 1) ).
+  const fatCapacity = difat.length * entriesPerFatSector;
+  const requiredFatEntries = currentSectorCount + count;
+  let newFat = 0;
+  if (requiredFatEntries > fatCapacity) {
+    newFat = Math.ceil((requiredFatEntries - fatCapacity) / (entriesPerFatSector - 1));
+  }
+  if (difat.length + newFat > DIFAT_HEADER_CAPACITY) {
+    throw new Error(
+      `Workbook stream growth would need ${difat.length + newFat} FAT sectors; ` +
+        `header DIFAT supports ${DIFAT_HEADER_CAPACITY} only ` +
+        '(DIFAT sector chain not implemented).',
+    );
+  }
+
+  // Data sectors take the first new IDs, FAT sectors follow.
+  const firstNewSector = currentSectorCount;
+  const newDataIds: number[] = [];
+  for (let i = 0; i < count; i += 1) newDataIds.push(firstNewSector + i);
+  const newFatSectorIds: number[] = [];
+  for (let i = 0; i < newFat; i += 1) newFatSectorIds.push(firstNewSector + count + i);
+
+  // Extend the in-memory FAT array so every new sector id has a slot.
+  const newFatLen = (difat.length + newFat) * entriesPerFatSector;
+  while (fat.length < newFatLen) fat.push(FREESECT);
+
+  // Register the new FAT sectors: append to DIFAT and mark them in FAT.
+  for (const id of newFatSectorIds) {
+    difat.push(id);
+    fat[id] = FATSECT;
+  }
+
+  // Link the new data sectors into the workbook stream chain.
   let previous = chain[chain.length - 1];
-  for (let i = 0; i < count; i += 1) {
-    const sectorId = firstNewSector + i;
+  for (let i = 0; i < newDataIds.length; i += 1) {
+    const sectorId = newDataIds[i];
     fat[previous] = sectorId;
-    fat[sectorId] = i === count - 1 ? ENDOFCHAIN : sectorId + 1;
+    fat[sectorId] =
+      i === newDataIds.length - 1 ? ENDOFCHAIN : newDataIds[i + 1];
     chain.push(sectorId);
     previous = sectorId;
   }
+
+  return {
+    newFatSectorIds,
+    totalAppendedSectors: count + newFat,
+  };
 }
 
 function patchFat(
