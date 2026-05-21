@@ -18,6 +18,8 @@ import { ListAssignmentsDto } from '../employees/dto/list-assignments.dto';
 import { CreateHolidayDto } from '../holidays/dto/create-holiday.dto';
 import { UpdateHolidayDto } from '../holidays/dto/update-holiday.dto';
 import { BulkHolidaysDto } from '../holidays/dto/bulk-holidays.dto';
+import { ManualEntryDto } from '../manhours/dto/manual-entry.dto';
+import { ManualProjectDto } from '../manhours/dto/manual-project.dto';
 
 import {
   CreateCustomerSchema,
@@ -47,6 +49,10 @@ import {
   CreateHolidaySchema,
   UpdateHolidaySchema,
 } from './schemas/holiday.schema';
+import {
+  ManualEntrySchema,
+  ManualProjectSchema,
+} from './schemas/manhour.schema';
 
 type DtoCtor = new (...args: never[]) => unknown;
 
@@ -126,5 +132,10 @@ describe('MCP Zod / class-validator DTO parity', () => {
     assertParity('CreateHoliday', CreateHolidaySchema, CreateHolidayDto);
     assertParity('UpdateHoliday', UpdateHolidaySchema, UpdateHolidayDto, ['id']);
     assertParity('BulkHolidays', BulkHolidaysSchema, BulkHolidaysDto);
+  });
+
+  it('manhours', () => {
+    assertParity('ManualEntry', ManualEntrySchema, ManualEntryDto);
+    assertParity('ManualProject', ManualProjectSchema, ManualProjectDto);
   });
 });

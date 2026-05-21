@@ -10,6 +10,7 @@ import { CustomersModule } from './customers/customers.module';
 import { McpModule } from './mcp/mcp.module';
 import { ExcelModule } from './excel/excel.module';
 import { ExcelImportModule } from './excel/import/excel-import.module';
+import { ManhoursModule } from './manhours/manhours.module';
 import { DownloadsModule } from './downloads/downloads.module';
 import { HelpModule } from './help/help.module';
 
@@ -24,6 +25,7 @@ import { HelpModule } from './help/help.module';
     CustomersModule,
     ExcelModule,
     ExcelImportModule,
+    ManhoursModule,
     DownloadsModule,
     HelpModule,
     McpModule,

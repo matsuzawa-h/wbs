@@ -7,6 +7,12 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // 稼働管理表のフル取込 (commit) は明細＋月基準時間で JSON が既定 100kb を
+  // 大きく超える（13名・555行で数百KB〜）。Excel 取込の commit も schedule を
+  // 丸ごと送るため同様。社内 LAN 用途として上限を引き上げる。
+  app.useBodyParser('json', { limit: '25mb' });
+  app.useBodyParser('urlencoded', { limit: '25mb', extended: true });
+
   app.setGlobalPrefix('api', {
     exclude: [
       '',

@@ -30,6 +30,8 @@ export interface Project {
   customerName: string | null;
   customerIsActive: number | null;
   name: string;
+  projectCode: string | null;
+  isProvisional: number;
   createdAt: number;
 }
 
@@ -118,6 +120,102 @@ export interface PersonalTask {
   note: string | null;
   sortOrder: number;
   createdAt: number;
+}
+
+// ---- 月次工数管理 / 稼働見通し --------------------------------------------
+
+export interface ManhourBatch {
+  id: number;
+  fileName: string;
+  fiscalYear: number;
+  orgCode: string | null;
+  rowCount: number;
+  importedAt: number;
+}
+
+export interface SummaryProjectBreak {
+  projectId: number | null;
+  projectName: string;
+  isProvisional: boolean;
+  source: 'imported' | 'manual';
+  workType: string;
+  hours: number;
+}
+
+export interface SummaryCell {
+  imported: number;
+  manual: number;
+  total: number;
+  base: number | null;
+  utilization: number | null;
+  byProject: SummaryProjectBreak[];
+}
+
+export interface SummaryRow {
+  assigneeId: number;
+  assigneeName: string;
+  cells: Record<string, SummaryCell>;
+  totalHours: number;
+}
+
+export interface CapacitySummary {
+  fiscalYear: number | null;
+  batchId: number | null;
+  months: string[];
+  rows: SummaryRow[];
+}
+
+export interface MatrixCell {
+  imported: number;
+  manual: number;
+  total: number;
+}
+
+export interface MatrixRow {
+  assigneeId: number;
+  assigneeName: string;
+  cells: Record<string, MatrixCell>;
+  total: number;
+}
+
+export interface ProjectMatrix {
+  projectId: number;
+  projectName: string;
+  projectCode: string | null;
+  isProvisional: boolean;
+  batchId: number | null;
+  months: string[];
+  rows: MatrixRow[];
+  monthTotals: Record<string, number>;
+  grandTotal: number;
+}
+
+export interface AssigneeDetailRow {
+  workType: string;
+  customerName: string | null;
+  subject: string;
+  projectCode: string | null;
+  projectId: number | null;
+  source: 'imported' | 'manual';
+  cells: Record<string, number>;
+  total: number;
+}
+
+export interface AssigneeDetail {
+  assigneeId: number;
+  assigneeName: string;
+  fiscalYear: number | null;
+  batchId: number | null;
+  months: string[];
+  rows: AssigneeDetailRow[];
+}
+
+export interface ManualEntryInput {
+  assigneeId: number;
+  projectId?: number | null;
+  workType?: string;
+  yearMonth: string;
+  hours: number;
 }
 
 export interface WbsTask {

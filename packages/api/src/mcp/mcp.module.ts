@@ -6,6 +6,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { PersonalTasksModule } from '../personal-tasks/personal-tasks.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { HolidaysModule } from '../holidays/holidays.module';
+import { ManhoursModule } from '../manhours/manhours.module';
 // TODO(auth): MCP は現状無認証で動作させる方針（社内 LAN 前提、Web API も同様に
 //   無認証）。将来、認証を導入する際は Web API と MCP の両方を同じ仕組みで保護する。
 //   そのときに以下の McpAuthGuard を再有効化し、`MCP_TOKEN` 環境変数の必須化を戻す。
@@ -17,6 +18,7 @@ import { TasksTool } from './tools/tasks.tool';
 import { PersonalTasksTool } from './tools/personal-tasks.tool';
 import { EmployeesTool } from './tools/employees.tool';
 import { HolidaysTool } from './tools/holidays.tool';
+import { ManhoursTool } from './tools/manhours.tool';
 
 @Module({
   imports: [
@@ -26,6 +28,7 @@ import { HolidaysTool } from './tools/holidays.tool';
     PersonalTasksModule,
     EmployeesModule,
     HolidaysModule,
+    ManhoursModule,
     RekogMcpModule.forRoot({
       name: 'wbs-mcp',
       version: '0.1.0',
@@ -47,6 +50,7 @@ import { HolidaysTool } from './tools/holidays.tool';
     PersonalTasksTool,
     EmployeesTool,
     HolidaysTool,
+    ManhoursTool,
   ],
 })
 export class McpModule {}

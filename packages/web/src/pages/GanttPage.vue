@@ -770,6 +770,12 @@ function exportXls(): void {
         <button
           class="btn"
           type="button"
+          title="この案件の担当者ごとの月次工数（稼働見通し）を開きます"
+          @click="router.push({ name: 'project-manhours', params: { projectId } })"
+        >工数</button>
+        <button
+          class="btn"
+          type="button"
           title="このプロジェクトの工程表を、旧 Excel テンプレートに流し込んでダウンロードします"
           @click="exportXls"
         >Excel 出力</button>

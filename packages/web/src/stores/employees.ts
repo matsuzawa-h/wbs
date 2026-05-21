@@ -9,6 +9,17 @@ export const useEmployeesStore = defineStore('employees', () => {
   const lastFetchedAt = ref(0);
 
   const activeItems = computed(() => items.value.filter((e) => e.isActive === 1));
+  // 稼働見通し関連で社員を出すときの既定並び＝コード昇順（NULL/空は末尾）。
+  const byCodeAsc = computed(() =>
+    [...activeItems.value].sort((a, b) => {
+      const ae = !a.code;
+      const be = !b.code;
+      if (ae && be) return a.id - b.id;
+      if (ae) return 1;
+      if (be) return -1;
+      return a.code!.localeCompare(b.code!, 'en', { numeric: true });
+    }),
+  );
 
   async function fetchAll(force = false): Promise<void> {
     if (!force && items.value.length > 0 && Date.now() - lastFetchedAt.value < 3000) return;
@@ -39,7 +50,7 @@ export const useEmployeesStore = defineStore('employees', () => {
     items.value = items.value.filter((e) => e.id !== id);
   }
 
-  return { items, activeItems, loading, fetchAll, create, update, remove };
+  return { items, activeItems, byCodeAsc, loading, fetchAll, create, update, remove };
 });
 
 function sorter(a: Employee, b: Employee): number {

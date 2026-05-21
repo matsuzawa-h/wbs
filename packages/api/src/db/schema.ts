@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { integer, real, sqliteTable, text, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import {
+  integer,
+  real,
+  sqliteTable,
+  text,
+  index,
+  primaryKey,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const customers = sqliteTable(
   'customers',
@@ -31,12 +39,21 @@ export const projects = sqliteTable(
       onDelete: 'set null',
     }),
     name: text('name').notNull(),
+    // External project code (別システムの「プロジェクトCD」). Used to match
+    // imported man-hour rows to a project. Deliberately NOT unique: the same
+    // CD legitimately spans multiple 件名 / provisional rows.
+    projectCode: text('project_code'),
+    // 1 = 仮プロジェクト (auto-created from a man-hour import that matched no
+    // existing project, or hand-entered for capacity planning). The WBS side
+    // treats it like any project; only the 稼働見通し screen separates 確定/仮.
+    isProvisional: integer('is_provisional').notNull().default(0),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
   },
   (table) => ({
     customerIdx: index('idx_projects_customer').on(table.customerId),
+    codeIdx: index('idx_projects_code').on(table.projectCode),
   }),
 );
 
@@ -189,3 +206,126 @@ export const personalTasks = sqliteTable(
 
 export type PersonalTask = typeof personalTasks.$inferSelect;
 export type NewPersonalTask = typeof personalTasks.$inferInsert;
+
+// 1 プロジェクトに複数のプロジェクトCD（外部システムは工程ごとにCDが分かれる）。
+// 稼働取込はこのコードで案件→プロジェクトを突合する。code はグローバル一意
+// （1つのCDは必ず1プロジェクトに属する）。projects.project_code は代表コード
+// （表示用）として併存。
+export const projectCodes = sqliteTable(
+  'project_codes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex('uniq_project_codes_code').on(table.code),
+    projectIdx: index('idx_project_codes_project').on(table.projectId),
+  }),
+);
+
+export type ProjectCode = typeof projectCodes.$inferSelect;
+export type NewProjectCode = typeof projectCodes.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// 月次工数管理 / 稼働見通し (monthly man-hours & capacity planning).
+//
+// Imported periodically from an external "稼働管理表（明細）" CSV. Each import
+// is a snapshot batch (履歴保持) — re-importing never mutates older batches.
+// Manual provisional entries use batch_id = NULL / source = 'manual' so they
+// survive re-imports. These tables are independent of the WBS tree.
+// ---------------------------------------------------------------------------
+
+export const manhourImportBatches = sqliteTable(
+  'manhour_import_batches',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    fileName: text('file_name').notNull(),
+    fiscalYear: integer('fiscal_year').notNull(),
+    orgCode: text('org_code'),
+    rowCount: integer('row_count').notNull().default(0),
+    importedAt: integer('imported_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    fyIdx: index('idx_mh_batches_fy').on(table.fiscalYear),
+  }),
+);
+
+export const manhourEntries = sqliteTable(
+  'manhour_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // NULL = manual entry (not tied to any import snapshot).
+    batchId: integer('batch_id').references(() => manhourImportBatches.id, {
+      onDelete: 'cascade',
+    }),
+    source: text('source').notNull().default('imported'),
+    assigneeId: integer('assignee_id')
+      .notNull()
+      .references(() => assignees.id, { onDelete: 'cascade' }),
+    // NULL for zz (非稼働: 休暇/会議/事務) rows that have no project.
+    projectId: integer('project_id').references(() => projects.id, {
+      onDelete: 'cascade',
+    }),
+    workType: text('work_type').notNull().default(''),
+    yearMonth: text('year_month').notNull(),
+    hours: real('hours').notNull().default(0),
+    // project_id が NULL の明細（CD無しのフリー作業 / zz 非稼働）の件名。
+    // 稼働見通しの内訳表示に使う。projects マスタは作らずラベルだけ保持。
+    label: text('label'),
+    // CSV「顧客名」(E列) の生値。MNT 等の非プロジェクト行でも顧客名を
+    // 担当者別明細に出すため、顧客マスタに依存せず明細に保持する。
+    customerLabel: text('customer_label'),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    batchIdx: index('idx_mh_entries_batch').on(table.batchId),
+    ymIdx: index('idx_mh_entries_ym').on(table.yearMonth),
+    assigneeIdx: index('idx_mh_entries_assignee').on(table.assigneeId),
+    projectIdx: index('idx_mh_entries_project').on(table.projectId),
+  }),
+);
+
+// Per-assignee monthly capacity (CSV 合計 内「月基準時間」). 稼働率 is always
+// recomputed as Σhours / base_hours — the CSV 稼働率 row is never imported.
+export const manhourCapacities = sqliteTable(
+  'manhour_capacities',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    batchId: integer('batch_id').references(() => manhourImportBatches.id, {
+      onDelete: 'cascade',
+    }),
+    source: text('source').notNull().default('imported'),
+    assigneeId: integer('assignee_id')
+      .notNull()
+      .references(() => assignees.id, { onDelete: 'cascade' }),
+    yearMonth: text('year_month').notNull(),
+    baseHours: real('base_hours').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    batchIdx: index('idx_mh_capacities_batch').on(table.batchId),
+    keyIdx: index('idx_mh_capacities_key').on(
+      table.assigneeId,
+      table.yearMonth,
+    ),
+  }),
+);
+
+export type ManhourImportBatch = typeof manhourImportBatches.$inferSelect;
+export type NewManhourImportBatch = typeof manhourImportBatches.$inferInsert;
+export type ManhourEntry = typeof manhourEntries.$inferSelect;
+export type NewManhourEntry = typeof manhourEntries.$inferInsert;
+export type ManhourCapacity = typeof manhourCapacities.$inferSelect;
+export type NewManhourCapacity = typeof manhourCapacities.$inferInsert;
