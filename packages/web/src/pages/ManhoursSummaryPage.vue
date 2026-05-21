@@ -603,7 +603,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
   background: var(--c-surface); border: 1px solid var(--c-border);
   border-radius: var(--r); padding: 0.6rem 0.9rem; box-shadow: var(--shadow-sm);
 }
-.title { margin: 0; font-size: 1.1rem; flex: 1; }
+.title { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--c-text); letter-spacing: 0.005em; flex: 1; }
 .actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .fld { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--c-text-muted); }
 .seg { display: inline-flex; border: 1px solid var(--c-border-strong); border-radius: var(--r); overflow: hidden; }

@@ -922,7 +922,10 @@ function fmtFullDate(d: string | null): string {
 }
 .page-header h1 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
 }
 .controls {
   display: flex;
@@ -953,59 +956,67 @@ function fmtFullDate(d: string | null): string {
   border-left: 1px solid #e5e7eb;
 }
 .btn {
-  border: 1px solid #d1d5db;
-  background: #fff;
-  border-radius: 4px;
-  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+  padding: 0.35rem 0.8rem;
   cursor: pointer;
   font-size: 0.85rem;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--t-base) var(--easing),
+    border-color var(--t-base) var(--easing),
+    box-shadow var(--t-base) var(--easing);
 }
 .btn:hover {
-  background: #f9fafb;
+  background: var(--c-surface-2);
+  box-shadow: var(--shadow);
 }
 .btn.small {
-  padding: 0.18rem 0.5rem;
+  padding: 0.22rem 0.6rem;
   font-size: 0.78rem;
 }
 .btn.danger {
-  color: #b91c1c;
+  color: var(--c-danger-fg);
   border-color: #fca5a5;
 }
 .btn.danger:hover {
   background: #fef2f2;
+  border-color: #ef9a9a;
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 .add-personal {
-  border-color: #2563eb;
-  color: #1d4ed8;
-  background: #eef4ff;
+  border-color: var(--c-accent);
+  color: var(--c-accent-strong);
+  background: var(--c-accent-weak);
   font-weight: 600;
 }
 .add-personal:hover {
-  background: #e0eaff;
+  background: #d8e6ff;
 }
 .btn.pill {
-  border-radius: 12px;
+  border-radius: var(--r-pill);
 }
 .btn.pill.active {
-  background: #2563eb;
+  background: var(--c-accent);
   color: #fff;
-  border-color: #2563eb;
+  border-color: var(--c-accent);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 .status-chips {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 0.45rem 0.7rem;
-  margin-bottom: 0.8rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 0.85rem;
   font-size: 0.85rem;
   flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
 }
 .chip-label {
   color: #6b7280;

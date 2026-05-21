@@ -294,11 +294,14 @@ const groupedByYear = computed(() => {
 }
 .page-header h2 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
 }
 .page-header .lead {
   margin: 0.3rem 0 0;
-  color: #4b5563;
+  color: var(--c-text-muted);
   font-size: 0.88rem;
 }
 .status-message {
@@ -310,14 +313,24 @@ const groupedByYear = computed(() => {
   font-size: 0.88rem;
 }
 .card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--t-base) var(--easing);
+}
+.card:hover {
+  box-shadow: var(--shadow);
 }
 .card h3 {
-  margin: 0 0 0.6rem;
-  font-size: 0.98rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--c-border);
 }
 .row-form {
   display: flex;

@@ -29,11 +29,14 @@ const SRC = '/api/help/manual.html';
 }
 .manual-bar h1 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
 }
 .ext {
   font-size: 0.85rem;
-  color: #2563eb;
+  color: var(--c-accent);
   text-decoration: none;
 }
 .ext:hover {
@@ -42,8 +45,9 @@ const SRC = '/api/help/manual.html';
 .manual-frame {
   flex: 1;
   width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }
 </style>

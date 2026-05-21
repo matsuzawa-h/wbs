@@ -907,11 +907,13 @@ function exportXls(): void {
 .title {
   margin: 0;
   flex: 1;
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   font-weight: 700;
+  letter-spacing: 0.005em;
+  color: var(--c-text);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
 }
 .customer-tag {
   display: inline-block;
