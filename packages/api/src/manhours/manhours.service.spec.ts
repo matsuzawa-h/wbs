@@ -178,6 +178,23 @@ describe('ManhourImportService + ManhoursService', () => {
           .some((c) => c.name === '休暇系'),
       ).toBe(false);
 
+      // CSV で AAP001(NIPPO) に工数を持つ 堀田 は、対象プロジェクト
+      // (aap001) の project_members に自動追加される（ガントの担当者
+      // ピッカーで選べるようになる）。zz は project なしなので対象外。
+      const horitaAssignee = db
+        .select()
+        .from(schema.assignees)
+        .all()
+        .find((a) => a.name === '堀田　和彦')!;
+      const memberOfAap001 = db
+        .select()
+        .from(schema.projectMembers)
+        .all()
+        .filter((m) => m.projectId === aap001.id)
+        .map((m) => m.employeeId);
+      expect(memberOfAap001).toContain(horitaAssignee.id);
+      expect(res.projectMembersAdded).toBe(1);
+
       const sum = svc.getSummary({
         fiscalYear: FY,
         filter: { imported: true, manual: true },
