@@ -164,6 +164,9 @@ describe('ManhourImportService + ManhoursService', () => {
         .all()
         .find((c) => c.name === 'NIPPO')!;
       expect(nippo).toBeTruthy();
+      // CSV 取込で新規作成された顧客には CustomersService.nextCode() と同方式の
+      // 連番コード（C001 形式）が自動採番される（顧客マスタ画面と整合）。
+      expect(nippo.code).toMatch(/^C\d{3,}$/);
       const aap001 = db
         .select()
         .from(schema.projects)
