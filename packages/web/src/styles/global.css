@@ -45,7 +45,14 @@
   --r-pill: 999px;
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08),
+    0 2px 4px rgba(15, 23, 42, 0.04);
   --shadow-pop: 0 8px 28px rgba(15, 23, 42, 0.16);
+
+  /* --- timing --- */
+  --t-fast: 0.12s;
+  --t-base: 0.18s;
+  --easing: cubic-bezier(0.2, 0.6, 0.2, 1);
 
   /* Shared Gantt/table vertical metrics. Keep these in px: GanttChart reads
      them at runtime to match frappe-gantt's row math to TaskTable's CSS. */
@@ -94,26 +101,38 @@ button {
 button.btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   border: 1px solid var(--c-border-strong);
   background: var(--c-surface);
   color: var(--c-text);
-  padding: 0.4rem 0.85rem;
+  padding: 0.42rem 0.95rem;
   border-radius: var(--r);
   font-weight: 500;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
-    color 0.15s;
+  letter-spacing: 0.01em;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--t-base) var(--easing),
+    border-color var(--t-base) var(--easing),
+    box-shadow var(--t-base) var(--easing),
+    color var(--t-base) var(--easing),
+    transform var(--t-fast) var(--easing);
 }
 button.btn:hover {
   background: var(--c-surface-2);
-  border-color: var(--c-border-strong);
+  border-color: #b7c0cf;
+  box-shadow: var(--shadow);
 }
 button.btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--c-accent-ring);
+  box-shadow: 0 0 0 3px var(--c-accent-ring), var(--shadow);
 }
 button.btn:active {
-  transform: translateY(0.5px);
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+button.btn[disabled],
+button.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 button.btn.primary {
   background: var(--c-accent);
@@ -123,6 +142,7 @@ button.btn.primary {
 button.btn.primary:hover {
   background: var(--c-accent-strong);
   border-color: var(--c-accent-strong);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
 }
 button.btn.danger {
   background: var(--c-surface);
@@ -134,8 +154,15 @@ button.btn.danger:hover {
   border-color: #ef9a9a;
 }
 button.btn.small {
-  padding: 0.25rem 0.6rem;
+  padding: 0.28rem 0.7rem;
   font-size: 0.82rem;
+  border-radius: var(--r-sm);
+}
+button.btn.icon-only {
+  padding: 0.32rem;
+  width: 2rem;
+  height: 2rem;
+  justify-content: center;
 }
 
 input[type='text'],
@@ -189,4 +216,75 @@ select:focus {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
+}
+
+/* =========================================================================
+   Polish layer — 共通的な見た目の底上げ。
+   個別コンポーネントの scoped CSS が定義する .card / .toolbar / table 等を
+   グローバルに少しだけ強化する。ロジック・レイアウト不変。
+   ========================================================================= */
+.card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--t-base) var(--easing);
+}
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+.card.flat:hover {
+  box-shadow: var(--shadow);
+}
+table thead th {
+  background: var(--c-surface-2);
+  font-weight: 600;
+  color: var(--c-text-muted);
+  letter-spacing: 0.02em;
+}
+table tbody tr {
+  transition: background var(--t-fast) var(--easing);
+}
+table tbody tr:hover {
+  background: var(--c-accent-weak);
+}
+.tag,
+.pill,
+.badge {
+  border-radius: var(--r-pill);
+}
+
+/* 空セル「—」の控えめ表現。テーブル/詳細グリッドで利用。 */
+.empty-dash {
+  color: var(--c-text-faint);
+  font-weight: 500;
+}
+
+/* ナビ active のアンダーラインアクセント（App.vue scoped で参照）。 */
+.nav-link-active-indicator {
+  position: relative;
+}
+.nav-link-active-indicator::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--c-accent);
+}
+
+/* ヘッダーの軽量タイトル / ヒーロー強調。 */
+.page-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--c-text);
+  margin: 0 0 0.8rem;
+  letter-spacing: 0.005em;
+}
+.page-title .muted {
+  font-weight: 500;
+  color: var(--c-text-muted);
+  font-size: 0.85em;
 }

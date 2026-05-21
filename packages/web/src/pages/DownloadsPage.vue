@@ -51,44 +51,67 @@ function downloadXla(): void {
 }
 .page h1 {
   margin: 0 0 1rem;
-  font-size: 1.3rem;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
 }
 .card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1.2rem 1.4rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 1.3rem 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--t-base) var(--easing);
+}
+.card:hover {
+  box-shadow: var(--shadow);
 }
 .card h2 {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--c-text);
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--c-border);
 }
 .card h3 {
   margin: 1.4rem 0 0.4rem;
-  font-size: 0.95rem;
-  color: #374151;
+  font-size: 0.98rem;
+  color: var(--c-text);
+  font-weight: 700;
 }
 .muted {
-  color: #6b7280;
+  color: var(--c-text-muted);
   font-size: 0.92rem;
   margin: 0 0 1rem;
   line-height: 1.6;
 }
 .btn {
-  border: 1px solid #d1d5db;
-  background: #fff;
-  border-radius: 4px;
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  border-radius: var(--r);
   padding: 0.6rem 1.2rem;
   cursor: pointer;
   font: inherit;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--t-base) var(--easing),
+    border-color var(--t-base) var(--easing),
+    box-shadow var(--t-base) var(--easing);
+}
+.btn:hover {
+  background: var(--c-surface-2);
+  box-shadow: var(--shadow);
 }
 .btn.primary {
-  background: #2563eb;
+  background: var(--c-accent);
   color: #fff;
-  border-color: #2563eb;
+  border-color: var(--c-accent);
 }
 .btn.primary:hover {
-  background: #1d4ed8;
+  background: var(--c-accent-strong);
+  border-color: var(--c-accent-strong);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
 }
 .steps {
   padding-left: 1.4rem;

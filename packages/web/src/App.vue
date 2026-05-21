@@ -67,11 +67,15 @@ function onLogout(): void {
   background: linear-gradient(180deg, #232f3f 0%, #1b2533 100%);
   color: #f1f5f9;
   padding: 0.7rem 1.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 2px 8px rgba(15, 23, 42, 0.18);
+    0 4px 16px rgba(15, 23, 42, 0.22);
   display: flex;
   align-items: center;
   gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 .app-header h1 {
   font-size: 1.05rem;
@@ -87,14 +91,20 @@ function onLogout(): void {
 .brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 1.55rem;
-  height: 1.55rem;
+  width: 1.65rem;
+  height: 1.65rem;
   border-radius: var(--r);
-  background: var(--c-accent);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
   color: #fff;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 800;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 2px 6px rgba(37, 99, 235, 0.4);
+  transition: transform var(--t-base) var(--easing);
+}
+.app-header h1 a:hover .brand-mark {
+  transform: scale(1.06);
 }
 .app-header a {
   color: inherit;
@@ -106,20 +116,33 @@ function onLogout(): void {
   font-size: 0.88rem;
 }
 .app-nav .nav-link {
+  position: relative;
   color: #b6c2d3;
-  padding: 0.32rem 0.7rem;
+  padding: 0.38rem 0.85rem;
   border-radius: var(--r);
   font-weight: 500;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--t-base) var(--easing),
+    background var(--t-base) var(--easing);
 }
 .app-nav .nav-link:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
 }
 .app-nav .nav-link.active {
   color: #fff;
-  background: rgba(37, 99, 235, 0.32);
+  background: rgba(37, 99, 235, 0.28);
   box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.4);
+}
+.app-nav .nav-link.active::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -0.8rem;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  box-shadow: 0 1px 6px rgba(96, 165, 250, 0.5);
 }
 .app-main {
   flex: 1;
