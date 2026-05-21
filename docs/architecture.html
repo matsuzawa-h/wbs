@@ -115,16 +115,16 @@
 <table class="cmd">
   <thead><tr><th>モジュール</th><th>主なルート</th><th>責務</th></tr></thead>
   <tbody>
-    <tr><td>ProjectsModule</td><td><code>/api/projects</code>, <code>/:id/members</code></td><td>プロジェクト CRUD、表示メンバー（project_members）設定。</td></tr>
+    <tr><td>ProjectsModule</td><td><code>/api/projects</code>, <code>/:id</code>, <code>/:id/overview</code>, <code>/:id/dashboard</code>, <code>/:id/members</code></td><td>プロジェクト CRUD、表示メンバー（project_members）設定、<strong>プロジェクト概要</strong>（<code>description</code> / <code>status</code>）の更新と KPI（タスク件数・完了率・遅延件数）の集計。</td></tr>
     <tr><td>TasksModule</td><td><code>/api/projects/:id/tasks</code>, <code>/api/tasks/:id</code>, <code>/duplicate</code>, <code>/reorder</code></td><td>WBS タスク CRUD・複製・並び替え。<strong>連動カスケード／集計ロールアップ</strong>を内包（DateCascadeService）。</td></tr>
     <tr><td>PersonalTasksModule</td><td><code>/api/employees/:id/personal-tasks</code>, <code>/api/personal-tasks/:id</code></td><td>個人タスク CRUD（WBS と非干渉）。</td></tr>
     <tr><td>EmployeesModule</td><td><code>/api/employees</code>, <code>/:id/tasks</code></td><td>社員（assignees）マスタ CRUD、社員横断の割当タスク取得。</td></tr>
     <tr><td>CustomersModule</td><td><code>/api/customers</code></td><td>顧客マスタ CRUD。</td></tr>
     <tr><td>OrganizationsModule</td><td><code>/api/organizations</code></td><td>組織マスタ CRUD（自己参照階層、循環防止）。customers/projects/assignees の <code>organization_id</code> 解決元。稼働管理表 CSV 取込時、CSV 組織コード（A列）から自動解決し新規エンティティに紐付け。</td></tr>
     <tr><td>HolidaysModule</td><td><code>/api/holidays</code>, <code>/bulk</code></td><td>休日マスタ CRUD。営業日計算の入力。短期キャッシュ付き。</td></tr>
-    <tr><td>ExcelModule</td><td><code>/api/projects/:id/export.xls</code></td><td>旧 Excel テンプレートへ流し込み出力（BIFF 直書き）。</td></tr>
+    <tr><td>ExcelModule</td><td><code>/api/projects/:id/export.xls</code></td><td>旧 Excel テンプレートへ流し込み出力（BIFF 直書き）。テンプレ 1000 行までのレベル3項目に対応（BIFF ライタの FAT セクタ拡張に依存）。</td></tr>
     <tr><td>ExcelImportModule</td><td><code>/api/projects/import/preview</code>, <code>/commit</code></td><td>Excel から WBS を解析・取込（プレビュー → 確定）。</td></tr>
-    <tr><td>ManhoursModule</td><td><code>/api/manhours/*</code>, <code>/import/preview</code>, <code>/commit</code></td><td>稼働管理表 CSV 取込（Shift-JIS）・担当者/案件CD名寄せ・稼働見通し集計・仮案件/手入力。バッチ単位の履歴保持。</td></tr>
+    <tr><td>ManhoursModule</td><td><code>/api/manhours/{summary,batches,batches/:id,manual,…}</code>, <code>/import/preview</code>, <code>/commit</code></td><td>稼働管理表 CSV 取込（Shift-JIS）・担当者/案件CD名寄せ・稼働見通し集計（担当者×月／案件×月／担当者明細）・仮案件/手入力・<strong>バッチ履歴／前回比差分（担当者×プロジェクト×月）</strong>・組織コンテキストでの最新バッチ解決。</td></tr>
     <tr><td>DownloadsModule</td><td><code>/api/downloads/km_module.xla</code></td><td>Excel アドイン配布。</td></tr>
     <tr><td>HelpModule</td><td><code>/api/help/manual.html</code>, <code>/screenshots/:name</code></td><td>操作手順書をアプリ内配信（<code>docs/</code> 単一ソース、パストラバーサル遮断）。</td></tr>
     <tr><td>McpModule</td><td><code>/mcp</code></td><td>顧客/プロジェクト/タスク/個人タスク/社員/休日/稼働工数 の MCP ツール（REST と同一サービス層）。</td></tr>
@@ -136,10 +136,13 @@
 <table class="cmd">
   <thead><tr><th>ルート</th><th>画面</th><th>概要</th></tr></thead>
   <tbody>
-    <tr><td><code>/</code></td><td>プロジェクト一覧</td><td>顧客でグルーピング、作成・Excel 取込導線。</td></tr>
+    <tr><td><code>/login</code></td><td>ログイン（社員ピッカー）</td><td>無認証の社員選択（コード／氏名／かな／部署検索＋組織フィルタ）。LAN クローズド前提で「自分は誰か」を localStorage に保持。<code>meta.public</code> でガード対象外。</td></tr>
+    <tr><td><code>/</code></td><td>プロジェクト一覧</td><td>顧客でグルーピング、作成・Excel 取込導線。「自分の担当のみ」初期 ON でメンバーに含まれる案件に絞込み。</td></tr>
+    <tr><td><code>/projects/:id</code></td><td>プロジェクト概要</td><td>KPI ダッシュボード（タスク数／完了率／スケジュール健全性）／概要（<code>description</code>）／ステータス（<code>status</code>: planning / active / on_hold / completed / cancelled）／メンバー。ガント・案件別工数への入口。</td></tr>
     <tr><td><code>/projects/:id/gantt</code></td><td>WBS／ガント</td><td>3 階層（大/中/項目）テーブル＋ガント。連動・複製・備考・実績・状態。</td></tr>
     <tr><td><code>/assignments</code></td><td>担当別予定</td><td>社員横断の割当＋個人タスク。一覧／<strong>カレンダー</strong>切替（既定カレンダー）。</td></tr>
-    <tr><td><code>/manhours</code></td><td>稼働見通し</td><td>担当者×月の工数サマリー（確定/仮トグル・稼働率色分け・案件内訳）。CSV取込／仮案件導線。</td></tr>
+    <tr><td><code>/manhours</code></td><td>稼働見通し</td><td>担当者×月の工数サマリー（確定/仮トグル・稼働率色分け・案件内訳）。CSV取込／仮案件導線。組織フィルタ既定はログイン社員所属組織。</td></tr>
+    <tr><td><code>/manhours/batches</code></td><td>取込履歴／バッチ管理</td><td>稼働 CSV 取込バッチ一覧（組織別最新／履歴）、バッチ統計（行数・期間）、<strong>前回比差分</strong>（担当者×プロジェクト×月の cellDiffs）、削除影響プレビュー付き削除。</td></tr>
     <tr><td><code>/projects/:id/manhours</code></td><td>案件別工数</td><td>1 案件の担当者×月。工程表(ガント)と相互リンク。セル手入力（仮）。</td></tr>
     <tr><td><code>/organizations</code> / <code>/customers</code> / <code>/employees</code> / <code>/holidays</code></td><td>各マスタ</td><td>組織（階層）／顧客／社員／休日の保守。各マスタの編集ダイアログ／一覧で組織の割当・フィルタを行う。</td></tr>
     <tr><td><code>/downloads</code></td><td>ダウンロード</td><td>Excel アドイン取得手順。</td></tr>
@@ -147,7 +150,8 @@
   </tbody>
 </table>
 <p>
-状態管理は Pinia（projects / tasks / employees / customers / <strong>organizations</strong> / holidays / projectMembers / manhours ストア）。
+状態管理は Pinia（<strong>currentUser</strong> / projects / tasks / employees / customers / <strong>organizations</strong> / holidays / projectMembers / <strong>manhours</strong> ストア）。
+<code>currentUser</code> は localStorage 永続化のログイン社員 ID／実体を保持し、未ログイン時は <code>router.beforeEach</code> が <code>/login</code> へリダイレクト。
 ガントは frappe-gantt を土台に、スクロール同期・固定ヘッダ・今日マーカー・週末/休日表示・
 バーラベル可読性などを独自実装。担当別予定カレンダーは月グリッド（バーのレーン配置・D&D・新規作成ポップアップ）を独自実装。
 </p>
