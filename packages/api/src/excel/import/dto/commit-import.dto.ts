@@ -69,6 +69,11 @@ export class CommitImportDto {
   @IsInt()
   customerId!: number | null;
 
+  // プロジェクト概要画面の組織割当と整合。未指定（null）なら所属なしで作成。
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

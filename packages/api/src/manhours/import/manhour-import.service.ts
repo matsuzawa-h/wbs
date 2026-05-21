@@ -9,6 +9,7 @@ import {
   manhourImportBatches,
   organizations,
   projectCodes,
+  projectMembers,
   projects,
 } from '../../db';
 import { DB_TOKEN } from '../../db/db.module';
@@ -227,6 +228,7 @@ export class ManhourImportService {
     projectsCreated: number;
     entriesInserted: number;
     capacitiesInserted: number;
+    projectMembersAdded: number;
   } {
     if (!dto.fileName.trim()) {
       throw new BadRequestException('fileName は必須です');
@@ -452,6 +454,10 @@ export class ManhourImportService {
 
       // 4) 工数明細
       let entriesInserted = 0;
+      // 取込元プロジェクト×担当者の組み合わせを蓄積し、projectMembers へ
+      // まとめて upsert（5b）。CSV で当該プロジェクトCDに工数を持っていた
+      // 社員を自動でプロジェクトメンバー（担当者ピッカー候補）に加える。
+      const projectMemberPairs = new Set<string>();
       for (const e of dto.entries) {
         const assigneeId = nameToAssigneeId.get(e.assigneeName);
         if (assigneeId === undefined) continue; // skip 担当者
@@ -471,6 +477,9 @@ export class ManhourImportService {
             label = e.label ?? null;
           }
         }
+        if (projectId !== null) {
+          projectMemberPairs.add(`${projectId}:${assigneeId}`);
+        }
         tx.insert(manhourEntries)
           .values({
             batchId: batch.id,
@@ -487,6 +496,26 @@ export class ManhourImportService {
           })
           .run();
         entriesInserted += 1;
+      }
+
+      // 5a) プロジェクトメンバー自動追加。CSV で当該プロジェクトに工数を
+      //     持っていた社員を project_members に upsert する（新規プロジェクト
+      //     ・既存プロジェクトともに対象）。既に登録済みの組み合わせは
+      //     onConflictDoNothing で素通し。これにより、稼働見通しから案件別
+      //     工数 → ガント へ進んだ際、担当者ピッカーにその社員が出る。
+      let projectMembersAdded = 0;
+      for (const key of projectMemberPairs) {
+        const [pidStr, eidStr] = key.split(':');
+        const result = tx
+          .insert(projectMembers)
+          .values({
+            projectId: parseInt(pidStr, 10),
+            employeeId: parseInt(eidStr, 10),
+            sortOrder: 0,
+          })
+          .onConflictDoNothing()
+          .run();
+        if (result.changes > 0) projectMembersAdded += 1;
       }
 
       // 5) 月キャパ（月基準時間）
@@ -509,7 +538,8 @@ export class ManhourImportService {
       this.logger.log(
         `manhour import committed: batch=${batch.id} entries=${entriesInserted} ` +
           `caps=${capacitiesInserted} newAssignees=${assigneesCreated} ` +
-          `newCustomers=${customersCreated} newProjects=${projectsCreated}`,
+          `newCustomers=${customersCreated} newProjects=${projectsCreated} ` +
+          `newMembers=${projectMembersAdded}`,
       );
       return {
         batchId: batch.id,
@@ -518,6 +548,7 @@ export class ManhourImportService {
         projectsCreated,
         entriesInserted,
         capacitiesInserted,
+        projectMembersAdded,
       };
     });
   }

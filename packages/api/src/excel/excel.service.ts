@@ -37,7 +37,7 @@ export class ExcelService {
 
     const now = new Date();
     const tasks = this.loadTasks(projectId);
-    const employees = this.loadEmployees();
+    const employees = this.loadEmployees(projectId);
     let scheduleUpdates;
     let employeeUpdates;
     let settingsUpdates;
@@ -61,9 +61,14 @@ export class ExcelService {
     };
   }
 
-  private loadEmployees(): EmployeeExportRow[] {
+  // 担当者一覧シートに出力する社員は、このプロジェクトの WBS タスクに
+  // 実際にアサインされている社員のみ（distinct）。社員マスタや
+  // project_members ではなく、現に「担当者」として使われている人だけを
+  // ガント側に出すことで、Excel の担当者一覧の意味が「このプロジェクトの
+  // 担当者」と一致するようになる。
+  private loadEmployees(projectId: number): EmployeeExportRow[] {
     return this.db
-      .select({
+      .selectDistinct({
         id: assignees.id,
         code: assignees.code,
         name: assignees.name,
@@ -71,10 +76,14 @@ export class ExcelService {
         employmentEnd: assignees.employmentEnd,
         worksOnHolidays: assignees.worksOnHolidays,
         isActive: assignees.isActive,
+        sortOrder: assignees.sortOrder,
       })
       .from(assignees)
+      .innerJoin(wbsTasks, eq(wbsTasks.assigneeId, assignees.id))
+      .where(eq(wbsTasks.projectId, projectId))
       .orderBy(asc(assignees.sortOrder), asc(assignees.code), asc(assignees.id))
-      .all();
+      .all()
+      .map(({ sortOrder: _sortOrder, ...row }) => row);
   }
 
   private loadTasks(projectId: number): WbsExportTask[] {

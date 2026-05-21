@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import { useCustomersStore } from '@/stores/customers';
 import { useEmployeesStore } from '@/stores/employees';
-import type { Customer, Employee } from '@/types';
+import { useOrganizationsStore } from '@/stores/organizations';
+import { useCurrentUserStore } from '@/stores/currentUser';
+import type { Customer, Employee, Organization } from '@/types';
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
@@ -12,12 +14,17 @@ const emit = defineEmits<{ (e: 'close'): void }>();
 const router = useRouter();
 const customers = useCustomersStore();
 const employees = useEmployeesStore();
+const organizations = useOrganizationsStore();
+const currentUser = useCurrentUserStore();
 
 type Step = 'upload' | 'review';
 const step = ref<Step>('upload');
 
 // Step 1 state
 const customerId = ref<number | null>(null);
+// 既定はログイン社員の所属組織（未ログイン or 所属なしなら null）。
+// ProjectListPage の新規作成フローと既定値を揃える。
+const organizationId = ref<number | null>(null);
 const projectName = ref('');
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File | null>(null);
@@ -64,6 +71,7 @@ watch(
     if (!v) return;
     step.value = 'upload';
     customerId.value = null;
+    organizationId.value = currentUser.current?.organizationId ?? null;
     projectName.value = '';
     selectedFile.value = null;
     if (fileInputRef.value) fileInputRef.value.value = '';
@@ -74,6 +82,7 @@ watch(
     uploading.value = false;
     customers.fetchAll();
     employees.fetchAll();
+    organizations.fetchAll();
   },
 );
 
@@ -158,6 +167,7 @@ async function onCommit(): Promise<void> {
     });
     const res = await api.post<{ projectId: number }>('/projects/import/commit', {
       customerId: customerId.value,
+      organizationId: organizationId.value,
       projectName: projectName.value.trim(),
       schedule: parsedSchedule.value,
       assigneeResolution,
@@ -204,6 +214,7 @@ const allChoicesValid = computed(() => {
 // Active employees sorted for the link dropdown.
 const employeeOptions = computed<Employee[]>(() => employees.activeItems);
 const customerOptions = computed<Customer[]>(() => customers.activeItems);
+const organizationOptions = computed<Organization[]>(() => organizations.byCodeAsc);
 </script>
 
 <template>
@@ -220,6 +231,15 @@ const customerOptions = computed<Customer[]>(() => customers.activeItems);
           Excel ファイル（旧テンプレ形式の .xls）からタスクと担当者を取込みます。<br>
           顧客とプロジェクト名はこの画面で指定します。
         </p>
+        <label class="row-field">
+          <span>組織</span>
+          <select v-model.number="organizationId">
+            <option :value="null">（組織未指定）</option>
+            <option v-for="o in organizationOptions" :key="o.id" :value="o.id">
+              {{ o.code ? `[${o.code}] ` : '' }}{{ o.name }}
+            </option>
+          </select>
+        </label>
         <label class="row-field">
           <span>顧客</span>
           <select v-model.number="customerId">

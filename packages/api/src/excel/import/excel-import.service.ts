@@ -47,6 +47,7 @@ export interface AssigneeResolution {
 
 export interface CommitInput {
   customerId: number | null;
+  organizationId?: number | null;
   projectName: string;
   schedule: ParsedTask[];
   assigneeResolution: AssigneeResolution[];
@@ -168,6 +169,7 @@ export class ExcelImportService {
         .values({
           name: input.projectName.trim(),
           customerId: input.customerId ?? null,
+          organizationId: input.organizationId ?? null,
         })
         .returning()
         .get();
