@@ -437,7 +437,11 @@ v22.x.x   <span class="comment">← 必ず "v22." で始まる</span>
 <div class="note">
   <strong>📌 テンプレートのソース</strong>
   開発機側では <code>c:\Git\WBS\テンプレートファイル.xls</code> が原本です。
-  WbsWeb リポジトリ <strong>の外</strong> にあるため、本番転送時はリポジトリと別途コピーが必要です。
+  WbsWeb リポジトリ <strong>の外</strong> にあるため、本番転送時はリポジトリと別途コピーが必要です。<br>
+  現行版は<strong>1000 行容量</strong>（レベル3項目を 1000 件まで出力可。<code>TEMPLATE_DATA_END_ROW=1004</code>）。
+  本番側のテンプレが旧 41 行版のままだと、項目数が 41 を超えた瞬間に Excel 出力が
+  <code>Template capacity exceeded</code> で失敗します。テンプレ自体は <code>release-prod.bat</code> の
+  <code>/MIR</code> 対象外なので、本番機で手動コピーで差し替える必要があります。
 </div>
 
 <h3 class="section"><span class="num">4.4</span>Excel アドイン (km_module.xla) を配置</h3>
@@ -806,8 +810,17 @@ LOGDIR=C:\AppsData\WbsWeb\logs   HASHFILE=C:\AppsData\WbsWeb\.release-zip.sha256
         ① 4.6 に従い <code>docs</code> を <code>C:\AppsData\WbsWeb\docs</code> へ配置、
         ② <code>start.cmd</code> に <code>set MANUAL_DOCS_DIR=C:\AppsData\WbsWeb\docs</code> を追記（5.1 参照）→
         タスク再起動。未対応だと「操作手順」ページが 404 になります。</li>
-    <li>このリリースは <strong>マイグレーションあり</strong>（<code>0006_add_task_note</code> /
-        <code>0007_add_personal_tasks</code>）。8.2 手順 3) の <code>migrate</code> を必ず実行。</li>
+    <li>このリリースは <strong>マイグレーションあり</strong>。直近で重要なのは
+        <code>0008_add_manhours</code>（稼働見通し基盤）／
+        <code>0010_add_project_codes</code>（1案件×複数CD）／
+        <code>0012_add_organizations</code>（組織マスタ・各マスタへの FK）／
+        <code>0014_add_manhour_batch_organization</code>（バッチの組織別解決）／
+        <code>0015_add_project_overview_fields</code>（projects.description / status）。
+        本番 DB に未適用だと該当機能が <code>500</code> で動かないため、8.2 手順 3) の <code>migrate</code> を必ず実行（<code>release-prod.bat</code> 4/6 が自動実施）。</li>
+    <li>Excel 出力テンプレ（<code>テンプレートファイル.xls</code>）は<strong>1000 行版</strong>を配置すること。
+        旧 41 行版だとレベル3項目数が 41 を超えた瞬間に <code>Template capacity exceeded</code> エラーで出力失敗します。
+        永続データ領域（<code>C:\AppsData\WbsWeb\</code>）にあるテンプレは <code>release-prod.bat</code> の <code>/MIR</code> 対象外なので
+        <strong>本番機で手動コピーが必要</strong>です（4.3 参照）。</li>
   </ul>
 </div>
 
