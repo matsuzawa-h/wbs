@@ -335,7 +335,7 @@ export class ManhourImportService {
           const created = tx
             .insert(customers)
             .values({
-              code: r.newCustomer.code?.trim() || null,
+              code: r.newCustomer.code?.trim() || nextCustomerCode(tx),
               name: r.newCustomer.name.trim(),
               isActive: 1,
               sortOrder: 0,
@@ -567,4 +567,19 @@ function nextEmployeeCode(tx: any): string {
     }
   }
   return `E${String(max + 1).padStart(3, '0')}`;
+}
+
+/** 既存 `customers.code` の C### 連番から次のコードを生成（CustomersService.nextCode と同方式）。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function nextCustomerCode(tx: any): string {
+  const rows = tx.select({ code: customers.code }).from(customers).all();
+  let max = 0;
+  for (const r of rows) {
+    const m = r.code?.match(/^C(\d{3,})$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  return `C${String(max + 1).padStart(3, '0')}`;
 }
