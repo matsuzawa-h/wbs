@@ -124,18 +124,30 @@ function selectAndLogin(emp: Employee): void {
 .login-card {
   width: min(720px, 100%);
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
-  padding: 1.5rem 1.75rem 1.25rem;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12),
+    0 2px 6px rgba(15, 23, 42, 0.04);
+  padding: 1.8rem 2rem 1.4rem;
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.9rem;
+  position: relative;
+}
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3b82f6, #2563eb 50%, #1d4ed8);
+  border-radius: 12px 12px 0 0;
 }
 h1 {
   margin: 0;
-  font-size: 1.25rem;
-  color: #1e3a8a;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--c-accent-strong);
+  letter-spacing: 0.005em;
 }
 .muted { color: #6b7280; font-size: 0.85rem; margin: 0; }
 .filter-row {
@@ -176,20 +188,30 @@ h1 {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.55rem 0.9rem;
+  gap: 0.8rem;
+  padding: 0.65rem 1rem;
   background: #fff;
   border: none;
   cursor: pointer;
   text-align: left;
   font: inherit;
+  transition: background var(--t-base) var(--easing),
+    padding-left var(--t-base) var(--easing);
 }
-.row-btn:hover { background: #eef2ff; }
-.row.inactive .row-btn { color: #94a3b8; background: #f9fafb; }
-.code { font-family: 'Menlo', 'Consolas', monospace; font-size: 0.82rem; width: 64px; color: #4b5563; }
-.name { font-weight: 600; min-width: 6em; }
+.row-btn:hover { background: var(--c-accent-weak); padding-left: 1.15rem; }
+.row.inactive .row-btn { color: var(--c-text-faint); background: #f9fafb; }
+.code {
+  font-family: 'Cascadia Mono', 'Consolas', 'Menlo', monospace;
+  font-size: 0.78rem;
+  width: 56px;
+  color: #6b7280;
+  background: var(--c-surface-2);
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+}
+.name { font-weight: 600; min-width: 6em; color: var(--c-text); }
 .kana { color: #94a3b8; font-size: 0.78rem; }
-.org { margin-left: auto; font-size: 0.78rem; color: #3730a3; background: #e0e7ff; padding: 0.1rem 0.45rem; border-radius: 999px; }
+.org { margin-left: auto; font-size: 0.78rem; color: #3730a3; background: #e0e7ff; padding: 0.15rem 0.55rem; border-radius: 999px; }
 .tag { font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: 3px; }
 .tag.inactive-tag { background: #f3f4f6; color: #6b7280; }
 .footnote { margin: 0; }

@@ -318,14 +318,20 @@ function formatCreatedAt(ts: number): string {
   gap: 1rem;
 }
 .card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--t-base) var(--easing);
 }
+.card:hover { box-shadow: var(--shadow); }
 .card h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
+  margin: 0 0 0.85rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: 0.005em;
 }
 .create-form {
   display: flex;
@@ -372,23 +378,27 @@ function formatCreatedAt(ts: number): string {
   gap: 0.6rem;
 }
 .group {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
   overflow: hidden;
-  background: #f9fafb;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--t-base) var(--easing);
 }
+.group:hover { box-shadow: var(--shadow); }
 .group-header {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.45rem 0.75rem;
+  padding: 0.55rem 0.9rem;
   cursor: pointer;
   user-select: none;
-  background: #eef2ff;
-  border-bottom: 1px solid #e0e7ff;
+  background: linear-gradient(180deg, #eef2ff, #e0e7ff);
+  border-bottom: 1px solid #d6deff;
+  transition: background var(--t-base) var(--easing);
 }
 .group-header:hover {
-  background: #e0e7ff;
+  background: linear-gradient(180deg, #e6ecff, #d4ddff);
 }
 .caret {
   border: none;
@@ -428,10 +438,20 @@ function formatCreatedAt(ts: number): string {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface);
+  transition: background var(--t-base) var(--easing),
+    border-color var(--t-base) var(--easing),
+    box-shadow var(--t-base) var(--easing),
+    transform var(--t-fast) var(--easing);
+}
+.rows li:hover {
+  background: var(--c-surface-2);
+  border-color: var(--c-border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(2px);
 }
 .row-main {
   flex: 1;
