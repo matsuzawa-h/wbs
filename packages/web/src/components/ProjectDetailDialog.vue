@@ -17,7 +17,8 @@ const emit = defineEmits<{
 const manhours = useManhoursStore();
 const employees = useEmployeesStore();
 
-// 仮プロジェクトのみメンバー編集（担当者の追加/削除）と工数編集を許可。
+// 仮プロジェクト (isProvisional=1) のみメンバー編集（担当者の追加/削除）と
+// 工数編集を許可。確定（CSV取込で作られたもの）は参照のみ。
 const isProvisional = computed(
   () => manhours.projectMatrix?.isProvisional ?? false,
 );
@@ -98,6 +99,8 @@ async function onEditCell(
   if (props.projectId === null) return;
   const hours = Number(raw);
   if (!Number.isFinite(hours) || hours < 0) return;
+  // 仮プロジェクト固有のフロー: imported=0 なので manual がそのまま total。
+  // 0 で削除（バックエンドの === 0 ルールに従う）。
   await manhours.saveManualEntry({
     assigneeId,
     projectId: props.projectId,
@@ -171,8 +174,8 @@ function onClose(): void {
         <p v-if="manhours.loading" class="muted">読込中…</p>
 
         <p v-if="!isProvisional" class="muted small">
-          このプロジェクトは <strong>確定（仮ではない）</strong>のため参照表示のみです。
-          編集は再取込、または仮プロジェクトを別途作成して手入力してください。
+          このプロジェクトは <strong>確定（取込）</strong>のため参照表示のみです。
+          手入力で工数を調整したい場合は、別途「仮プロジェクト」を作成してください。
         </p>
 
         <div v-if="manhours.projectMatrix" class="grid-wrap">
@@ -202,18 +205,12 @@ function onClose(): void {
                     min="0"
                     step="0.5"
                     class="edit"
-                    :value="row.cells[ym]?.manual ?? ''"
+                    :value="row.cells[ym]?.total ?? ''"
                     @change="onEditCell(row.assigneeId, ym, ($event.target as HTMLInputElement).value)"
                   />
                   <template v-else>
                     {{ row.cells[ym]?.total ? row.cells[ym]!.total.toFixed(1) : '' }}
                   </template>
-                  <span
-                    v-if="!isProvisional && row.cells[ym] && row.cells[ym]!.imported > 0 && row.cells[ym]!.manual > 0"
-                    class="muted small"
-                  >
-                    （仮 {{ row.cells[ym]!.manual }}）
-                  </span>
                 </td>
                 <td class="num total">{{ row.total.toFixed(1) }}</td>
                 <td v-if="isProvisional" class="op">
@@ -290,7 +287,23 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name { font-weight: 600; }
 .num { text-align: right; }
 .cell.editable { background: var(--c-warn-bg); }
-.cell.editable input.edit { background: var(--c-surface); width: 4rem; text-align: right; padding: 0.1rem 0.3rem; }
+.cell.editable input.edit {
+  background: var(--c-surface);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  padding: 0.1rem 0.3rem;
+  font-variant-numeric: tabular-nums;
+  /* type="number" のスピナーで右端が圧迫されるので非表示にする */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.cell.editable input.edit::-webkit-outer-spin-button,
+.cell.editable input.edit::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.breakdown { display: block; margin-top: 0.1rem; font-size: 0.7rem; color: var(--c-text-muted); }
 .total { font-weight: 700; background: var(--c-surface-2); }
 .foot { font-weight: 600; background: var(--c-surface-3); }
 .op { text-align: center; }

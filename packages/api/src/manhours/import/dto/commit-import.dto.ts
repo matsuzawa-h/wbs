@@ -117,6 +117,35 @@ export class ManhourProjectResolutionDto {
   customerName?: string | null;
 }
 
+export class NewManhourOrganizationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  code?: string | null;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  name!: string;
+}
+
+export class ManhourOrganizationResolutionDto {
+  // link    = 既存の組織に紐付け（CSV組織コードの一致候補）
+  // create  = 新規組織を作成（CSV組織コード/名称をそのまま）
+  // skip    = 組織を紐付けない（作成エンティティは organization_id NULL）
+  @IsIn(['link', 'create', 'skip'])
+  action!: 'link' | 'create' | 'skip';
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewManhourOrganizationDto)
+  newOrganization?: NewManhourOrganizationDto;
+}
+
 export class ManhourEntryRowDto {
   @IsString()
   assigneeName!: string;
@@ -147,6 +176,12 @@ export class ManhourEntryRowDto {
   @IsString()
   @MaxLength(200)
   customerLabel?: string | null;
+
+  /** CSV プロジェクトCD の生値（projects 化されない MNT 等でも明細に出す）。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  projectCode?: string | null;
 }
 
 export class ManhourCapacityRowDto {
@@ -176,6 +211,12 @@ export class CommitManhourImportDto {
   @IsString()
   @MaxLength(32)
   orgCode?: string | null;
+
+  /** CSV組織の解決（未指定なら NULL のまま作成エンティティに紐付けない）。 */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ManhourOrganizationResolutionDto)
+  organizationResolution?: ManhourOrganizationResolutionDto;
 
   @IsArray()
   @ValidateNested({ each: true })

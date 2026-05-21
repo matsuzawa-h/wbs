@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, gte, isNotNull, lte, SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, lte, SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { AppDb, assignees, Employee, projects, wbsTasks } from '../db';
 import { DB_TOKEN } from '../db/db.module';
@@ -31,10 +31,15 @@ export interface AssignmentRow {
 export class EmployeesService {
   constructor(@Inject(DB_TOKEN) private readonly db: AppDb) {}
 
-  list(): Employee[] {
-    return this.db
-      .select()
-      .from(assignees)
+  list(organizationId?: number | null): Employee[] {
+    const base = this.db.select().from(assignees);
+    const filtered =
+      organizationId === null
+        ? base.where(isNull(assignees.organizationId))
+        : typeof organizationId === 'number'
+          ? base.where(eq(assignees.organizationId, organizationId))
+          : base;
+    return filtered
       .orderBy(asc(assignees.sortOrder), asc(assignees.code), asc(assignees.id))
       .all();
   }
@@ -63,6 +68,7 @@ export class EmployeesService {
         isActive: dto.isActive === false ? 0 : 1,
         note: dto.note ?? null,
         sortOrder: dto.sortOrder ?? 0,
+        organizationId: dto.organizationId ?? null,
       })
       .returning()
       .get();
@@ -87,6 +93,7 @@ export class EmployeesService {
     if (dto.isActive !== undefined) patch.isActive = dto.isActive ? 1 : 0;
     if (dto.note !== undefined) patch.note = dto.note || null;
     if (dto.sortOrder !== undefined) patch.sortOrder = dto.sortOrder;
+    if (dto.organizationId !== undefined) patch.organizationId = dto.organizationId;
     return this.db
       .update(assignees)
       .set(patch)

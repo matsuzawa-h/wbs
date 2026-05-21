@@ -1,10 +1,33 @@
 <script setup lang="ts">
-import { RouterView, RouterLink } from 'vue-router';
+import { onMounted, computed } from 'vue';
+import { RouterView, RouterLink, useRouter, useRoute } from 'vue-router';
+import { useEmployeesStore } from '@/stores/employees';
+import { useCurrentUserStore } from '@/stores/currentUser';
+
+const router = useRouter();
+const route = useRoute();
+const employees = useEmployeesStore();
+const currentUser = useCurrentUserStore();
+
+// ログインユーザの表示用に社員データを 1 度ロード（ヘッダーで名前を出す）。
+// fetch 完了後に currentUser store 側の watch で、存在しない currentId なら
+// 自動 logout がトリガーされる（社員削除済み・古い localStorage の救済）。
+onMounted(() => {
+  if (currentUser.isLoggedIn) employees.fetchAll();
+});
+
+// /login は最小レイアウト（ヘッダー無し）
+const isLoginRoute = computed(() => route.name === 'login');
+
+function onLogout(): void {
+  currentUser.logout();
+  router.replace({ name: 'login' });
+}
 </script>
 
 <template>
   <div class="app-shell">
-    <header class="app-header">
+    <header v-if="!isLoginRoute" class="app-header">
       <h1>
         <RouterLink to="/"><span class="brand-mark">W</span>WBS Web</RouterLink>
       </h1>
@@ -12,14 +35,23 @@ import { RouterView, RouterLink } from 'vue-router';
         <RouterLink to="/" class="nav-link" exact-active-class="active">プロジェクト</RouterLink>
         <RouterLink to="/assignments" class="nav-link" active-class="active">担当別予定</RouterLink>
         <RouterLink to="/manhours" class="nav-link" active-class="active">稼働見通し</RouterLink>
+        <RouterLink to="/organizations" class="nav-link" active-class="active">組織マスタ</RouterLink>
         <RouterLink to="/customers" class="nav-link" active-class="active">顧客マスタ</RouterLink>
         <RouterLink to="/employees" class="nav-link" active-class="active">社員マスタ</RouterLink>
         <RouterLink to="/holidays" class="nav-link" active-class="active">休日設定</RouterLink>
         <RouterLink to="/downloads" class="nav-link" active-class="active">ダウンロード</RouterLink>
         <RouterLink to="/manual" class="nav-link" active-class="active">操作手順</RouterLink>
       </nav>
+      <div v-if="currentUser.current" class="user-box">
+        <span class="user-name" :title="`コード: ${currentUser.current.code ?? '—'}`">
+          👤 {{ currentUser.current.name }}
+        </span>
+        <button class="logout-btn" type="button" @click="onLogout" title="ログアウト（別の社員として開き直す）">
+          ログアウト
+        </button>
+      </div>
     </header>
-    <main class="app-main">
+    <main class="app-main" :class="{ 'login-main': isLoginRoute }">
       <RouterView />
     </main>
   </div>
@@ -94,4 +126,29 @@ import { RouterView, RouterLink } from 'vue-router';
   padding: 1.25rem;
   background: var(--c-bg);
 }
+.app-main.login-main { padding: 0; }
+.user-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+.user-name {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--r);
+  font-weight: 500;
+}
+.logout-btn {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #b6c2d3;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--r);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.logout-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
 </style>

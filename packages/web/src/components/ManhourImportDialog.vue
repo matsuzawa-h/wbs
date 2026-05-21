@@ -5,7 +5,8 @@ import { api } from '@/api/client';
 import { useEmployeesStore } from '@/stores/employees';
 import { useProjectsStore } from '@/stores/projects';
 import { useCustomersStore } from '@/stores/customers';
-import type { Customer, Employee, Project } from '@/types';
+import { useOrganizationsStore } from '@/stores/organizations';
+import type { Customer, Employee, Organization, Project } from '@/types';
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'committed'): void }>();
@@ -14,6 +15,7 @@ const router = useRouter();
 const employees = useEmployeesStore();
 const projects = useProjectsStore();
 const customers = useCustomersStore();
+const orgs = useOrganizationsStore();
 
 type Step = 'upload' | 'review';
 const step = ref<Step>('upload');
@@ -44,9 +46,17 @@ interface CustomerMatch {
   suggestedCustomerId: number | null;
   suggestedCustomerName: string | null;
 }
+interface OrganizationMatch {
+  orgCode: string | null;
+  orgName: string | null;
+  suggestedOrganizationId: number | null;
+  suggestedOrganizationName: string | null;
+}
 interface PreviewResult {
   fiscalYear: number;
   orgCode: string | null;
+  orgName: string | null;
+  organizationMatch: OrganizationMatch | null;
   assigneeMatches: AssigneeMatch[];
   customerMatches: CustomerMatch[];
   projectMatches: ProjectMatch[];
@@ -75,6 +85,19 @@ interface CCh {
 }
 const aChoices = ref<Record<string, ACh>>({});
 const cChoices = ref<Record<string, CCh>>({});
+// 組織解決: 'skip' (紐付けず) / 'link' (既存に) / 'create' (新規作成)
+interface OCh {
+  action: 'link' | 'create' | 'skip';
+  organizationId: number | null;
+  newName: string;
+  newCode: string;
+}
+const oChoice = ref<OCh>({
+  action: 'skip',
+  organizationId: null,
+  newName: '',
+  newCode: '',
+});
 // 案件(CD)ごとの束ね先: 'labelOnly' | `link:<projectId>` | `grp:<groupKey>`
 const pBucket = ref<Record<string, string>>({});
 // grp:<key> → 新規プロジェクト名（編集可）
@@ -110,9 +133,11 @@ watch(
     groupNames.value = {};
     errorMessage.value = null;
     uploading.value = false;
+    oChoice.value = { action: 'skip', organizationId: null, newName: '', newCode: '' };
     employees.fetchAll();
     projects.fetchAll();
     customers.fetchAll();
+    orgs.fetchAll();
   },
 );
 
@@ -176,6 +201,27 @@ async function onPreview(): Promise<void> {
     }
     pBucket.value = pb;
     groupNames.value = gn;
+    // 組織の既定: 既存マッチ→link、未マッチ→create（コード/名前は CSV から）。
+    const om = res.data.organizationMatch;
+    if (om) {
+      if (om.suggestedOrganizationId !== null) {
+        oChoice.value = {
+          action: 'link',
+          organizationId: om.suggestedOrganizationId,
+          newName: om.orgName ?? '',
+          newCode: om.orgCode ?? '',
+        };
+      } else {
+        oChoice.value = {
+          action: 'create',
+          organizationId: null,
+          newName: om.orgName ?? '',
+          newCode: om.orgCode ?? '',
+        };
+      }
+    } else {
+      oChoice.value = { action: 'skip', organizationId: null, newName: '', newCode: '' };
+    }
     step.value = 'review';
   } catch (e: unknown) {
     errorMessage.value = extractMessage(e) ?? 'プレビューに失敗しました';
@@ -187,6 +233,11 @@ async function onPreview(): Promise<void> {
 const allValid = computed(() => {
   const pv = preview.value;
   if (!pv) return false;
+  // 組織: link なら id 必須、create なら名前必須。skip は常に OK。
+  if (oChoice.value.action === 'link' && oChoice.value.organizationId === null)
+    return false;
+  if (oChoice.value.action === 'create' && !oChoice.value.newName.trim())
+    return false;
   for (const m of pv.assigneeMatches) {
     const c = aChoices.value[m.name];
     if (!c) return false;
@@ -259,10 +310,23 @@ async function onCommit(): Promise<void> {
         customerName: m.customerName,
       };
     });
+    const organizationResolution =
+      oChoice.value.action === 'skip'
+        ? { action: 'skip' }
+        : oChoice.value.action === 'link'
+          ? { action: 'link', organizationId: oChoice.value.organizationId! }
+          : {
+              action: 'create',
+              newOrganization: {
+                code: oChoice.value.newCode.trim() || null,
+                name: oChoice.value.newName.trim(),
+              },
+            };
     await api.post('/manhours/import/commit', {
       fileName: selectedFile.value?.name ?? 'manhours.csv',
       fiscalYear: pv.fiscalYear,
       orgCode: pv.orgCode,
+      organizationResolution,
       assigneeResolution,
       customerResolution,
       projectResolution,
@@ -296,6 +360,7 @@ function extractMessage(e: unknown): string | null {
 const employeeOptions = computed<Employee[]>(() => employees.byCodeAsc);
 const projectOptions = computed<Project[]>(() => projects.items);
 const customerOptions = computed<Customer[]>(() => customers.activeItems);
+const organizationOptions = computed<Organization[]>(() => orgs.byCodeAsc);
 
 // 案件の束ね表は プロジェクトCD 昇順（小さい方を上）。CD無しは末尾。
 const sortedProjectMatches = computed<ProjectMatch[]>(() => {
@@ -398,6 +463,48 @@ const fyOptions = computed<number[]>(() => {
             担当者 {{ preview.summary.assigneeCount }} 名 / 案件 {{ preview.summary.projectCount }} 件 /
             合計 {{ preview.summary.totalHours.toFixed(1) }} h
           </div>
+        </section>
+
+        <section v-if="preview.organizationMatch" class="match-section">
+          <strong>組織の解決</strong>
+          <p class="muted">
+            CSV の組織コード／組織名で組織マスタに紐付けます。<strong>新規取込で作成される担当者・顧客・仮案件はこの組織に自動紐付け</strong>されます（既存エンティティは変更されません）。
+          </p>
+          <table class="match-table">
+            <thead>
+              <tr><th>CSV 組織</th><th>アクション</th><th>選択 / 新規入力</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span class="excel-name">{{ preview.organizationMatch.orgCode ?? '(コードなし)' }}</span>
+                  <span class="muted small">{{ preview.organizationMatch.orgName ?? '' }}</span>
+                  <span v-if="preview.organizationMatch.suggestedOrganizationId !== null" class="badge match">
+                    既存マッチ<template v-if="preview.organizationMatch.suggestedOrganizationName"> → {{ preview.organizationMatch.suggestedOrganizationName }}</template>
+                  </span>
+                  <span v-else class="badge new">未登録</span>
+                </td>
+                <td>
+                  <label class="radio"><input v-model="oChoice.action" type="radio" value="link" />既存に紐付け</label>
+                  <label class="radio"><input v-model="oChoice.action" type="radio" value="create" />組織マスタに新規登録</label>
+                  <label class="radio"><input v-model="oChoice.action" type="radio" value="skip" />紐付けない</label>
+                </td>
+                <td>
+                  <select v-if="oChoice.action === 'link'" v-model.number="oChoice.organizationId" class="link-select">
+                    <option :value="null">（組織を選択）</option>
+                    <option v-for="o in organizationOptions" :key="o.id" :value="o.id">
+                      {{ orgs.pathOf(o.id) }}
+                    </option>
+                  </select>
+                  <div v-else-if="oChoice.action === 'create'" class="new-emp">
+                    <input v-model="oChoice.newCode" type="text" placeholder="組織コード（空欄で自動採番）" maxlength="32" />
+                    <input v-model="oChoice.newName" type="text" placeholder="組織名" maxlength="200" />
+                  </div>
+                  <span v-else class="muted small">作成エンティティに組織を紐付けない</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </section>
 
         <section class="match-section">

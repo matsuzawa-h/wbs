@@ -63,4 +63,8 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
 }

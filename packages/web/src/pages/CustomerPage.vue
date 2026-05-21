@@ -1,27 +1,42 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useCustomersStore } from '@/stores/customers';
+import { useOrganizationsStore } from '@/stores/organizations';
+import { useEmployeesStore } from '@/stores/employees';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import CustomerEditDialog from '@/components/CustomerEditDialog.vue';
 import type { Customer, CustomerInput } from '@/types';
 
 const customers = useCustomersStore();
+const orgs = useOrganizationsStore();
+const employees = useEmployeesStore();
+const currentUser = useCurrentUserStore();
 
 const showActiveOnly = ref(true);
 const searchText = ref('');
+// 組織で絞込み。'all' / 'none' / 組織ID。
+const orgFilter = ref<'all' | 'none' | number>('all');
 const dialogOpen = ref(false);
 const editing = ref<Customer | null>(null);
 const statusMessage = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const dialogRef = ref<InstanceType<typeof CustomerEditDialog> | null>(null);
 
-onMounted(() => {
-  customers.fetchAll(true);
+onMounted(async () => {
+  await Promise.all([customers.fetchAll(true), orgs.fetchAll(), employees.fetchAll()]);
+  // 初期表示はログイン中の社員の所属組織で絞り込み（あれば）。
+  const myOrg = currentUser.current?.organizationId ?? null;
+  if (orgFilter.value === 'all' && myOrg !== null && orgs.byCodeAsc.some((o) => o.id === myOrg)) {
+    orgFilter.value = myOrg;
+  }
 });
 
 const visible = computed(() => {
   const q = searchText.value.trim().toLowerCase();
   return customers.items.filter((c) => {
     if (showActiveOnly.value && c.isActive !== 1) return false;
+    if (orgFilter.value === 'none' && c.organizationId !== null) return false;
+    if (typeof orgFilter.value === 'number' && c.organizationId !== orgFilter.value) return false;
     if (!q) return true;
     return (
       (c.code ?? '').toLowerCase().includes(q) ||
@@ -99,6 +114,16 @@ function extractMessage(e: unknown): string | null {
           placeholder="検索（コード / 顧客名 / 担当者）"
         />
         <label class="check">
+          <span>組織</span>
+          <select v-model="orgFilter">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
+            </option>
+          </select>
+        </label>
+        <label class="check">
           <input v-model="showActiveOnly" type="checkbox" />
           <span>有効のみ</span>
         </label>
@@ -120,6 +145,7 @@ function extractMessage(e: unknown): string | null {
         <tr>
           <th class="col-code">コード</th>
           <th class="col-name">顧客名</th>
+          <th class="col-org">組織</th>
           <th class="col-contact">担当者</th>
           <th class="col-phone">電話</th>
           <th class="col-email">メール</th>
@@ -131,6 +157,10 @@ function extractMessage(e: unknown): string | null {
         <tr v-for="c in visible" :key="c.id" :class="{ inactive: c.isActive !== 1 }">
           <td class="col-code">{{ c.code ?? '—' }}</td>
           <td class="col-name">{{ c.name }}</td>
+          <td class="col-org">
+            <span v-if="c.organizationId !== null">{{ orgs.pathOf(c.organizationId) }}</span>
+            <span v-else class="muted">—</span>
+          </td>
           <td class="col-contact">{{ c.contactName ?? '' }}</td>
           <td class="col-phone">{{ c.contactPhone ?? '' }}</td>
           <td class="col-email">{{ c.contactEmail ?? '' }}</td>
@@ -162,6 +192,7 @@ function extractMessage(e: unknown): string | null {
 .actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .search { padding: 0.35rem 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; font: inherit; width: 280px; }
 .check { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.88rem; }
+.check select { padding: 0.3rem 0.4rem; border: 1px solid #d1d5db; border-radius: 4px; font: inherit; }
 .btn { border: 1px solid #d1d5db; background: #fff; border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font-size: 0.88rem; }
 .btn:hover { background: #f9fafb; }
 .btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
@@ -174,6 +205,7 @@ function extractMessage(e: unknown): string | null {
 .cust-table tr.inactive td { color: #94a3b8; background: #f9fafb; }
 .col-code { width: 80px; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.83rem; }
 .col-name { font-weight: 600; }
+.col-org { width: 180px; color: #475569; }
 .col-contact { width: 130px; }
 .col-phone { width: 120px; }
 .col-email { width: 180px; }

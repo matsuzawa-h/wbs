@@ -85,9 +85,10 @@ describe('parseManhourCsv', () => {
     row('西本　拓真', 'MNT', '顧客X', '保守', 'AAP002', { 1: '8.00' }),
   ]);
 
-  it('組織コード・担当者順を抽出する', () => {
+  it('組織コード・組織名称・担当者順を抽出する', () => {
     const p = parseManhourCsv(csv, fy);
     expect(p.orgCode).toBe('AA5054');
+    expect(p.orgName).toBe('組織A');
     expect(p.assigneeNames).toEqual(['堀田　和彦', '堤　昇太朗', '西本　拓真']);
   });
 
@@ -137,7 +138,8 @@ describe('parseManhourCsv', () => {
     const zz = p.entries.find((e) => e.workType === 'zz');
     expect(zz).toBeTruthy();
     expect(zz!.projectCode).toBeNull();
-    expect(zz!.projectKey).toBe('zz:堀田　和彦');
+    // zz は件名込みでキー化（休暇/会議/事務処理 を区別するため）
+    expect(zz!.projectKey).toBe('zz:堀田　和彦:休暇');
     // zz も、空区分の「お助けサポート」も projects 同一性に出ない
     expect(p.projects.some((x) => x.projectKey.startsWith('zz:'))).toBe(false);
     expect(

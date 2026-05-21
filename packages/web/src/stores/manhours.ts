@@ -3,6 +3,8 @@ import { ref } from 'vue';
 import { api } from '@/api/client';
 import type {
   AssigneeDetail,
+  BatchDiff,
+  BatchStats,
   CapacitySummary,
   ManhourBatch,
   ManualEntryInput,
@@ -34,11 +36,19 @@ export const useManhoursStore = defineStore('manhours', () => {
     return p;
   }
 
-  async function fetchBatches(fiscalYear?: number): Promise<void> {
+  async function fetchBatches(
+    fiscalYear?: number,
+    organizationId?: number | null,
+  ): Promise<void> {
     error.value = null;
     try {
+      const params: Record<string, unknown> = {};
+      if (fiscalYear !== undefined) params.fiscalYear = fiscalYear;
+      if (organizationId !== undefined) {
+        params.organizationId = organizationId === null ? 'null' : organizationId;
+      }
       const res = await api.get<ManhourBatch[]>('/manhours/batches', {
-        params: fiscalYear !== undefined ? { fiscalYear } : {},
+        params,
       });
       batches.value = res.data;
     } catch (e: any) {
@@ -49,6 +59,8 @@ export const useManhoursStore = defineStore('manhours', () => {
   async function fetchSummary(opts: {
     fiscalYear?: number;
     batchId?: number | null;
+    /** undefined=絞り込み無し / null=未設定 / number=その組織所属の社員のみ */
+    organizationId?: number | null;
   }): Promise<void> {
     loading.value = true;
     error.value = null;
@@ -57,6 +69,9 @@ export const useManhoursStore = defineStore('manhours', () => {
       if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
       if (opts.batchId !== null && opts.batchId !== undefined)
         params.batchId = opts.batchId;
+      if (opts.organizationId !== undefined) {
+        params.organizationId = opts.organizationId === null ? 'null' : opts.organizationId;
+      }
       const res = await api.get<CapacitySummary>('/manhours/summary', {
         params,
       });
@@ -70,7 +85,11 @@ export const useManhoursStore = defineStore('manhours', () => {
 
   async function fetchProjectMatrix(
     projectId: number,
-    opts: { fiscalYear?: number; batchId?: number | null } = {},
+    opts: {
+      fiscalYear?: number;
+      batchId?: number | null;
+      organizationId?: number | null;
+    } = {},
   ): Promise<void> {
     loading.value = true;
     error.value = null;
@@ -79,6 +98,9 @@ export const useManhoursStore = defineStore('manhours', () => {
       if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
       if (opts.batchId !== null && opts.batchId !== undefined)
         params.batchId = opts.batchId;
+      if (opts.organizationId !== undefined) {
+        params.organizationId = opts.organizationId === null ? 'null' : opts.organizationId;
+      }
       const res = await api.get<ProjectMatrix>(
         `/manhours/projects/${projectId}/matrix`,
         { params },
@@ -93,7 +115,11 @@ export const useManhoursStore = defineStore('manhours', () => {
 
   async function fetchAssigneeDetail(
     assigneeId: number,
-    opts: { fiscalYear?: number; batchId?: number | null } = {},
+    opts: {
+      fiscalYear?: number;
+      batchId?: number | null;
+      organizationId?: number | null;
+    } = {},
   ): Promise<void> {
     loading.value = true;
     error.value = null;
@@ -102,6 +128,9 @@ export const useManhoursStore = defineStore('manhours', () => {
       if (opts.fiscalYear !== undefined) params.fiscalYear = opts.fiscalYear;
       if (opts.batchId !== null && opts.batchId !== undefined)
         params.batchId = opts.batchId;
+      if (opts.organizationId !== undefined) {
+        params.organizationId = opts.organizationId === null ? 'null' : opts.organizationId;
+      }
       const res = await api.get<AssigneeDetail>(
         `/manhours/assignees/${assigneeId}/detail`,
         { params },
@@ -136,6 +165,16 @@ export const useManhoursStore = defineStore('manhours', () => {
     batches.value = batches.value.filter((b) => b.id !== id);
   }
 
+  async function fetchBatchStats(id: number): Promise<BatchStats> {
+    const res = await api.get<BatchStats>(`/manhours/batches/${id}/stats`);
+    return res.data;
+  }
+
+  async function fetchBatchDiff(id: number): Promise<BatchDiff> {
+    const res = await api.get<BatchDiff>(`/manhours/batches/${id}/diff-previous`);
+    return res.data;
+  }
+
   return {
     batches,
     summary,
@@ -154,5 +193,7 @@ export const useManhoursStore = defineStore('manhours', () => {
     deleteManualEntry,
     createManualProject,
     deleteBatch,
+    fetchBatchStats,
+    fetchBatchDiff,
   };
 });

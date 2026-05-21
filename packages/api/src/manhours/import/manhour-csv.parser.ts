@@ -77,6 +77,8 @@ export function projectStem(subject: string): string {
 
 export interface ParsedManhourCsv {
   orgCode: string | null;
+  /** CSV B列「組織名称」の初回非空値（例: ＳＳ）ＳＳ統括）ＩＳ部）４シス）。 */
+  orgName: string | null;
   assigneeNames: string[];
   /** 案件行に出た distinct な顧客名(E列)。出現順。zz は対象外。 */
   customerNames: string[];
@@ -87,6 +89,7 @@ export interface ParsedManhourCsv {
 
 const HEADER = {
   orgCode: '組織コード',
+  orgName: '組織名称',
   assignee: '担当者',
   workType: '作業区分',
   customer: '顧客名',
@@ -198,6 +201,7 @@ export function parseManhourCsv(
   const col = (name: string): number => header.indexOf(name);
 
   const cOrg = col(HEADER.orgCode);
+  const cOrgName = col(HEADER.orgName);
   const cAssignee = col(HEADER.assignee);
   const cWorkType = col(HEADER.workType);
   const cCustomer = col(HEADER.customer);
@@ -220,6 +224,7 @@ export function parseManhourCsv(
   }
 
   let orgCode: string | null = null;
+  let orgName: string | null = null;
   const assigneeNames: string[] = [];
   const seenAssignee = new Set<string>();
   const addAssignee = (name: string): void => {
@@ -247,6 +252,10 @@ export function parseManhourCsv(
     if (cOrg >= 0 && orgCode === null) {
       const o = cleanCell(cells[cOrg]);
       if (o) orgCode = o;
+    }
+    if (cOrgName >= 0 && orgName === null) {
+      const o = cleanCell(cells[cOrgName]);
+      if (o) orgName = o;
     }
     const assignee = cleanCell(cells[cAssignee]);
     const workTypeRaw = cleanCell(cells[cWorkType]);
@@ -277,8 +286,11 @@ export function parseManhourCsv(
     // --- 明細 / zz ---
     const isZz = workTypeRaw === 'zz';
     const workType = isZz ? 'zz' : workTypeRaw; // '' / AFT / MNT / SY
+    // zz は同月でも「休暇」「会議」「事務処理」等が複数行に分かれる。件名を
+    // キーに含めないと entryMap で全部マージされて区別がつかなくなるため、
+    // 件名込みでキーを作る。projects 化は元から対象外なので影響なし。
     const projectKey = isZz
-      ? `zz:${assignee}`
+      ? `zz:${assignee}:${subject || '非稼働'}`
       : projectCode
         ? `cd:${projectCode}`
         : `nm:${subject || '(名称未設定)'}`;
@@ -340,6 +352,7 @@ export function parseManhourCsv(
 
   return {
     orgCode,
+    orgName,
     assigneeNames,
     customerNames,
     entries: Array.from(entryMap.values()),

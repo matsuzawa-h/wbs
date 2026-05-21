@@ -51,4 +51,8 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  organizationId?: number | null;
 }

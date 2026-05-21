@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { McpModule as RekogMcpModule, McpTransportType } from '@rekog/mcp-nest';
 import { CustomersModule } from '../customers/customers.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { PersonalTasksModule } from '../personal-tasks/personal-tasks.module';
@@ -13,6 +14,7 @@ import { ManhoursModule } from '../manhours/manhours.module';
 //   詳細は docs/release.html の「セキュリティ方針」セクション参照。
 // import { McpAuthGuard } from './auth/mcp-auth.guard';
 import { CustomersTool } from './tools/customers.tool';
+import { OrganizationsTool } from './tools/organizations.tool';
 import { ProjectsTool } from './tools/projects.tool';
 import { TasksTool } from './tools/tasks.tool';
 import { PersonalTasksTool } from './tools/personal-tasks.tool';
@@ -23,6 +25,7 @@ import { ManhoursTool } from './tools/manhours.tool';
 @Module({
   imports: [
     CustomersModule,
+    OrganizationsModule,
     ProjectsModule,
     TasksModule,
     PersonalTasksModule,
@@ -45,6 +48,7 @@ import { ManhoursTool } from './tools/manhours.tool';
     // TODO(auth): 認証導入時はここに McpAuthGuard を戻す。
     // McpAuthGuard,
     CustomersTool,
+    OrganizationsTool,
     ProjectsTool,
     TasksTool,
     PersonalTasksTool,

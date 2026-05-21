@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useManhoursStore } from '@/stores/manhours';
+import { useOrganizationsStore } from '@/stores/organizations';
+import { useEmployeesStore } from '@/stores/employees';
+import { useCurrentUserStore } from '@/stores/currentUser';
 import ManhourImportDialog from '@/components/ManhourImportDialog.vue';
 import ManualProjectDialog from '@/components/ManualProjectDialog.vue';
 import ProjectDetailDialog from '@/components/ProjectDetailDialog.vue';
 import type { Project, SummaryCell } from '@/types';
 
 const manhours = useManhoursStore();
+const orgs = useOrganizationsStore();
+const employees = useEmployeesStore();
+const currentUser = useCurrentUserStore();
+const router = useRouter();
 
 function currentFiscalYear(): number {
   const now = new Date();
@@ -15,6 +23,8 @@ function currentFiscalYear(): number {
 const fiscalYear = ref<number>(currentFiscalYear());
 const importOpen = ref(false);
 const manualProjectOpen = ref(false);
+// 組織で絞込み（社員ベース）。'all' | 'none' | 組織ID
+const orgFilter = ref<'all' | 'none' | number>('all');
 // 展開中セル `${assigneeId}:${ym}`
 const expanded = ref<string | null>(null);
 
@@ -23,15 +33,56 @@ const fyOptions = computed<number[]>(() => {
   return [b + 1, b, b - 1, b - 2];
 });
 
+function orgIdParam(): number | null | undefined {
+  if (orgFilter.value === 'all') return undefined;
+  if (orgFilter.value === 'none') return null;
+  return orgFilter.value;
+}
+
 async function reload(): Promise<void> {
-  await manhours.fetchBatches(fiscalYear.value);
+  await manhours.fetchBatches(fiscalYear.value, orgIdParam());
   await manhours.fetchSummary({
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
 }
 
-onMounted(reload);
+// 取込直後は新規組織が作られている可能性 + 新バッチを表示したい。
+// 取込組織にフィルタを切替えて、新しいバッチが見える状態にする。
+async function onImportCommitted(): Promise<void> {
+  await orgs.fetchAll(true);
+  // 直前の取込バッチが属する組織を特定して、フィルタを合わせる。
+  await manhours.fetchBatches(fiscalYear.value);
+  const latest = manhours.batches[0];
+  if (latest) {
+    manhours.selectedBatchId = null;
+    const target =
+      latest.organizationId === null ? 'none' : latest.organizationId;
+    if (orgFilter.value !== target) {
+      orgFilter.value = target; // watch が reload を呼ぶ
+      return;
+    }
+  }
+  await reload();
+}
+
+onMounted(async () => {
+  await Promise.all([orgs.fetchAll(), employees.fetchAll()]);
+  // 初期表示の組織選択:
+  //   1. ログイン中の社員に組織が設定されていればそれを既定
+  //   2. それ以外は先頭の組織
+  //   ユーザ操作で「すべて／未設定」へ切替可能
+  if (orgFilter.value === 'all') {
+    const myOrg = currentUser.current?.organizationId ?? null;
+    if (myOrg !== null && orgs.byCodeAsc.some((o) => o.id === myOrg)) {
+      orgFilter.value = myOrg;
+    } else if (orgs.byCodeAsc.length > 0) {
+      orgFilter.value = orgs.byCodeAsc[0].id;
+    }
+  }
+  await reload();
+});
 watch(
   () => [
     fiscalYear.value,
@@ -41,6 +92,12 @@ watch(
   ],
   reload,
 );
+// 組織の切替は「その組織の最新バッチ」に追従させたいので selectedBatchId を
+// クリアしてから reload する（取込履歴も組織別になる）。
+watch(orgFilter, async () => {
+  manhours.selectedBatchId = null;
+  await reload();
+});
 
 function ymLabel(ym: string): string {
   const [, m] = ym.split('-');
@@ -51,13 +108,23 @@ function fmt(n: number): string {
   return n === 0 ? '' : n.toFixed(1);
 }
 
-// 稼働率による色分け（>100% 逼迫 / 85%↑ 高 / それ以下 健全）。
+// 36(残業) = total − base − 休暇 による 4 段階色分け。
+//   ot < 0      → 余裕(青) 標準未達／余力あり
+//   0..30       → 健全(緑)
+//   31..59      → 注意(黄) 36協定 45h 接近
+//   60..        → 警告(赤) 36協定上限接近
+// base が無い／data が無いセルは無色（判定不可）。
+function overtimeOf(cell: SummaryCell | undefined): number | null {
+  if (!cell || cell.base === null) return null;
+  return cell.total - cell.base - cell.vacation;
+}
 function utilClass(cell: SummaryCell | undefined): string {
-  if (!cell || cell.base === null || cell.utilization === null) return '';
-  if (cell.utilization > 1.0) return 'u-over';
-  if (cell.utilization >= 0.85) return 'u-high';
-  if (cell.total > 0) return 'u-ok';
-  return '';
+  const ot = overtimeOf(cell);
+  if (ot === null) return '';
+  if (ot < 0) return 'u-under';
+  if (ot <= 30) return 'u-ok';
+  if (ot <= 59) return 'u-caution';
+  return 'u-warn';
 }
 
 function cellOf(
@@ -118,6 +185,7 @@ async function toggleAssignee(assigneeId: number): Promise<void> {
   await manhours.fetchAssigneeDetail(assigneeId, {
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
 }
 
@@ -141,9 +209,57 @@ async function onEditAssigneeManual(
   await manhours.fetchAssigneeDetail(d.assigneeId, {
     fiscalYear: fiscalYear.value,
     batchId: manhours.selectedBatchId,
+    organizationId: orgIdParam(),
   });
   await reload(); // サマリー側も最新化
 }
+
+// 担当者明細フッター: 月別の「全体の工数 / 標準時間 / 休暇 / 36(残業)」。
+// 36 = 全体の工数 − 標準時間 − 休暇。標準時間は API の capacity（基準時間）。
+interface DetailFooterCol {
+  total: number;
+  capacity: number;
+  vacation: number;
+  overtime: number;
+}
+const detailFooter = computed<{
+  byMonth: Record<string, DetailFooterCol>;
+  grand: DetailFooterCol;
+}>(() => {
+  const d = manhours.assigneeDetail;
+  const empty: DetailFooterCol = {
+    total: 0,
+    capacity: 0,
+    vacation: 0,
+    overtime: 0,
+  };
+  if (!d) return { byMonth: {}, grand: { ...empty } };
+  const byMonth: Record<string, DetailFooterCol> = {};
+  for (const ym of d.months) {
+    byMonth[ym] = { ...empty };
+  }
+  for (const row of d.rows) {
+    const isVacation = row.workType === 'zz' && row.subject === '休暇';
+    for (const ym of d.months) {
+      const h = row.cells[ym] ?? 0;
+      if (h === 0) continue;
+      byMonth[ym].total += h;
+      if (isVacation) byMonth[ym].vacation += h;
+    }
+  }
+  const grand: DetailFooterCol = { ...empty };
+  for (const ym of d.months) {
+    const cap = d.capacity[ym] ?? 0;
+    byMonth[ym].capacity = cap;
+    byMonth[ym].overtime =
+      byMonth[ym].total - byMonth[ym].capacity - byMonth[ym].vacation;
+    grand.total += byMonth[ym].total;
+    grand.capacity += byMonth[ym].capacity;
+    grand.vacation += byMonth[ym].vacation;
+    grand.overtime += byMonth[ym].overtime;
+  }
+  return { byMonth, grand };
+});
 
 const monthTotals = computed<Record<string, { total: number; base: number }>>(
   () => {
@@ -184,6 +300,16 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
             </option>
           </select>
         </label>
+        <label class="fld">
+          <span>組織</span>
+          <select v-model="orgFilter">
+            <option value="all">すべて</option>
+            <option value="none">未設定</option>
+            <option v-for="o in orgs.byCodeAsc" :key="o.id" :value="o.id">
+              {{ orgs.pathOf(o.id) }}
+            </option>
+          </select>
+        </label>
         <div class="seg" role="group" aria-label="表示ソース">
           <button
             class="seg-btn"
@@ -199,12 +325,21 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
           >仮（手入力）</button>
         </div>
         <button class="btn" type="button" @click="manualProjectOpen = true">＋ 仮案件</button>
+        <button class="btn" type="button" @click="router.push({ name: 'manhour-batches' })">取込履歴</button>
         <button class="btn primary" type="button" @click="importOpen = true">CSV 取込</button>
       </div>
     </header>
 
     <p v-if="manhours.error" class="error">{{ manhours.error }}</p>
     <p v-if="manhours.loading" class="muted">読込中…</p>
+
+    <div class="legend" aria-label="セル色の判定基準（36協定/標準時間ベース）">
+      <span class="lg-title">セル色 = 36(残業) = 工数 − 標準時間 − 休暇：</span>
+      <span class="lg-item"><span class="lg-sw u-under"></span>余裕（標準未達）</span>
+      <span class="lg-item"><span class="lg-sw u-ok"></span>健全 (0–30h)</span>
+      <span class="lg-item"><span class="lg-sw u-caution"></span>注意 (31–59h)</span>
+      <span class="lg-item"><span class="lg-sw u-warn"></span>警告 (60h以上)</span>
+    </div>
 
     <div v-if="manhours.summary && manhours.summary.rows.length" class="grid-wrap">
       <table class="mh-grid">
@@ -242,7 +377,10 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                   cellOf(row, ym)
                     ? `工数 ${cellOf(row, ym)!.total.toFixed(1)}h / 基準 ${
                         cellOf(row, ym)!.base ?? '—'
-                      }h` +
+                      }h / 休暇 ${cellOf(row, ym)!.vacation.toFixed(1)}h` +
+                      (overtimeOf(cellOf(row, ym)) !== null
+                        ? ` / 36(残業) ${overtimeOf(cellOf(row, ym))!.toFixed(1)}h`
+                        : '') +
                       (cellOf(row, ym)!.utilization !== null
                         ? ` / 稼働率 ${(cellOf(row, ym)!.utilization! * 100).toFixed(0)}%`
                         : '')
@@ -346,7 +484,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           <td :title="d.projectCode || ''">{{ d.projectCode || '—' }}</td>
                           <td :title="d.subject">{{ d.subject }}</td>
                           <td>
-                            {{ d.workType === 'zz' ? '非稼働' : (d.workType || '—') }}
+                            {{ d.workType === 'zz' ? d.subject : (d.workType || '—') }}
                             <span class="tag" :class="d.source">{{ d.source === 'manual' ? '仮' : '確定' }}</span>
                           </td>
                           <td
@@ -374,6 +512,46 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
                           </td>
                         </tr>
                       </tbody>
+                      <tfoot>
+                        <tr class="ft-row ft-total">
+                          <td colspan="4" class="ft-label">全体の工数</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.total ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.total.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-base">
+                          <td colspan="4" class="ft-label">標準時間</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.capacity ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.capacity.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-vac">
+                          <td colspan="4" class="ft-label">休暇</td>
+                          <td v-for="ym in manhours.summary.months" :key="ym" class="num">
+                            {{ (detailFooter.byMonth[ym]?.vacation ?? 0).toFixed(1) }}
+                          </td>
+                          <td class="num total">{{ detailFooter.grand.vacation.toFixed(1) }}</td>
+                        </tr>
+                        <tr class="ft-row ft-ot">
+                          <td colspan="4" class="ft-label">36(残業)</td>
+                          <td
+                            v-for="ym in manhours.summary.months"
+                            :key="ym"
+                            class="num"
+                            :class="{ negative: (detailFooter.byMonth[ym]?.overtime ?? 0) < 0 }"
+                          >
+                            {{ (detailFooter.byMonth[ym]?.overtime ?? 0).toFixed(1) }}
+                          </td>
+                          <td
+                            class="num total"
+                            :class="{ negative: detailFooter.grand.overtime < 0 }"
+                          >
+                            {{ detailFooter.grand.overtime.toFixed(1) }}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                 </div>
               </td>
@@ -396,7 +574,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
       表示できる稼働データがありません。CSV 取込、または仮案件＋手入力で登録してください。
     </p>
 
-    <ManhourImportDialog :open="importOpen" @close="importOpen = false" @committed="reload" />
+    <ManhourImportDialog :open="importOpen" @close="importOpen = false" @committed="onImportCommitted" />
     <ManualProjectDialog
       :open="manualProjectOpen"
       @close="manualProjectOpen = false"
@@ -407,7 +585,7 @@ const monthTotals = computed<Record<string, { total: number; base: number }>>(
       :project-id="projectDialogId"
       :fiscal-year="fiscalYear"
       @close="projectDialogOpen = false"
-      @saved="async () => { if (openAssignee !== null) { await manhours.fetchAssigneeDetail(openAssignee, { fiscalYear, batchId: manhours.selectedBatchId }); } await reload(); }"
+      @saved="async () => { if (openAssignee !== null) { await manhours.fetchAssigneeDetail(openAssignee, { fiscalYear, batchId: manhours.selectedBatchId, organizationId: orgIdParam() }); } await reload(); }"
     />
   </div>
 </template>
@@ -467,9 +645,29 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .name { font-weight: 600; }
 .cell { cursor: pointer; }
 .cell .u { display: block; font-size: 0.68rem; color: var(--c-text-faint); }
+/* 36(残業) ベースの 4 段階色分け。
+   - u-under (余裕)    : 標準未達。寒色で「余力あり・配置検討材料」を示す。
+   - u-ok    (健全)    : 残業 0-30h。緑系で問題なし。
+   - u-caution(注意)   : 残業 31-59h。36協定 45h 接近の黄色警告。
+   - u-warn  (警告)    : 残業 60h 以上。赤＋濃赤文字＋太字で強調。 */
+.cell.u-under { background: #dbeafe; }
 .cell.u-ok { background: var(--c-ok-bg); }
-.cell.u-high { background: var(--c-late-bg); }
-.cell.u-over { background: var(--c-danger-bg); color: var(--c-danger-fg); font-weight: 700; }
+.cell.u-caution { background: var(--c-late-bg); }
+.cell.u-warn { background: var(--c-danger-bg); color: var(--c-danger-fg); font-weight: 700; }
+.legend {
+  display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap;
+  font-size: 0.8rem; color: var(--c-text-muted); padding: 0.2rem 0.1rem;
+}
+.lg-title { color: var(--c-text); font-weight: 600; }
+.lg-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.lg-sw {
+  display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+.lg-sw.u-under { background: #dbeafe; }
+.lg-sw.u-ok { background: var(--c-ok-bg); }
+.lg-sw.u-caution { background: var(--c-late-bg); }
+.lg-sw.u-warn { background: var(--c-danger-bg); }
 .cell.total { font-weight: 700; background: var(--c-surface-2); }
 .cell.foot { font-weight: 600; background: var(--c-surface-3); }
 .detail-row td { background: var(--c-surface-2); text-align: left; }
@@ -487,7 +685,18 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 }
 .detail-grid .num { text-align: right; }
 .detail-grid input.edit {
-  width: 5rem; text-align: right; padding: 0.1rem 0.3rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  padding: 0.1rem 0.3rem;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.detail-grid input.edit::-webkit-outer-spin-button,
+.detail-grid input.edit::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .name.clickable { cursor: pointer; }
 .name.clickable:hover { color: var(--c-accent-strong); text-decoration: underline; }
@@ -506,6 +715,17 @@ thead .sticky-col { z-index: 3; background: var(--c-surface-2); }
 .detail-grid tr.is-manual input.edit { background: var(--c-surface); }
 .detail-grid tr.row-link { cursor: pointer; }
 .detail-grid tr.row-link:hover td { background: var(--c-accent-weak); }
+.detail-grid tfoot .ft-row td {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--c-border-strong);
+  background: var(--c-surface-2);
+}
+.detail-grid tfoot .ft-label { text-align: right; color: var(--c-text-muted); }
+.detail-grid tfoot .ft-total td { background: var(--c-surface-3); }
+.detail-grid tfoot .ft-ot td.num { color: var(--c-accent-strong); }
+.detail-grid tfoot .ft-ot td.negative { color: var(--c-text-muted); }
+.detail-grid tfoot td.total { background: var(--c-surface-3); }
 .tag {
   display: inline-block; font-size: 0.7rem; padding: 0.02rem 0.35rem;
   border-radius: 3px; margin-right: 0.25rem;

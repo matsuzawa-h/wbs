@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import type { Employee, EmployeeInput } from '@/types';
+import { useOrganizationsStore } from '@/stores/organizations';
 
 const props = defineProps<{
   open: boolean;
   employee: Employee | null;
 }>();
+
+const orgStore = useOrganizationsStore();
+onMounted(() => orgStore.fetchAll());
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -36,6 +40,7 @@ watch(
           isActive: props.employee.isActive === 1,
           note: props.employee.note ?? '',
           sortOrder: props.employee.sortOrder,
+          organizationId: props.employee.organizationId,
         }
       : emptyForm();
   },
@@ -56,6 +61,7 @@ function emptyForm(): EmployeeInput {
     isActive: true,
     note: '',
     sortOrder: 0,
+    organizationId: null,
   };
 }
 
@@ -127,6 +133,15 @@ defineExpose({ reportError });
           <label>
             <span>並び順</span>
             <input v-model.number="form.sortOrder" type="number" step="1" />
+          </label>
+          <label>
+            <span>組織</span>
+            <select v-model="form.organizationId">
+              <option :value="null">（未設定）</option>
+              <option v-for="o in orgStore.byCodeAsc" :key="o.id" :value="o.id">
+                {{ orgStore.pathOf(o.id) }}
+              </option>
+            </select>
           </label>
         </div>
         <div class="check-row">
@@ -219,6 +234,7 @@ defineExpose({ reportError });
   margin-left: 0.15rem;
 }
 .grid input,
+.grid select,
 .full textarea {
   padding: 0.35rem 0.5rem;
   border: 1px solid #d1d5db;

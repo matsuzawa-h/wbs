@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { existsSync } from 'fs';
 import { join } from 'path';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
@@ -30,6 +32,25 @@ async function bootstrap(): Promise<void> {
 
   const publicDir = join(process.cwd(), 'public');
   app.useStaticAssets(publicDir, { fallthrough: true });
+
+  // SPA history-mode フォールバック: Vue Router の /employees, /organizations,
+  // /manhours 等を直接開いた／ブラウザでリロードしたときに index.html を返す。
+  // 静的アセット（拡張子有り）には介入しない。/api, /mcp も対象外。
+  const indexHtml = join(publicDir, 'index.html');
+  if (existsSync(indexHtml)) {
+    app.use((req: Request, res: Response, next: NextFunction): void => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+      const p = req.path;
+      if (p.startsWith('/api') || p === '/mcp' || p.startsWith('/mcp/')) {
+        return next();
+      }
+      // 拡張子付きパス（例 /assets/foo.js）は静的の miss→404 をそのまま返す。
+      if (/\.[^/]+$/.test(p)) return next();
+      res.sendFile(indexHtml, (err) => {
+        if (err) next();
+      });
+    });
+  }
 
   const port = Number(process.env.PORT ?? 5000);
   const host = process.env.HOST ?? '127.0.0.1';

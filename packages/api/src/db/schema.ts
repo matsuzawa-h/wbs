@@ -7,7 +7,41 @@ import {
   index,
   primaryKey,
   uniqueIndex,
+  foreignKey,
 } from 'drizzle-orm/sqlite-core';
+
+// 組織マスタ（部門/部/課 等）。任意深さの自己参照階層。プロジェクト・
+// 担当者・顧客はそれぞれ単一の組織に属し（nullable）、稼働管理表 CSV
+// 取込時は組織コードから自動解決して取込元組織に新規エンティティを紐付ける。
+export const organizations = sqliteTable(
+  'organizations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code'),
+    name: text('name').notNull(),
+    // 親組織（自己参照）。任意深さ。親削除時は子は NULL（=ルート化）。
+    // 自己参照はテーブル customizer の foreignKey で定義（TS の循環参照回避）。
+    parentId: integer('parent_id'),
+    isActive: integer('is_active').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    note: text('note'),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    sortIdx: index('idx_organizations_sort').on(table.sortOrder),
+    parentIdx: index('idx_organizations_parent').on(table.parentId),
+    parentFk: foreignKey({
+      columns: [table.parentId],
+      foreignColumns: [table.id],
+      name: 'fk_organizations_parent',
+    }).onDelete('set null'),
+  }),
+);
+
+export type Organization = typeof organizations.$inferSelect;
+export type NewOrganization = typeof organizations.$inferInsert;
 
 export const customers = sqliteTable(
   'customers',
@@ -22,12 +56,16 @@ export const customers = sqliteTable(
     isActive: integer('is_active').notNull().default(1),
     note: text('note'),
     sortOrder: integer('sort_order').notNull().default(0),
+    organizationId: integer('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
   },
   (table) => ({
     sortIdx: index('idx_customers_sort').on(table.sortOrder),
+    organizationIdx: index('idx_customers_organization').on(table.organizationId),
   }),
 );
 
@@ -47,6 +85,14 @@ export const projects = sqliteTable(
     // existing project, or hand-entered for capacity planning). The WBS side
     // treats it like any project; only the 稼働見通し screen separates 確定/仮.
     isProvisional: integer('is_provisional').notNull().default(0),
+    organizationId: integer('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
+    // プロジェクト概要画面用 (0015 で追加)。フリーテキスト（簡易 markdown 想定）。
+    description: text('description'),
+    // 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled'。
+    // バリデーションはアプリ層で。既定は 'active'。
+    status: text('status').notNull().default('active'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),
@@ -54,6 +100,7 @@ export const projects = sqliteTable(
   (table) => ({
     customerIdx: index('idx_projects_customer').on(table.customerId),
     codeIdx: index('idx_projects_code').on(table.projectCode),
+    organizationIdx: index('idx_projects_organization').on(table.organizationId),
   }),
 );
 
@@ -75,10 +122,14 @@ export const assignees = sqliteTable(
     isActive: integer('is_active').notNull().default(1),
     note: text('note'),
     sortOrder: integer('sort_order').notNull().default(0),
+    organizationId: integer('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => ({
     codeIdx: index('idx_assignees_code').on(table.code),
     sortIdx: index('idx_assignees_sort').on(table.sortOrder),
+    organizationIdx: index('idx_assignees_organization').on(table.organizationId),
   }),
 );
 
@@ -248,6 +299,11 @@ export const manhourImportBatches = sqliteTable(
     fileName: text('file_name').notNull(),
     fiscalYear: integer('fiscal_year').notNull(),
     orgCode: text('org_code'),
+    // 取込元組織。null=「組織なしで取込」「組織削除後」（0014 で追加）。
+    // 履歴・最新バッチの解決を組織別に行うために保持する。
+    organizationId: integer('organization_id').references(() => organizations.id, {
+      onDelete: 'set null',
+    }),
     rowCount: integer('row_count').notNull().default(0),
     importedAt: integer('imported_at')
       .notNull()
@@ -255,6 +311,7 @@ export const manhourImportBatches = sqliteTable(
   },
   (table) => ({
     fyIdx: index('idx_mh_batches_fy').on(table.fiscalYear),
+    orgIdx: index('idx_mh_batches_organization').on(table.organizationId),
   }),
 );
 
@@ -283,6 +340,9 @@ export const manhourEntries = sqliteTable(
     // CSV「顧客名」(E列) の生値。MNT 等の非プロジェクト行でも顧客名を
     // 担当者別明細に出すため、顧客マスタに依存せず明細に保持する。
     customerLabel: text('customer_label'),
+    // CSV「プロジェクトCD」の生値。MNT 等で projects 化しない行でも担当者別
+    // 明細に CD を出すため、projects マスタに依存せず明細に保持する（0013）。
+    projectCodeLabel: text('project_code_label'),
     createdAt: integer('created_at')
       .notNull()
       .default(sql`(unixepoch())`),

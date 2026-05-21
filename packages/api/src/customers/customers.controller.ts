@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -19,8 +20,8 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get()
-  list() {
-    return this.customers.list();
+  list(@Query('organizationId') organizationId?: string) {
+    return this.customers.list(parseOrgQuery(organizationId));
   }
 
   @Get(':id')
@@ -43,4 +44,12 @@ export class CustomersController {
   remove(@Param('id', ParseIntPipe) id: number): void {
     this.customers.remove(id);
   }
+}
+
+// 'null'/'' → null (=未設定で絞込) / 数値 → number / undefined/その他 → undefined (=絞込なし)
+export function parseOrgQuery(v: string | undefined): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === '' || v === 'null') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }

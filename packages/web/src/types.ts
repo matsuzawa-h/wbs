@@ -1,3 +1,25 @@
+// 組織マスタ（自己参照階層）。`parentId` で任意深さの親子。表示用の組織名は
+// organizations ストアの byId() から解決する（join せず単一ソースから引く）。
+export interface Organization {
+  id: number;
+  code: string | null;
+  name: string;
+  parentId: number | null;
+  isActive: number;
+  sortOrder: number;
+  note: string | null;
+  createdAt: number;
+}
+
+export interface OrganizationInput {
+  code?: string | null;
+  name: string;
+  parentId?: number | null;
+  isActive?: boolean;
+  sortOrder?: number;
+  note?: string | null;
+}
+
 export interface Customer {
   id: number;
   code: string | null;
@@ -9,6 +31,7 @@ export interface Customer {
   isActive: number;
   note: string | null;
   sortOrder: number;
+  organizationId: number | null;
   createdAt: number;
 }
 
@@ -22,17 +45,58 @@ export interface CustomerInput {
   isActive?: boolean;
   note?: string | null;
   sortOrder?: number;
+  organizationId?: number | null;
 }
+
+export type ProjectStatus =
+  | 'planning'
+  | 'active'
+  | 'on_hold'
+  | 'completed'
+  | 'cancelled';
 
 export interface Project {
   id: number;
   customerId: number | null;
   customerName: string | null;
   customerIsActive: number | null;
+  organizationId: number | null;
   name: string;
   projectCode: string | null;
   isProvisional: number;
+  description: string | null;
+  status: ProjectStatus;
   createdAt: number;
+}
+
+export interface UpcomingTask {
+  id: number;
+  name: string;
+  endDate: string | null;
+  progress: number;
+  status: string;
+  assigneeName: string | null;
+}
+
+export interface ProjectDashboard {
+  projectId: number;
+  taskCounts: {
+    total: number;
+    completed: number;
+    inProgress: number;
+    late: number;
+    notStarted: number;
+  };
+  averageProgress: number;
+  hours: {
+    planned: number;
+    actual: number;
+    remaining: number;
+  };
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  memberCount: number;
+  upcomingTasks: UpcomingTask[];
 }
 
 export interface Employee {
@@ -49,6 +113,7 @@ export interface Employee {
   isActive: number;
   note: string | null;
   sortOrder: number;
+  organizationId: number | null;
 }
 
 // Legacy alias retained while call sites still reference "Assignee".
@@ -67,6 +132,7 @@ export interface EmployeeInput {
   isActive?: boolean;
   note?: string | null;
   sortOrder?: number;
+  organizationId?: number | null;
 }
 
 export interface Holiday {
@@ -129,8 +195,60 @@ export interface ManhourBatch {
   fileName: string;
   fiscalYear: number;
   orgCode: string | null;
+  organizationId: number | null;
   rowCount: number;
   importedAt: number;
+}
+
+export interface BatchStats {
+  batchId: number;
+  fileName: string;
+  fiscalYear: number;
+  orgCode: string | null;
+  organizationId: number | null;
+  organizationName: string | null;
+  importedAt: number;
+  rowCount: number;
+  entryCount: number;
+  capacityCount: number;
+  assigneeCount: number;
+  projectCount: number;
+  totalHours: number;
+  monthlyTotals: Record<string, number>;
+}
+
+export interface BatchDiff {
+  currentBatchId: number;
+  previousBatchId: number | null;
+  /** バッチの年度に基づく FY 12 ヶ月（cellDiffs の月列ヘッダ用） */
+  months: string[];
+  delta: {
+    entryCount: number;
+    assigneeCount: number;
+    projectCount: number;
+    totalHours: number;
+    monthlyTotals: Record<string, number>;
+  };
+  addedAssignees: { id: number; name: string }[];
+  removedAssignees: { id: number; name: string }[];
+  addedProjects: { id: number; name: string }[];
+  removedProjects: { id: number; name: string }[];
+  cellDiffs: BatchCellDiff[];
+}
+
+export interface BatchCellDiff {
+  assigneeId: number;
+  assigneeName: string;
+  projectId: number | null;
+  projectName: string | null;
+  projectCode: string | null;
+  workType: string;
+  subject: string;
+  hoursPrevious: number;
+  hoursCurrent: number;
+  delta: number;
+  /** 月別差分（0 でない月のみ。current - previous） */
+  monthlyDelta: Record<string, number>;
 }
 
 export interface SummaryProjectBreak {
@@ -146,6 +264,8 @@ export interface SummaryCell {
   imported: number;
   manual: number;
   total: number;
+  /** 月内の zz 休暇合計。36(残業) = total − base − vacation で算出。 */
+  vacation: number;
   base: number | null;
   utilization: number | null;
   byProject: SummaryProjectBreak[];
@@ -208,6 +328,8 @@ export interface AssigneeDetail {
   batchId: number | null;
   months: string[];
   rows: AssigneeDetailRow[];
+  /** 月別の基準時間（標準時間）。36(残業) = 全体の工数 − 標準時間 − 休暇。 */
+  capacity: Record<string, number>;
 }
 
 export interface ManualEntryInput {

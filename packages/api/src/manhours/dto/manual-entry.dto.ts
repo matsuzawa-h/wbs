@@ -5,7 +5,6 @@ import {
   IsString,
   Matches,
   MaxLength,
-  Min,
 } from 'class-validator';
 
 /**
@@ -29,7 +28,10 @@ export class ManualEntryDto {
   @Matches(/^\d{4}-\d{2}$/)
   yearMonth!: string;
 
+  // 取込(imported)を上書きする「manual overlay」を表現するため負の値も許可。
+  // 表示上の total（imported + manual）を編集 popup で下げるユースケース：
+  //   manual = newTotal - imported （負になり得る）。
+  // hours === 0 は manual の明示削除（imported のみに戻す）。
   @IsNumber()
-  @Min(0)
   hours!: number;
 }

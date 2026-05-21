@@ -13,6 +13,7 @@ import {
 import { ManualEntryDto } from './dto/manual-entry.dto';
 import { ManualProjectDto } from './dto/manual-project.dto';
 import { ManhoursService, SourceFilter } from './manhours.service';
+import { parseOrgQuery } from '../customers/customers.controller';
 
 function toInt(v: string | undefined): number | undefined {
   if (v === undefined || v === '') return undefined;
@@ -33,8 +34,14 @@ export class ManhoursController {
   constructor(private readonly manhours: ManhoursService) {}
 
   @Get('batches')
-  listBatches(@Query('fiscalYear') fiscalYear?: string) {
-    return this.manhours.listBatches(toInt(fiscalYear));
+  listBatches(
+    @Query('fiscalYear') fiscalYear?: string,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return this.manhours.listBatches(
+      toInt(fiscalYear),
+      parseOrgQuery(organizationId),
+    );
   }
 
   @Get('summary')
@@ -43,11 +50,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getSummary({
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 
@@ -58,11 +67,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getProjectMatrix(projectId, {
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 
@@ -73,11 +84,13 @@ export class ManhoursController {
     @Query('batchId') batchId?: string,
     @Query('imported') imported?: string,
     @Query('manual') manual?: string,
+    @Query('organizationId') organizationId?: string,
   ) {
     return this.manhours.getAssigneeDetail(assigneeId, {
       fiscalYear: toInt(fiscalYear),
       batchId: toInt(batchId),
       filter: sourceFilter(imported, manual),
+      organizationId: parseOrgQuery(organizationId),
     });
   }
 
@@ -101,5 +114,15 @@ export class ManhoursController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteBatch(@Param('id', ParseIntPipe) id: number): void {
     this.manhours.deleteBatch(id);
+  }
+
+  @Get('batches/:id/stats')
+  batchStats(@Param('id', ParseIntPipe) id: number) {
+    return this.manhours.getBatchStats(id);
+  }
+
+  @Get('batches/:id/diff-previous')
+  batchDiff(@Param('id', ParseIntPipe) id: number) {
+    return this.manhours.getBatchDiffWithPrevious(id);
   }
 }

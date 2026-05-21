@@ -28,7 +28,7 @@ export class ManhoursTool {
     parameters: BatchListQuerySchema,
   })
   listBatches(input: z.infer<typeof BatchListQuerySchema>) {
-    return asJson(this.manhours.listBatches(input.fiscalYear));
+    return asJson(this.manhours.listBatches(input.fiscalYear, input.organizationId));
   }
 
   @Tool({
@@ -46,6 +46,7 @@ export class ManhoursTool {
           imported: input.imported ?? true,
           manual: input.manual ?? true,
         },
+        organizationId: input.organizationId,
       }),
     );
   }
@@ -63,6 +64,7 @@ export class ManhoursTool {
         fiscalYear: q.fiscalYear,
         batchId: q.batchId,
         filter: { imported: q.imported ?? true, manual: q.manual ?? true },
+        organizationId: q.organizationId,
       }),
     );
   }
