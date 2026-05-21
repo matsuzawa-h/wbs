@@ -61,23 +61,43 @@
 </nav>
 
 <h2 class="chapter" id="d1">1. エンティティ関連（ER 概要）</h2>
-<pre class="diagram">organizations ↺ self (parent_id 自己参照、ON DELETE SET NULL)
-        ├──&lt; customers (organization_id, SET NULL)
-        ├──&lt; projects  (organization_id, SET NULL)
-        └──&lt; assignees (organization_id, SET NULL)
+<p>クラスタ別に整理した ER 図（左上 = 組織起点 / 中央 = WBS コア / 右下 = 稼働見通し）。
+矢印は <code>1 ──&gt; N</code> の参照方向、ラベルは FK 削除時の挙動。
+</p>
+<pre class="diagram">┌──────────────────────────┐
+│       organizations       │  ↺ parent_id 自己参照（任意深さ、SET NULL）
+│  id PK / code / name      │  code は部分 UNIQUE (NOT NULL 行のみ)
+│  parent_id / is_active …  │
+└─────────────┬─────────────┘
+              │  organization_id (SET NULL, 任意)
+   ┌──────────┼──────────┬──────────────────────────────┐
+   ↓          ↓          ↓                              ↓
+[customers] [projects] [assignees]            [manhour_import_batches]
+                                                   (0014 で追加)
 
-customers ──&lt; projects ──&lt; wbs_tasks &gt;── assignees
-                 │   │            (assignee_id, ON DELETE SET NULL)
-                 │   └─&lt; (parent_id 自己参照: 大1 / 中2 / 項目3)
-                 │
-                 ├─&lt; project_members &gt;── assignees   (PK: project_id+employee_id)
-                 └─&lt; personal_tasks   &gt;── assignees   (employee 必須 / project 任意)
+WBS コア
+─────────────────────────────────────────────────────────────────
+[customers] ──1:N (SET NULL)──&gt; [projects] ──1:N (CASCADE)──&gt; [wbs_tasks]
+                                    │                              │
+                                    │                              ↺ parent_id (大1/中2/項目3, 論理参照)
+                                    │                              │
+                                    │                              └── assignee_id ──&gt; [assignees] (SET NULL)
+                                    │
+                                    ├──1:N (CASCADE)──&gt; [project_codes]   (code UNIQUE; 1プロジェクト×複数CD)
+                                    ├──N:M (CASCADE)──&gt; [project_members] &lt;── [assignees]  (PK: project+employee)
+                                    └──1:N            ──&gt; [personal_tasks]  &lt;── [assignees]
+                                       (project SET NULL,       (employee CASCADE)
+                                        WBS と非干渉)
 
-manhour_import_batches ──&lt; manhour_entries    &gt;── assignees / projects
-                        └─&lt; manhour_capacities &gt;── assignees
-        (取込スナップショット。batch_id NULL = 手入力。月次工数/月基準時間)
+稼働見通し（月次工数）
+─────────────────────────────────────────────────────────────────
+[manhour_import_batches] ──1:N (CASCADE)──&gt; [manhour_entries]    &gt;── [assignees] (CASCADE)
+        (取込スナップショット)                                     &gt;── [projects]  (CASCADE; zz/非稼働は NULL)
+        │                                                          (batch_id NULL = 手入力(仮))
+        └──1:N (CASCADE)─────────────────&gt; [manhour_capacities] &gt;── [assignees] (CASCADE)
+                                                                   (担当者×年月の月基準時間)
 
-holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
+[holidays] : 独立（date UNIQUE。営業日計算の入力）</pre>
 <table>
   <thead><tr><th>関係</th><th>カーディナリティ</th><th>削除時の挙動（FK）</th></tr></thead>
   <tbody>
@@ -125,6 +145,8 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>project_code</td><td>TEXT</td><td>代表プロジェクトCD（表示用。実際の突合は project_codes が正本。idx_projects_code）</td></tr>
     <tr><td>is_provisional</td><td>INTEGER / 0</td><td>NOT NULL 仮プロジェクトフラグ（1=仮。稼働見通しで確定/仮を区別）</td></tr>
     <tr><td><span class="fk">organization_id</span></td><td>INTEGER</td><td>FK organizations.id（任意）/ ON DELETE SET NULL（idx_projects_organization。0012 で追加）</td></tr>
+    <tr><td>description</td><td>TEXT</td><td>プロジェクト概要画面のフリーテキスト（簡易 markdown 想定。0015 で追加）</td></tr>
+    <tr><td>status</td><td>TEXT / 'active'</td><td>NOT NULL ステータス（<code>planning</code> / <code>active</code> / <code>on_hold</code> / <code>completed</code> / <code>cancelled</code>。0015 で追加。バリデーションはアプリ層）</td></tr>
     <tr><td>created_at</td><td>INTEGER / unixepoch()</td><td>NOT NULL</td></tr>
   </tbody>
 </table>
@@ -299,10 +321,11 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
     <tr><td>0012</td><td>add_organizations</td><td>organizations 追加（自己参照階層）＋ customers / projects / assignees に organization_id 追加（SET NULL）</td></tr>
     <tr><td>0013</td><td>add_manhour_entry_project_code_label</td><td>manhour_entries.project_code_label 追加（CSV プロジェクトCD を明細に保持。MNT 等で projects 化しない行も CD 表示）</td></tr>
     <tr><td>0014</td><td>add_manhour_batch_organization</td><td>manhour_import_batches.organization_id 追加（FK organizations.id, SET NULL）＋ 既存バッチを org_code から backfill。「最新バッチ・履歴」を組織別に解決</td></tr>
+    <tr><td>0015</td><td>add_project_overview_fields</td><td>projects.description / projects.status を追加（既定 'active'）。プロジェクト概要画面（KPI ダッシュボード／状態切替）の保存先</td></tr>
   </tbody>
 </table>
 <div class="note"><strong>📌 本リリースの必須適用</strong>　0006 / 0007 が未適用だと「備考」「個人タスク」「担当別予定カレンダー（個人）」が、0008 が未適用だと「稼働見通し（月次工数）」が動作しません。<br>
-<strong>0012 / 0013 / 0014</strong>（組織機能・MNT 等の CD 保持・バッチの組織別最新解決）は<strong>本リリースで初回必須</strong>。未適用だと組織関連のUIが <code>500</code> エラーとなり、稼働見通しの「最新バッチ」が組織を跨いでしまいます。</div>
+<strong>0012 / 0013 / 0014 / 0015</strong>（組織機能・MNT 等の CD 保持・バッチの組織別最新解決・プロジェクト概要画面の説明/ステータス）は<strong>本リリースで初回必須</strong>。未適用だと組織関連／プロジェクト概要画面の UI が <code>500</code> エラーとなり、稼働見通しの「最新バッチ」が組織を跨いでしまいます。</div>
 
 <h2 class="chapter" id="d4">4. CRUD 図（機能 × テーブル）</h2>
 <p>
@@ -310,57 +333,121 @@ holidays : 独立（営業日計算の入力。日付ユニーク）</pre>
 <span class="crudR">R</span>ead / <span class="crudU">U</span>pdate /
 <span class="crudD">D</span>elete するか。<strong>MCP ツールは同一サービス層</strong>を呼ぶため CRUD は対応する機能行と同じです。
 括弧は FK や連動による<strong>副作用</strong>。
+表が広いため <strong>4 つのクラスタ</strong>に分けて掲載します。
 </p>
+
+<h3 class="section"><span class="num">4.1</span>マスタ系</h3>
 <table class="crud">
   <thead><tr>
     <th class="lbl">機能 / エンドポイント</th>
-    <th>customers</th><th>projects</th><th>project_<br>members</th><th>assignees<br>(社員)</th><th>wbs_tasks</th><th>holidays</th><th>personal_<br>tasks</th>
+    <th>orgs</th><th>customers</th><th>assignees<br>(社員)</th><th>holidays</th>
   </tr></thead>
   <tbody>
-    <tr><td class="lbl">顧客マスタ <code>/api/customers</code></td>
+    <tr><td class="lbl">組織マスタ <code>/api/organizations</code></td>
       <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
-      <td>(<span class="crudU">U</span>)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td class="lbl">プロジェクト <code>/api/projects</code></td>
+      <td>(<span class="crudU">U</span>)</td><td>(<span class="crudU">U</span>)</td><td>—</td></tr>
+    <tr><td class="lbl">顧客マスタ <code>/api/customers</code></td>
       <td><span class="crudR">R</span></td>
       <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
-      <td>(<span class="crudD">D</span>)</td><td>—</td><td>(<span class="crudD">D</span>)</td><td>—</td><td>(<span class="crudU">U</span>)</td></tr>
-    <tr><td class="lbl">表示メンバー <code>/projects/:id/members</code></td>
-      <td>—</td><td><span class="crudR">R</span></td>
-      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudD">D</span></td>
-      <td><span class="crudR">R</span></td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td class="lbl">WBS／ガント <code>/api/tasks*</code>, <code>/projects/:id/tasks</code></td>
-      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
-      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
-      <td><span class="crudR">R</span></td><td>—</td></tr>
-    <tr><td class="lbl">担当別予定（割当取得）<code>/employees/:id/tasks</code></td>
-      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
-      <td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span>※</td></tr>
+      <td>—</td><td>—</td></tr>
     <tr><td class="lbl">社員マスタ <code>/api/employees</code></td>
-      <td>—</td><td>—</td><td>(<span class="crudD">D</span>)</td>
+      <td><span class="crudR">R</span></td><td>—</td>
       <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
-      <td>(<span class="crudU">U</span>)</td><td>—</td><td>(<span class="crudD">D</span>)</td></tr>
-    <tr><td class="lbl">個人タスク <code>/personal-tasks*</code></td>
-      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td><td>—</td><td>—</td>
-      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td></tr>
+      <td>—</td></tr>
     <tr><td class="lbl">休日設定 <code>/api/holidays</code>(+bulk)</td>
-      <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+      <td>—</td><td>—</td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td></tr>
+    <tr><td class="lbl">ログイン（社員ピッカー）<code>/login</code></td>
+      <td>(<span class="crudR">R</span>)</td><td>—</td>
+      <td><span class="crudR">R</span></td><td>—</td></tr>
+  </tbody>
+</table>
+<div class="note">組織削除時：<code>customers</code> / <code>projects</code> / <code>assignees</code> / <code>manhour_import_batches</code> の <code>organization_id</code> を SET NULL（副作用 U）。ログインは無認証社員選択（社員リストの R のみ、書込みなし）。</div>
+
+<h3 class="section"><span class="num">4.2</span>プロジェクト / WBS / 個人タスク</h3>
+<table class="crud">
+  <thead><tr>
+    <th class="lbl">機能 / エンドポイント</th>
+    <th>projects</th><th>project_<br>members</th><th>wbs_tasks</th><th>personal_<br>tasks</th><th>project_<br>codes</th>
+  </tr></thead>
+  <tbody>
+    <tr><td class="lbl">プロジェクト一覧／概要 <code>/api/projects</code>, <code>/:id/overview</code></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td>(<span class="crudD">D</span>)</td><td>(<span class="crudD">D</span>)</td>
+      <td>(<span class="crudU">U</span>)</td><td>(<span class="crudD">D</span>)</td></tr>
+    <tr><td class="lbl">表示メンバー <code>/projects/:id/members</code></td>
+      <td><span class="crudR">R</span></td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudD">D</span></td>
+      <td>—</td><td>—</td><td>—</td></tr>
+    <tr><td class="lbl">WBS／ガント <code>/api/tasks*</code>, <code>/projects/:id/tasks</code></td>
+      <td><span class="crudR">R</span></td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td>—</td><td>—</td></tr>
+    <tr><td class="lbl">個人タスク <code>/personal-tasks*</code></td>
+      <td><span class="crudR">R</span></td><td>—</td><td>—</td>
       <td><span class="crudC">C</span><span class="crudR">R</span><span class="crudU">U</span><span class="crudD">D</span></td><td>—</td></tr>
-    <tr><td class="lbl">Excel 出力 <code>/projects/:id/export.xls</code></td>
-      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td><span class="crudR">R</span></td>
+    <tr><td class="lbl">担当別予定（割当取得）<code>/employees/:id/tasks</code></td>
+      <td><span class="crudR">R</span></td><td>—</td>
       <td><span class="crudR">R</span></td><td><span class="crudR">R</span></td><td>—</td></tr>
+    <tr><td class="lbl">Excel 出力 <code>/projects/:id/export.xls</code></td>
+      <td><span class="crudR">R</span></td><td>—</td>
+      <td><span class="crudR">R</span></td><td>—</td><td>—</td></tr>
     <tr><td class="lbl">Excel 取込 <code>/projects/import/{preview,commit}</code></td>
-      <td>—</td><td><span class="crudR">R</span></td><td>—</td><td>—</td>
-      <td><span class="crudC">C</span><span class="crudU">U</span><span class="crudD">D</span>※</td><td>—</td><td>—</td></tr>
-    <tr><td class="lbl">Help / Downloads</td>
-      <td colspan="7" style="text-align:center;color:var(--mut)">DB アクセスなし（静的ファイル配信）</td></tr>
+      <td><span class="crudR">R</span></td><td>—</td>
+      <td><span class="crudC">C</span><span class="crudU">U</span><span class="crudD">D</span>※</td>
+      <td>—</td><td>—</td></tr>
   </tbody>
 </table>
 <ul class="bullets">
-  <li>（ ）= FK の <code>CASCADE</code>/<code>SET NULL</code> または連動による副作用（その機能が直接操作しないが結果的に変化）。</li>
-  <li>担当別予定※：割当取得 API は wbs_tasks が対象。個人タスクは別 API（個人タスク行）で取得し画面で統合。</li>
+  <li>プロジェクト概要は <code>description</code> / <code>status</code> を更新（0015）。KPI（タスク数・完了率）は wbs_tasks の R から導出。</li>
   <li>Excel 取込※：確定時、対象プロジェクトの wbs_tasks を解析結果で<strong>置き換え</strong>（既存 D ＋ 新規 C／既存 U）。</li>
-  <li>MCP ツール（customer_*/project_*/task_*/personal_task_*/employee_*/holiday_*/<strong>organization_*</strong>）は対応機能行と同一の CRUD。</li>
-  <li>組織マスタ <code>/api/organizations</code>（0012 で追加）：<code>organizations</code> を <strong>CRUD</strong>。削除時は customers/projects/assignees の <code>organization_id</code> を SET NULL（副作用 U）。稼働管理表 CSV 取込時、新規作成エンティティに自動紐付け（§5.11）。</li>
+</ul>
+
+<h3 class="section"><span class="num">4.3</span>稼働見通し（月次工数）</h3>
+<table class="crud">
+  <thead><tr>
+    <th class="lbl">機能 / エンドポイント</th>
+    <th>mh_<br>batches</th><th>mh_<br>entries</th><th>mh_<br>capacities</th><th>project_<br>codes</th><th>projects</th><th>customers</th><th>assignees</th>
+  </tr></thead>
+  <tbody>
+    <tr><td class="lbl">CSV取込 <code>/manhours/import/{preview,commit}</code></td>
+      <td><span class="crudC">C</span></td><td><span class="crudC">C</span></td><td><span class="crudC">C</span></td>
+      <td><span class="crudC">C</span></td><td>(<span class="crudC">C</span>)※</td>
+      <td>(<span class="crudC">C</span>)※</td><td>(<span class="crudC">C</span>)※</td></tr>
+    <tr><td class="lbl">バッチ履歴 <code>/manhours/batches</code></td>
+      <td><span class="crudR">R</span><span class="crudD">D</span></td>
+      <td><span class="crudR">R</span>(<span class="crudD">D</span>)</td>
+      <td><span class="crudR">R</span>(<span class="crudD">D</span>)</td>
+      <td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr><td class="lbl">稼働見通し（サマリー／案件×担当） <code>/manhours/summary</code></td>
+      <td><span class="crudR">R</span></td><td><span class="crudR">R</span></td><td><span class="crudR">R</span></td>
+      <td><span class="crudR">R</span></td><td><span class="crudR">R</span></td>
+      <td><span class="crudR">R</span></td><td><span class="crudR">R</span></td></tr>
+    <tr><td class="lbl">仮案件作成・手入力 <code>/manhours/manual</code></td>
+      <td>—</td><td><span class="crudC">C</span><span class="crudU">U</span><span class="crudD">D</span></td>
+      <td><span class="crudU">U</span></td><td>—</td>
+      <td>(<span class="crudC">C</span>)</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table>
+<ul class="bullets">
+  <li>CSV取込※：preview は読み取りのみ、commit で未一致担当者／顧客／対象プロジェクトを<strong>自動作成</strong>（顧客は正規化キーで名寄せ重複防止）。新規エンティティには取込元組織を自動付与（§5.11）。</li>
+  <li>バッチ削除：CASCADE で entries / capacities も削除。仮プロジェクト（projects.is_provisional=1）は<strong>残る</strong>。</li>
+  <li>仮案件作成・手入力：UI からの仮工数登録は <code>batch_id NULL</code> / <code>source='manual'</code>（取込で消えない）。新規プロジェクトとして登録した時は仮プロジェクトが <code>projects</code> に作成される。</li>
+</ul>
+
+<h3 class="section"><span class="num">4.4</span>その他</h3>
+<table class="crud">
+  <thead><tr><th class="lbl">機能 / エンドポイント</th><th>備考</th></tr></thead>
+  <tbody>
+    <tr><td class="lbl">操作手順 <code>/api/help/manual.html</code>, <code>/screenshots/:name</code></td>
+      <td>DB アクセスなし（<code>docs/manual.html</code> と <code>docs/screenshots/</code> をパス検証付きで配信）</td></tr>
+    <tr><td class="lbl">ダウンロード <code>/api/downloads/km_module.xla</code></td>
+      <td>DB アクセスなし（Excel アドイン配布）</td></tr>
+  </tbody>
+</table>
+<ul class="bullets">
+  <li>（ ）= FK の <code>CASCADE</code>/<code>SET NULL</code> または連動による<strong>副作用</strong>（その機能が直接操作しないが結果的に変化）。</li>
+  <li>MCP ツール（<code>customers</code> / <code>projects</code> / <code>tasks</code> / <code>personal-tasks</code> / <code>employees</code> / <code>holidays</code> / <code>organizations</code> / <code>manhours</code> の各種）は対応機能行と<strong>同一の CRUD</strong>。</li>
 </ul>
 
 <h2 class="chapter" id="d5">5. 主要処理設計</h2>
